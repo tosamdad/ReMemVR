@@ -1,0 +1,13 @@
+# 기본 문서는 index.php 를 먼저 찾는다(cafe24 기본 index.html 보다 우선).
+DirectoryIndex index.php index.html
+
+# 배포 도구가 남기는 상태 파일과 앱 경로 파일은 외부에서 열지 못하게 한다.
+<FilesMatch "^(\.ftp-deploy-sync-state\.json|_app_path\.php)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>

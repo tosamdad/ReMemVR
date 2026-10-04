@@ -1,0 +1,80 @@
+# PR 과 main 푸시마다 PHP 문법과 DB 마이그레이션을 검증한다.
+# 실제 MariaDB 에 마이그레이션을 두 번 적용(두 번째는 변경 없음)하고, 백업 덤프를 새 DB 에 복원해 본다.
+# cafe24 서버 버전을 특정할 수 없어 구버전(PHP 7.4, MariaDB 10.3)과 최신 조합을 함께 확인한다.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  php-db:
+    name: PHP ${{ matrix.php }} / MariaDB ${{ matrix.mariadb }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - php: '7.4'
+            mariadb: '10.3'
+          - php: '8.3'
+            mariadb: '10.11'
+    services:
+      mariadb:
+        image: mariadb:${{ matrix.mariadb }}
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: rememvr
+          MARIADB_USER: rememvr
+          MARIADB_PASSWORD: ci-password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -uroot -proot || mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=5s --health-timeout=5s --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: pdo_mysql, zlib
+          coverage: none
+
+      - name: PHP 문법 검사
+        run: find server public -name '*.php' -print0 | xargs -0 -n1 php -l
+
+      - name: 설정 파일 생성
+        run: |
+          # shellcheck disable=SC2016  # PHP 코드는 셸에서 확장하지 않는다.
+          write_config() {
+            php -r '
+              $c = ["env" => "ci", "db" => ["host" => "127.0.0.1", "port" => 3306, "name" => getenv("DBNAME"),
+                "user" => "rememvr", "pass" => "ci-password", "charset" => "utf8mb4"],
+                "ops_token" => str_repeat("x", 40)];
+              file_put_contents("server/config.php", "<?php\nreturn " . var_export($c, true) . ";\n");'
+          }
+          DBNAME=rememvr write_config
+
+      - name: 마이그레이션 적용
+        run: php server/bin/migrate.php
+
+      - name: 재실행 시 변경 없음 확인
+        run: |
+          out=$(php server/bin/migrate.php)
+          echo "$out"
+          echo "$out" | grep -q '새로 적용 0개'
+          php server/bin/migrate.php status
+
+      - name: 백업 후 새 DB 에 복원
+        run: |
+          php server/bin/backup.php backup.sql.gz
+          zcat backup.sql.gz | tail -n 1 | grep -q '^-- Dump completed'
+          mysql -h 127.0.0.1 -uroot -proot -e "CREATE DATABASE restore_check CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL ON restore_check.* TO 'rememvr'@'%';"
+          zcat backup.sql.gz | mysql -h 127.0.0.1 -uroot -proot --default-character-set=utf8mb4 restore_check
+          # shellcheck disable=SC2016  # PHP 코드는 셸에서 확장하지 않는다.
+          php -r '
+            $c = require "server/config.php"; $c["db"]["name"] = "restore_check";
+            file_put_contents("server/config.php", "<?php\nreturn " . var_export($c, true) . ";\n");'
+          php server/bin/migrate.php status

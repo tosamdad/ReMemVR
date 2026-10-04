@@ -1,0 +1,14 @@
+# 서버 접속정보는 저장소에 올리지 않는다. 배포 시 GitHub Secrets 로 생성한다.
+server/config.php
+public/_app_path.php
+.ftp-deploy-sync-state.json
+
+# 로컬 백업 파일
+*.sql.gz
+*.sql.gz.gpg
+backups/
+
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

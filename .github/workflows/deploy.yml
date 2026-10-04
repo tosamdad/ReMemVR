@@ -1,0 +1,105 @@
+# 배포 워크플로
+# - main 에 푸시하면 테스트 서버(TEST_ 로 시작하는 Secrets)에 자동 배포한다. 테스트 서버를 등록하지 않았으면 건너뛴다.
+# - 실서버는 Actions 탭의 "Run workflow" 로만 배포한다. 버튼을 누르는 것이 배포 승인이다.
+#   production 환경에 Required reviewers 를 설정하면 승인자 확인을 한 번 더 거친다.
+# - 실서버 배포가 성공하면 prod-YYYYMMDD-HHMMSS 태그를 남긴다. 롤백은 ref 에 이전 태그를 넣고 실행한다.
+#   DB 마이그레이션은 되돌리지 않으므로, 스키마를 되돌려야 하면 새 마이그레이션 파일로 처리한다.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'public/**'
+      - 'server/**'
+      - '.github/workflows/deploy.yml'
+      - '.github/workflows/_deploy.yml'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 배포 대상
+        type: choice
+        options: [production, test]
+        default: production
+      ref:
+        description: 배포할 브랜치 또는 태그 (롤백할 때는 prod-로 시작하는 이전 태그)
+        type: string
+        default: main
+
+concurrency:
+  group: deploy-${{ github.event_name == 'push' && 'test' || inputs.target }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    if: github.event_name == 'push' || inputs.target == 'test'
+    uses: ./.github/workflows/_deploy.yml
+    with:
+      environment: test
+      ref: ${{ github.event_name == 'push' && github.sha || inputs.ref }}
+      optional: true
+      web_dir: ${{ vars.TEST_FTP_WEB_DIR || vars.FTP_WEB_DIR || '/www/' }}
+      app_dir: ${{ vars.TEST_FTP_APP_DIR || vars.FTP_APP_DIR || '/rememvr_app/' }}
+      ftp_protocol: ${{ vars.TEST_FTP_PROTOCOL || vars.FTP_PROTOCOL || 'ftp' }}
+      ftp_port: ${{ vars.TEST_FTP_PORT || vars.FTP_PORT || '21' }}
+      db_host: ${{ vars.TEST_DB_HOST || vars.DB_HOST || 'localhost' }}
+    secrets:
+      FTP_SERVER: ${{ secrets.TEST_FTP_SERVER }}
+      FTP_USERNAME: ${{ secrets.TEST_FTP_USERNAME }}
+      FTP_PASSWORD: ${{ secrets.TEST_FTP_PASSWORD }}
+      DB_NAME: ${{ secrets.TEST_DB_NAME }}
+      DB_USER: ${{ secrets.TEST_DB_USER }}
+      DB_PASSWORD: ${{ secrets.TEST_DB_PASSWORD }}
+      OPS_TOKEN: ${{ secrets.TEST_OPS_TOKEN }}
+      SITE_URL: ${{ secrets.TEST_SITE_URL }}
+
+  production:
+    if: github.event_name == 'workflow_dispatch' && inputs.target == 'production'
+    uses: ./.github/workflows/_deploy.yml
+    with:
+      environment: production
+      ref: ${{ inputs.ref }}
+      web_dir: ${{ vars.FTP_WEB_DIR || '/www/' }}
+      app_dir: ${{ vars.FTP_APP_DIR || '/rememvr_app/' }}
+      ftp_protocol: ${{ vars.FTP_PROTOCOL || 'ftp' }}
+      ftp_port: ${{ vars.FTP_PORT || '21' }}
+      db_host: ${{ vars.DB_HOST || 'localhost' }}
+    secrets:
+      FTP_SERVER: ${{ secrets.FTP_SERVER }}
+      FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+      FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+      DB_NAME: ${{ secrets.DB_NAME }}
+      DB_USER: ${{ secrets.DB_USER }}
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      OPS_TOKEN: ${{ secrets.OPS_TOKEN }}
+      SITE_URL: ${{ secrets.SITE_URL }}
+
+  tag:
+    needs: production
+    if: needs.production.outputs.deployed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.production.outputs.sha }}
+          fetch-depth: 0
+
+      - name: 배포 버전 태그 생성
+        env:
+          REF: ${{ inputs.ref }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          existing=$(git tag --points-at HEAD --list 'prod-*' | head -n1)
+          if [ -n "$existing" ]; then
+            echo "이미 $existing 태그가 있는 커밋이다(롤백 배포). 새 태그를 만들지 않는다."
+            echo "### 롤백 배포: $existing" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          tag="prod-$(TZ=Asia/Seoul date +%Y%m%d-%H%M%S)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$tag" -m "실서버 배포 ($REF, 실행자 $ACTOR)"
+          git push origin "$tag"
+          echo "### 배포 태그: $tag" >> "$GITHUB_STEP_SUMMARY"

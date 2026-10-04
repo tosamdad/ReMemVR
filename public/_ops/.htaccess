@@ -1,0 +1,10 @@
+# 운영 엔드포인트는 POST 와 토큰으로만 동작한다. bootstrap.php 는 직접 호출을 막는다.
+<Files "bootstrap.php">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</Files>
