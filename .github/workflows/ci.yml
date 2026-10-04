@@ -1,6 +1,6 @@
 # PR 과 main 푸시마다 PHP 문법과 DB 마이그레이션을 검증한다.
 # 실제 MariaDB 에 마이그레이션을 두 번 적용(두 번째는 변경 없음)하고, 백업 덤프를 새 DB 에 복원해 본다.
-# cafe24 서버 버전을 특정할 수 없어 구버전(PHP 7.4, MariaDB 10.3)과 최신 조합을 함께 확인한다.
+# 구버전(PHP 7.4, MariaDB 10.3)과 실서버 버전(PHP 8.4, MariaDB 10.6)을 함께 확인한다.
 name: CI
 
 on:
@@ -18,8 +18,9 @@ jobs:
         include:
           - php: '7.4'
             mariadb: '10.3'
-          - php: '8.3'
-            mariadb: '10.11'
+          # 실서버(cafe24) 확인 버전
+          - php: '8.4'
+            mariadb: '10.6'
     services:
       mariadb:
         image: mariadb:${{ matrix.mariadb }}
