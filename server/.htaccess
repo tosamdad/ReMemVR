@@ -1,0 +1,8 @@
+# 이 폴더가 실수로 웹 루트 안에 올라가더라도 외부에서 열리지 않게 막는다.
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+</IfModule>

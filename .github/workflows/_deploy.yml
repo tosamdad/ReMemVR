@@ -1,0 +1,205 @@
+# cafe24 FTP 배포 공통 절차. deploy.yml 이 테스트 서버와 실서버에 각각 호출한다.
+# 1) server/config.php 를 Secrets 로 생성  2) server/ 를 웹 루트 밖 앱 폴더에 업로드
+# 3) public/ 을 웹 루트(www)에 업로드  4) 마이그레이션 엔드포인트 호출
+name: _deploy
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        type: string
+        required: true
+      ref:
+        type: string
+        required: true
+      optional:
+        description: true 이면 접속정보가 없을 때 실패하지 않고 건너뛴다(테스트 서버용).
+        type: boolean
+        default: false
+      web_dir:
+        type: string
+        default: /www/
+      app_dir:
+        type: string
+        default: /rememvr_app/
+      ftp_protocol:
+        type: string
+        default: ftp
+      ftp_port:
+        type: string
+        default: '21'
+      db_host:
+        type: string
+        default: localhost
+    secrets:
+      FTP_SERVER:
+        required: false
+      FTP_USERNAME:
+        required: false
+      FTP_PASSWORD:
+        required: false
+      DB_NAME:
+        required: false
+      DB_USER:
+        required: false
+      DB_PASSWORD:
+        required: false
+      OPS_TOKEN:
+        required: false
+      SITE_URL:
+        required: false
+    outputs:
+      deployed:
+        value: ${{ jobs.deploy.outputs.deployed }}
+      sha:
+        value: ${{ jobs.deploy.outputs.sha }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    timeout-minutes: 30
+    outputs:
+      deployed: ${{ steps.migrate.outcome == 'success' }}
+      sha: ${{ steps.checkout.outputs.commit }}
+    env:
+      FTP_SERVER: ${{ secrets.FTP_SERVER }}
+      FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+      FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+      DB_NAME: ${{ secrets.DB_NAME }}
+      DB_USER: ${{ secrets.DB_USER }}
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      OPS_TOKEN: ${{ secrets.OPS_TOKEN }}
+      SITE_URL: ${{ secrets.SITE_URL }}
+      DB_HOST: ${{ inputs.db_host }}
+      WEB_DIR: ${{ inputs.web_dir }}
+      APP_DIR: ${{ inputs.app_dir }}
+    steps:
+      - name: 접속정보 확인
+        id: check
+        env:
+          TARGET: ${{ inputs.environment }}
+        run: |
+          missing=""
+          for name in FTP_SERVER FTP_USERNAME FTP_PASSWORD DB_NAME DB_USER DB_PASSWORD OPS_TOKEN SITE_URL; do
+            if [ -z "${!name}" ]; then missing="$missing $name"; fi
+          done
+          if [ -n "$missing" ]; then
+            if [ "${{ inputs.optional }}" = "true" ]; then
+              echo "::notice::$TARGET 접속정보가 등록되지 않아 배포를 건너뛴다. 없는 항목:$missing"
+              echo "ready=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::error::GitHub Secrets 에 다음 항목이 없다:$missing"
+            exit 1
+          fi
+          # 복사·붙여넣기로 섞여 들어간 줄바꿈과 공백을 지운다(HTTP 헤더에 줄바꿈이 있으면 요청이 실패한다).
+          clean=$(printf '%s' "$OPS_TOKEN" | tr -d '[:space:]')
+          if [ -n "$clean" ]; then echo "::add-mask::$clean"; echo "OPS_TOKEN=$clean" >> "$GITHUB_ENV"; OPS_TOKEN="$clean"; fi
+          if [ ${#OPS_TOKEN} -lt 32 ]; then
+            echo "::error::OPS_TOKEN 은 32자 이상이어야 한다."
+            exit 1
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: 코드 가져오기
+        id: checkout
+        if: steps.check.outputs.ready == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: 서버 설정 파일 생성
+        if: steps.check.outputs.ready == 'true'
+        env:
+          APP_ENV: ${{ inputs.environment }}
+        run: |
+          # shellcheck disable=SC2016  # PHP 코드는 셸에서 확장하지 않는다.
+          php -r '
+            $config = [
+              "env" => getenv("APP_ENV"),
+              "db" => [
+                "host" => getenv("DB_HOST") ?: "localhost",
+                "port" => 3306,
+                "name" => getenv("DB_NAME"),
+                "user" => getenv("DB_USER"),
+                "pass" => getenv("DB_PASSWORD"),
+                "charset" => "utf8mb4",
+              ],
+              "ops_token" => getenv("OPS_TOKEN"),
+            ];
+            file_put_contents("server/config.php", "<?php\nreturn " . var_export($config, true) . ";\n");
+          '
+          php -l server/config.php
+
+          # 웹 루트에서 앱 폴더까지의 상대 경로를 _app_path.php 로 남긴다. 예) /www/ 와 /rememvr_app/ 이면 ../rememvr_app
+          web="${WEB_DIR#/}"; web="${web%/}"
+          app="${APP_DIR#/}"; app="${app%/}"
+          if [ -z "$web" ] || [ -z "$app" ]; then
+            echo "::error::FTP_WEB_DIR 와 FTP_APP_DIR 은 비워 둘 수 없다."; exit 1
+          fi
+          if ! [[ "$web/$app" =~ ^[A-Za-z0-9._/-]+$ ]] || [[ "$web/$app" == *..* ]]; then
+            echo "::error::FTP_WEB_DIR, FTP_APP_DIR 에는 영문, 숫자, . _ - / 만 쓸 수 있다."; exit 1
+          fi
+          up=""
+          IFS='/' read -ra parts <<< "$web"
+          for _ in "${parts[@]}"; do up="../$up"; done
+          printf "<?php\nreturn '%s';\n" "$up$app" > public/_app_path.php
+          echo "앱 폴더 상대 경로: $up$app"
+
+      - name: 앱 폴더 업로드 (server/ → ${{ inputs.app_dir }})
+        if: steps.check.outputs.ready == 'true'
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ${{ inputs.ftp_protocol }}
+          port: ${{ inputs.ftp_port }}
+          local-dir: ./server/
+          server-dir: ${{ inputs.app_dir }}
+          log-level: minimal
+
+      - name: 웹 루트 업로드 (public/ → ${{ inputs.web_dir }})
+        if: steps.check.outputs.ready == 'true'
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ${{ inputs.ftp_protocol }}
+          port: ${{ inputs.ftp_port }}
+          local-dir: ./public/
+          server-dir: ${{ inputs.web_dir }}
+          log-level: minimal
+
+      - name: DB 마이그레이션 실행
+        id: migrate
+        if: steps.check.outputs.ready == 'true'
+        env:
+          REF: ${{ inputs.ref }}
+          COMMIT: ${{ steps.checkout.outputs.commit }}
+          TARGET: ${{ inputs.environment }}
+        run: |
+          url="${SITE_URL%/}/_ops/migrate.php"
+          for attempt in 1 2 3; do
+            code=$(curl -sS --max-time 300 -o response.json -w '%{http_code}' \
+              -X POST -H "X-Ops-Token: $OPS_TOKEN" --data-urlencode "token=$OPS_TOKEN" "$url" || echo 000)
+            if [ "$code" != "000" ]; then break; fi
+            echo "연결 실패, ${attempt}번째 재시도 대기"; sleep $((attempt * 5))
+          done
+          if jq -e . response.json > /dev/null 2>&1; then jq . response.json; else head -c 2000 response.json; echo; fi
+          if [ "$code" != "200" ] || [ "$(jq -r '.ok' response.json 2>/dev/null)" != "true" ]; then
+            echo "::error::마이그레이션 실패 (HTTP $code). 위 응답의 error 를 확인한다."
+            exit 1
+          fi
+          {
+            echo "### $TARGET 배포 완료"
+            echo ""
+            echo "- 커밋: \`$COMMIT\` ($REF)"
+            echo "- 새로 적용한 마이그레이션: $(jq -r 'if (.applied|length)==0 then "없음" else (.applied|join(", ")) end' response.json)"
+            echo ""
+            echo "| 상태 | 파일 |"
+            echo "|---|---|"
+            jq -r '.status[] | "| \(.state) | \(.file) |"' response.json
+          } >> "$GITHUB_STEP_SUMMARY"
