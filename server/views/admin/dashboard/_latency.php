@@ -30,8 +30,13 @@ $met = $lat['avg_ms'] !== null && $lat['avg_ms'] <= $target;
 <?php if ($lat['count'] === 0): ?>
 <div class="flex h-56 flex-col items-center justify-center gap-3 rounded-2xl bg-surface-container-low/70 px-6 text-center">
   <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-container-high text-primary"><span class="material-symbols-outlined text-[28px]">speed</span></div>
+  <?php if (!qa_available()): ?>
+  <p class="font-label-md text-label-md text-on-surface">아이 질문 기능이 보류 중입니다</p>
+  <p class="max-w-md font-body-md text-sm text-on-surface-variant">Gemini API 약관이 18세 미만이 이용하는 서비스에서의 사용을 금지해 질문 기능을 꺼 두었습니다. 아이 대상 사용을 허용하는 답변 AI 로 바꾸면 이곳에 응답 시간이 표시됩니다.</p>
+  <?php else: ?>
   <p class="font-label-md text-label-md text-on-surface">오늘은 아직 답변한 질문이 없습니다</p>
   <p class="max-w-md font-body-md text-sm text-on-surface-variant">아이가 동화를 듣다가 질문하면 시간대별 평균 응답 시간이 막대로 표시됩니다. 점선은 목표 응답 시간(<?= e(DashboardStats::koLatency($target)) ?>)입니다.</p>
+  <?php endif; ?>
 </div>
 <?php else: ?>
 <div class="relative h-56 w-full pt-6" role="img" aria-label="시간대별 평균 응답 지연 막대 그래프">

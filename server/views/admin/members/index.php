@@ -252,8 +252,8 @@ $to = min($list['total'], $list['page'] * $list['per_page']);
       <?php if (!$latency['samples']): ?>
       <div class="flex flex-col items-center gap-2 rounded-xl bg-surface-container-low px-6 py-10 text-center">
         <span class="material-symbols-outlined text-[36px] text-outline">speed</span>
-        <p class="font-label-md text-label-md text-on-surface">아직 AI 답변이 없습니다.</p>
-        <p class="font-label-sm text-label-sm text-on-surface-variant">아이 질문에 답한 기록이 생기면 단계별 처리 시간을 보여 줍니다.</p>
+        <p class="font-label-md text-label-md text-on-surface"><?= qa_available() ? '아직 AI 답변이 없습니다.' : '아이 질문 기능이 보류 중입니다.' ?></p>
+        <p class="font-label-sm text-label-sm text-on-surface-variant"><?= qa_available() ? '아이 질문에 답한 기록이 생기면 단계별 처리 시간을 보여 줍니다.' : '아이 대상 사용을 허용하는 답변 AI 로 바꾸면 단계별 처리 시간을 보여 줍니다.' ?></p>
       </div>
       <?php else: ?>
       <div class="flex flex-col gap-4">

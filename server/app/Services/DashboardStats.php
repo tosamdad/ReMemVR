@@ -438,13 +438,23 @@ class DashboardStats
         $msText = static function ($ms) {
             return $ms !== null ? ' (' . number_format((int) $ms) . 'ms)' : '';
         };
-        $items[] = [
-            'key' => 'gemini', 'icon' => 'neurology', 'name' => 'Gemini',
-            'detail' => $model . ' · ' . (!empty($g['ok']) ? '아이 질문 이해, 답변 작성' : (string) $g['message']),
-            'ok' => !empty($g['ok']),
-            'badge' => !empty($g['ok']) ? '정상' . $msText($g['ms']) : '점검 필요',
-            'text' => !empty($g['ok']) ? '정상' . $msText($g['ms']) : (string) $g['message'],
-        ];
+        if (!empty($g['skipped'])) {
+            $items[] = [
+                'key' => 'gemini', 'icon' => 'neurology', 'name' => 'Gemini',
+                'detail' => '아이 질문 기능 보류 중이라 쓰지 않음',
+                'ok' => true, 'muted' => true,
+                'badge' => '보류',
+                'text' => (string) $g['message'],
+            ];
+        } else {
+            $items[] = [
+                'key' => 'gemini', 'icon' => 'neurology', 'name' => 'Gemini',
+                'detail' => $model . ' · ' . (!empty($g['ok']) ? '아이 질문 이해, 답변 작성' : (string) $g['message']),
+                'ok' => !empty($g['ok']),
+                'badge' => !empty($g['ok']) ? '정상' . $msText($g['ms']) : '점검 필요',
+                'text' => !empty($g['ok']) ? '정상' . $msText($g['ms']) : (string) $g['message'],
+            ];
+        }
         $credits = isset($el['credits']) && is_array($el['credits']) ? $el['credits'] : null;
         $items[] = [
             'key' => 'elevenlabs', 'icon' => 'graphic_eq', 'name' => 'ElevenLabs',

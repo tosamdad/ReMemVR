@@ -110,6 +110,10 @@ function base_path(): string
     static $base = null;
     if ($base === null) {
         $script = isset($_SERVER['SCRIPT_NAME']) ? str_replace('\\', '/', $_SERVER['SCRIPT_NAME']) : '';
+        // 명령줄 실행이거나, PHP 내장 서버가 확장자가 있는 주소(/admin/members/export.csv)를 SCRIPT_NAME 으로 넘긴 경우는 기준 경로가 없다.
+        if (PHP_SAPI === 'cli' || substr($script, -4) !== '.php') {
+            $script = '/index.php';
+        }
         $dir = rtrim(dirname($script), '/');
         if (substr($dir, -5) === '/_ops') {
             $dir = substr($dir, 0, -5);

@@ -63,7 +63,7 @@ class Health
     private static function signature(): string
     {
         return md5(json_encode([
-            (bool) config('providers_fake'), Gemini::ready(), ElevenLabs::ready(), Gemini::model(),
+            (bool) config('providers_fake'), qa_available(), Gemini::ready(), ElevenLabs::ready(), Gemini::model(),
             (string) config('gemini.base_url', ''), (string) config('elevenlabs.base_url', ''),
         ]));
     }
@@ -82,6 +82,10 @@ class Health
 
     private static function gemini(): array
     {
+        if (!qa_available()) {
+            // 아이 질문 기능 보류 중에는 Gemini 를 부르지 않는다(약관상 18세 미만 대상 서비스 사용 금지).
+            return ['ok' => true, 'skipped' => true, 'ms' => null, 'message' => '질문 기능 보류 중이라 쓰지 않음', 'model' => Gemini::model()];
+        }
         $out = ['ok' => false, 'ms' => null, 'message' => 'API 키 미등록', 'model' => Gemini::model()];
         if (!Gemini::ready()) {
             return $out;

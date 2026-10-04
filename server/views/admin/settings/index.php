@@ -97,7 +97,7 @@ $nav = [
 ];
 $providerInfo = [
     'elevenlabs' => ['ElevenLabs', '목소리 복제, 동화 오디오, 답변 음성', 'ELEVENLABS_API_KEY', 'graphic_eq'],
-    'gemini' => ['Gemini', '아이 질문 음성 이해와 답변 생성', 'GEMINI_API_KEY', 'neurology'],
+    'gemini' => ['Gemini', $fake ? '아이 질문 음성 이해와 답변 생성' : '아이 질문 답변 생성 (기능 보류 중, 쓰지 않음)', 'GEMINI_API_KEY', 'neurology'],
     'kakao' => ['카카오 로그인', '카카오 간편 로그인', 'KAKAO_REST_API_KEY, KAKAO_CLIENT_SECRET', 'chat'],
     'google' => ['구글 로그인', '구글 간편 로그인', 'GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET', 'account_circle'],
 ];
@@ -167,7 +167,11 @@ $okChip = static function ($ok, string $yes = '정상', string $no = '확인 필
                   <p class="font-label-sm text-label-sm text-on-surface-variant"><?= e($p[1]) ?></p>
                 </div>
               </div>
+              <?php if ($key === 'gemini' && !$fake): ?>
+              <span class="a-chip bg-surface-container-highest text-on-surface-variant">보류</span>
+              <?php else: ?>
               <?= $okChip($ready, $fake ? '개발 모드' : '키 등록됨', '키 미등록') ?>
+              <?php endif; ?>
             </div>
             <?php if ($h): ?>
             <p class="font-label-sm text-label-sm <?= !empty($h['ok']) ? 'text-on-surface-variant' : 'text-error' ?>">점검: <?= e((string) $h['message']) ?><?= !empty($h['ms']) ? ' · ' . (int) $h['ms'] . 'ms' : '' ?></p>
@@ -175,7 +179,7 @@ $okChip = static function ($ok, string $yes = '정상', string $no = '확인 필
             <p class="font-label-sm text-label-sm text-on-surface-variant">잔여 크레딧 <?= e(fmt_number($cr['remaining'])) ?> / <?= e(fmt_number($cr['limit'])) ?><?= !empty($cr['tier']) ? ' · ' . e($cr['tier']) : '' ?></p>
             <?php endif; ?>
             <?php endif; ?>
-            <?php if (!$ready): ?>
+            <?php if (!$ready && !($key === 'gemini' && !$fake)): ?>
             <p class="font-label-sm text-label-sm text-on-surface-variant">GitHub Secrets: <span class="font-mono"><?= e($p[2]) ?></span></p>
             <?php endif; ?>
           </div>
@@ -198,7 +202,7 @@ $okChip = static function ($ok, string $yes = '정상', string $no = '확인 필
         </div>
         <p class="font-label-sm text-label-sm text-on-surface-variant"><?= $checked ? '방금 점검했습니다' : '최근 점검' ?>: <?= e(isset($health['checked_at']) ? (string) $health['checked_at'] : '') ?><?= !$checked ? ' · "지금 점검"을 누르면 외부 API 에 다시 확인합니다.' : '' ?></p>
         <?php else: ?>
-        <p class="font-label-sm text-label-sm text-on-surface-variant">아직 점검 기록이 없습니다. "지금 점검"을 누르면 Gemini, ElevenLabs, 저장 공간, DB 상태를 확인합니다.</p>
+        <p class="font-label-sm text-label-sm text-on-surface-variant">아직 점검 기록이 없습니다. "지금 점검"을 누르면 ElevenLabs, 저장 공간, DB 상태를 확인합니다.</p>
         <?php endif; ?>
         <details class="rounded-xl bg-surface-container-low p-4">
           <summary class="cursor-pointer font-label-md text-label-md text-on-surface">API 키 등록 방법 (GitHub Secrets)</summary>
@@ -252,6 +256,9 @@ $okChip = static function ($ok, string $yes = '정상', string $no = '확인 필
             <h2 class="font-headline-md text-headline-md text-on-surface">질문(끼어들기)과 비용 방어</h2>
             <p class="font-label-sm text-label-sm text-on-surface-variant">동화별 설정(동화 콘텐츠 관리 → 끼어들기 설정)이 비어 있으면 이 값을 씁니다.</p>
           </div>
+          <?php if (!$fake): ?>
+          <p class="rounded-lg bg-secondary-fixed px-4 py-2.5 font-label-md text-label-md text-on-secondary-fixed">아이 질문 기능은 보류 중입니다. Gemini API 약관이 18세 미만이 이용하는 서비스에서의 사용을 금지해, 아래 스위치를 켜도 실서버에서는 질문 버튼이 나타나지 않습니다. 아이 대상 사용을 허용하는 답변 AI 로 바꾼 뒤 다시 켤 수 있습니다.</p>
+          <?php endif; ?>
           <div class="rounded-xl <?= $v('qa.enabled') ? 'bg-surface-container-low' : 'bg-error-container' ?>" data-killswitch>
             <?= $toggle('qa.enabled', '질문 기능 전체 켜기 (긴급 차단 스위치)', '끄면 모든 동화에서 Gemini, ElevenLabs 호출 없이 대체 문장만 들려줍니다.', ' data-kill') ?>
           </div>

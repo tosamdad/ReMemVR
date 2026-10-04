@@ -43,7 +43,7 @@ try {
             'role' => $role,
             'status' => 'active',
         ], 'id = ?', [(int) $existing['id']]);
-        echo "기존 관리자 '{$loginId}' 의 비밀번호와 정보를 바꿨다. (id {$existing['id']}, 권한 {$role})\n";
+        echo "기존 관리자 계정의 비밀번호와 정보를 바꿨다. (아이디 {$loginId}, id {$existing['id']}, 권한 {$role})\n";
     } else {
         $id = db_insert('admins', [
             'login_id' => $loginId,
@@ -51,7 +51,7 @@ try {
             'name' => $name,
             'role' => $role,
         ]);
-        echo "관리자 '{$loginId}' 를 만들었다. (id {$id}, 이름 {$name}, 권한 {$role})\n";
+        echo "관리자 계정을 만들었다. (아이디 {$loginId}, id {$id}, 이름 {$name}, 권한 {$role})\n";
     }
     exit(0);
 } catch (Throwable $e) {

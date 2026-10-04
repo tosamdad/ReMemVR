@@ -74,7 +74,7 @@ class DashboardController
             'plays.voice_share' => $p['voice_share'] === null ? '재생 기록 없음' : '사전 생성 음성 재생 ' . $p['voice_share'] . '%',
             'interactions.total' => fmt_number($i['total']),
             'interactions.per_story' => $i['per_story'] === null ? '-' : fmt_number($i['per_story'], 1) . '회',
-            'interactions.limit' => $i['qa_enabled'] ? '최대 ' . $i['max_questions'] . '회 제한 정상 가동' : '질문 기능 꺼짐',
+            'interactions.limit' => $i['qa_enabled'] ? '최대 ' . $i['max_questions'] . '회 제한 정상 가동' : '질문 기능 보류 중',
             'cost.today' => fmt_krw($c['today']),
             'cost.percent' => $c['percent'] === null ? '한도 미설정' : $c['percent'] . '% 소진',
             'cost.per_interaction' => $c['per_interaction'] === null ? '-' : '₩' . fmt_number($c['per_interaction'], 1),

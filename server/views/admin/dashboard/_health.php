@@ -17,17 +17,21 @@ $policy = $d['policy'];
   </div>
 </div>
 <div class="flex flex-col gap-2.5">
-  <?php foreach ($h['items'] as $it): ?>
+  <?php foreach ($h['items'] as $it):
+      $muted = !empty($it['muted']);
+      $iconCls = $muted ? 'bg-surface-container-highest text-on-surface-variant' : ($it['ok'] ? 'bg-emerald-100 text-emerald-700' : 'bg-error-container text-on-error-container');
+      $dotCls = $muted ? 'bg-outline' : ($it['ok'] ? 'bg-emerald-500' : 'bg-error');
+  ?>
   <div class="flex items-center justify-between gap-3 rounded-xl bg-surface-container-low p-3.5" title="<?= e($it['text']) ?>">
     <div class="flex min-w-0 items-center gap-3">
-      <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg <?= $it['ok'] ? 'bg-emerald-100 text-emerald-700' : 'bg-error-container text-on-error-container' ?>"><span class="material-symbols-outlined text-[18px]"><?= e($it['icon']) ?></span></div>
+      <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg <?= $iconCls ?>"><span class="material-symbols-outlined text-[18px]"><?= e($it['icon']) ?></span></div>
       <div class="flex min-w-0 flex-col">
         <span class="font-label-md text-label-md font-semibold text-on-surface"><?= e($it['name']) ?></span>
         <span class="font-label-sm text-label-sm leading-snug text-on-surface-variant"><?= e($it['detail']) ?></span>
       </div>
     </div>
     <div class="flex shrink-0 items-center gap-1.5 rounded-full bg-surface-container-lowest px-2.5 py-1 text-on-surface">
-      <span class="h-2 w-2 shrink-0 rounded-full <?= $it['ok'] ? 'bg-emerald-500' : 'bg-error' ?>"></span>
+      <span class="h-2 w-2 shrink-0 rounded-full <?= $dotCls ?>"></span>
       <span class="whitespace-nowrap font-label-sm text-label-sm font-semibold"><?= e($it['badge']) ?></span>
     </div>
   </div>
@@ -38,7 +42,7 @@ $policy = $d['policy'];
     <span class="material-symbols-outlined text-[20px] text-secondary">shield</span>
     <span class="font-label-md text-label-md text-on-surface">아이 질문 안전 장치</span>
   </div>
-  <span class="text-right font-label-sm text-label-sm font-bold <?= $policy['qa_enabled'] ? 'text-primary' : 'text-error' ?>"><?= $policy['qa_enabled'] ? '답변 ' . (int) $policy['max_answer_chars'] . '자 제한 · 금지어 ' . (int) $policy['blocked_words'] . '개' : '질문 기능 꺼짐' ?></span>
+  <span class="text-right font-label-sm text-label-sm font-bold <?= $policy['qa_enabled'] ? 'text-primary' : 'text-on-surface-variant' ?>"><?= $policy['qa_enabled'] ? '답변 ' . (int) $policy['max_answer_chars'] . '자 제한 · 금지어 ' . (int) $policy['blocked_words'] . '개' : '질문 기능 보류 중' ?></span>
 </div>
 <?php if (!empty($h['checked_at'])): ?>
 <span class="font-label-sm text-[11px] text-on-surface-variant/80">외부 API 점검 <?= e(time_ago($h['checked_at'])) ?> · 5분마다 다시 확인</span>
