@@ -133,7 +133,7 @@ $memo = old('admin_memo', (string) $user['admin_memo']);
         <?php if (!$sessions): ?>
         <p class="py-6 text-center font-label-sm text-label-sm text-on-surface-variant">재생 기록이 없습니다.</p>
         <?php else: ?>
-        <div class="overflow-x-auto">
+        <div class="relative overflow-x-auto">
           <table class="a-table w-full">
             <thead><tr class="bg-surface-container-low"><th class="rounded-l-lg">시작</th><th>동화</th><th>자녀</th><th>목소리</th><th>청취</th><th class="rounded-r-lg">질문</th></tr></thead>
             <tbody>

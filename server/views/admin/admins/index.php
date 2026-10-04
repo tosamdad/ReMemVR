@@ -47,7 +47,7 @@ $oldRole = (string) old('role', 'admin');
   <div class="grid grid-cols-12 items-start gap-6">
     <section class="col-span-12 flex flex-col gap-4 rounded-xl bg-surface-container-lowest p-6 shadow-md <?= $isSuper ? 'xl:col-span-8' : '' ?>">
       <h2 class="font-headline-md text-headline-md text-on-surface">계정 목록</h2>
-      <div class="overflow-x-auto">
+      <div class="relative overflow-x-auto">
         <table class="w-full border-collapse text-left">
           <thead>
             <tr class="bg-surface-container-low font-label-md text-label-md text-on-surface-variant">

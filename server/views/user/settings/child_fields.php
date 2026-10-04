@@ -3,7 +3,7 @@
  * 아이 프로필 입력 항목(첫 자녀 등록, 아이 추가, 수정 공통). 변수: $values (ChildrenController::formValues)
  * 생년월일과 만 나이 중 하나로 입력한다(settings.js 가 입력 방식을 바꾼다).
  */
-$input = 'w-full min-h-12 rounded-2xl border-2 bg-surface-container-lowest px-4 font-body-md text-body-md text-on-surface transition-all placeholder:text-outline-variant focus:border-primary focus:ring-0';
+$input = 'w-full min-h-12 rounded-2xl border-2 bg-surface-container-lowest px-4 font-body-md text-body-md text-on-surface transition-all placeholder:text-outline focus:border-primary focus:ring-0';
 $label = 'ml-2 text-[14px] font-semibold leading-5 tracking-[0.02em] text-on-surface-variant';
 $seg = 'flex min-h-11 cursor-pointer items-center justify-center rounded-xl border-2 border-surface-variant bg-surface-container-lowest px-2 text-[14px] font-semibold text-on-surface-variant transition-all peer-checked:border-primary peer-checked:bg-primary-fixed peer-checked:text-on-primary-fixed-variant peer-focus-visible:ring-2 peer-focus-visible:ring-primary/40';
 $mode = $values['birth_mode'] === 'age' ? 'age' : 'date';

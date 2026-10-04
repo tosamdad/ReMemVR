@@ -66,7 +66,7 @@ $tabIcons = ['open' => 'mark_email_unread', 'answered' => 'mark_email_read', 'cl
       <?php if ($filtered): ?><a href="<?= e(url('/admin/inquiries', $tab === 'open' ? [] : ['status' => $tab])) ?>" class="font-label-sm text-label-sm text-primary hover:underline">조건 지우기</a><?php endif; ?>
     </form>
 
-    <div class="overflow-x-auto">
+    <div class="relative overflow-x-auto">
       <table class="w-full border-collapse text-left">
         <thead>
           <tr class="bg-surface-container-low font-label-md text-label-md text-on-surface-variant">

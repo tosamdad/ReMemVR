@@ -2,7 +2,7 @@
 /** 회원가입(시안 _3). 변수: $social */
 layout('user/layout_auth', ['title' => '회원가입']);
 $brand = setting('app.brand', '르멤버');
-$input = 'w-full min-h-12 rounded-2xl border-2 bg-surface-container-lowest px-4 font-body-md text-body-md text-on-surface transition-all placeholder:text-outline-variant focus:border-primary focus:ring-0';
+$input = 'w-full min-h-12 rounded-2xl border-2 bg-surface-container-lowest px-4 font-body-md text-body-md text-on-surface transition-all placeholder:text-outline focus:border-primary focus:ring-0';
 $label = 'ml-2 text-[14px] font-semibold leading-5 tracking-[0.02em] text-on-surface-variant';
 $box = 'h-5 w-5 shrink-0 rounded-md border-2 border-outline-variant bg-surface-container-lowest text-primary focus:ring-primary/30 focus:ring-offset-0';
 $err = function ($key) {

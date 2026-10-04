@@ -1,7 +1,7 @@
 <?php
 /** 비밀번호 찾기(재설정 메일 요청). 변수: $sent */
 layout('user/layout_auth', ['title' => '비밀번호 찾기']);
-$input = 'w-full min-h-12 rounded-2xl border-2 bg-surface-container-lowest px-4 font-body-md text-body-md text-on-surface transition-all placeholder:text-outline-variant focus:border-primary focus:ring-0';
+$input = 'w-full min-h-12 rounded-2xl border-2 bg-surface-container-lowest px-4 font-body-md text-body-md text-on-surface transition-all placeholder:text-outline focus:border-primary focus:ring-0';
 ?>
 <div class="relative isolate break-keep">
   <?= partial('user/auth/backdrop') ?>

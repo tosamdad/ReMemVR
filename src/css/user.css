@@ -105,7 +105,7 @@
     color-scheme: dark;
   }
   html { -webkit-text-size-adjust: 100%; }
-  body { -webkit-tap-highlight-color: transparent; }
+  body { -webkit-tap-highlight-color: transparent; word-break: keep-all; overflow-wrap: anywhere; }
   [x-cloak], [hidden] { display: none !important; }
 }
 
@@ -126,7 +126,7 @@
 
   /* 입력창 공통 */
   .field {
-    @apply w-full rounded-xl border border-outline-variant/60 bg-surface-container-lowest px-4 py-3.5 text-body-md text-on-surface placeholder:text-on-surface-variant/50 focus:border-primary focus:ring-2 focus:ring-primary/20;
+    @apply w-full rounded-xl border border-outline-variant/60 bg-surface-container-lowest px-4 py-3.5 text-body-md text-on-surface placeholder:text-outline focus:border-primary focus:ring-2 focus:ring-primary/20;
   }
   .field-label { @apply mb-2 block text-label-lg font-label-lg text-on-surface; }
   .field-error { @apply mt-1.5 text-label-sm text-error; }

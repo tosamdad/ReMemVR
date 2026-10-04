@@ -34,7 +34,7 @@ $cell = static function (array $names, string $cls) {
       <button type="submit" class="a-btn-secondary"<?= $totals['outdated'] + $totals['missing'] === 0 ? ' disabled' : '' ?>><span class="material-symbols-outlined text-[18px]">autorenew</span>오래된 오디오 모두 다시 생성</button>
     </form>
   </div>
-  <div class="overflow-x-auto">
+  <div class="relative overflow-x-auto">
     <table class="a-table w-full">
       <thead>
         <tr class="bg-surface-container-low">

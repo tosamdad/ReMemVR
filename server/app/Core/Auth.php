@@ -128,16 +128,26 @@ class Auth
         return array_merge(self::PREF_DEFAULTS, array_intersect_key($saved, self::PREF_DEFAULTS));
     }
 
+    /** 회원이 화면 모드(다크 모드)를 직접 고른 적이 있는지. 없으면 기기 설정을 따른다. */
+    public static function darkModeChosen(): bool
+    {
+        $user = self::user();
+
+        return $user !== null && array_key_exists('dark_mode', json_decode_array($user['prefs']));
+    }
+
     public static function savePrefs(array $changes): array
     {
         $user = self::user();
         if (!$user) {
             return self::PREF_DEFAULTS;
         }
-        $prefs = array_merge(self::prefs(), array_intersect_key($changes, self::PREF_DEFAULTS));
-        db_exec('UPDATE users SET prefs = ? WHERE id = ?', [json_encode_u($prefs), (int) $user['id']]);
+        // 회원이 실제로 바꾼 값만 저장한다(고른 적 없는 값은 기본값이나 기기 설정을 따르게).
+        $saved = array_intersect_key(json_decode_array($user['prefs']), self::PREF_DEFAULTS);
+        $saved = array_merge($saved, array_intersect_key($changes, self::PREF_DEFAULTS));
+        db_exec('UPDATE users SET prefs = ? WHERE id = ?', [json_encode_u($saved), (int) $user['id']]);
         self::$user = false;
 
-        return $prefs;
+        return array_merge(self::PREF_DEFAULTS, $saved);
     }
 }

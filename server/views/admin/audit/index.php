@@ -88,7 +88,7 @@ $groupIcons = ['admin' => 'manage_accounts', 'voice' => 'mic', 'member' => 'grou
   </div>
 
   <section class="flex flex-col gap-5 rounded-xl bg-surface-container-lowest p-6 shadow-md">
-    <div class="overflow-x-auto">
+    <div class="relative overflow-x-auto">
       <table class="w-full border-collapse text-left">
         <thead>
           <tr class="bg-surface-container-low font-label-md text-label-md text-on-surface-variant">

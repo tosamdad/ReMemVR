@@ -1,6 +1,6 @@
 <?php
 /**
- * 동화 플레이어(시안 _6). 큰 읽기 카드(낱말 강조), 목소리 칩, 진행 막대, 재생 버튼, 질문하기 버튼.
+ * 동화 플레이어(시안 _6). 표지와 가운데 제목, 읽기 카드(낱말 강조), 목소리 칩, 진행 막대, 재생 버튼, 질문하기 버튼.
  * 재생과 질문 흐름은 public/assets/js/player.js 가 맡는다. 서버는 첫 화면(시작 문장)을 미리 그려 둔다.
  * @var array $story
  * @var array $manifest
@@ -14,7 +14,7 @@
  * @var array $qa
  * @var int $estMs
  */
-layout('user/layout', ['title' => $story['title'], 'nav' => 'player', 'mainClass' => 'px-margin-mobile pt-4 pb-6']);
+layout('user/layout', ['title' => $story['title'], 'nav' => 'player', 'mainClass' => 'px-margin-mobile pt-3 pb-6']);
 
 $current = isset($sentences[$startIndex]) ? $sentences[$startIndex] : ['seq' => 1, 'content' => '', 'words' => []];
 $prev = $startIndex > 0 && isset($sentences[$startIndex - 1]) ? $sentences[$startIndex - 1] : null;
@@ -40,35 +40,33 @@ $chipWrap = $chipCount <= 3 ? 'grid gap-3 pt-1 ' . $chipCols[$chipCount] : '-mx-
 $chipSize = $chipCount <= 3 ? 'min-w-0' : 'w-[124px] shrink-0';
 $askSub = !$qa['enabled'] ? $qa['message'] : ($remaining > 0 ? '질문 ' . $remaining . '번 남았어요' : '이야기 끝나고 또 물어보자');
 ?>
-<div id="player" class="space-y-4" data-mode="<?= $device ? 'device' : 'audio' ?>">
-  <!-- 표지, 분류, 제목 -->
-  <section class="flex items-center gap-4">
-    <div class="relative h-[104px] w-[84px] shrink-0 overflow-hidden rounded-[22px] border-4 border-surface-container-lowest bg-surface-container shadow-lg">
+<div id="player" class="space-y-3" data-mode="<?= $device ? 'device' : 'audio' ?>">
+  <!-- 표지(분류 배지), 가운데 제목(시안 _6). 작은 화면에서도 재생 버튼이 멀리 밀리지 않게 표지 높이를 화면 높이에 맞춰 줄인다. -->
+  <section class="relative">
+    <div class="h-[min(18vh,280px)] min-h-[128px] w-full overflow-hidden rounded-[32px] border-4 border-surface-container-lowest bg-surface-container shadow-lg">
       <img src="<?= e(cover_url($story)) ?>" alt="" class="h-full w-full object-cover">
     </div>
-    <div class="min-w-0 flex-1 space-y-1.5">
-      <?php if (!empty($story['category'])): ?>
-      <span class="inline-flex items-center gap-1.5 rounded-full bg-tertiary-container px-3 py-1 font-label-sm text-label-sm text-on-tertiary-container shadow-sm">
-        <span class="material-symbols-outlined icon-fill text-[16px]">auto_stories</span><?= e($story['category']) ?>
-      </span>
-      <?php endif; ?>
-      <h1 class="text-[22px] font-bold leading-7 text-on-surface font-headline-md"><?= e($story['title']) ?></h1>
+    <?php if (!empty($story['category'])): ?>
+    <span class="absolute left-4 top-4 inline-flex items-center gap-1.5 rounded-full bg-tertiary-container px-4 py-2 font-label-sm text-label-sm text-on-tertiary-container shadow-md">
+      <span class="material-symbols-outlined icon-fill text-[18px]">auto_stories</span><?= e($story['category']) ?>
+    </span>
+    <?php endif; ?>
+  </section>
+  <div class="space-y-1 text-center">
+    <h1 class="text-headline-md font-bold text-on-surface font-headline-md"><?= e($story['title']) ?></h1>
+    <div class="flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
       <p id="pl-subtitle" class="font-label-lg text-label-lg text-on-surface-variant">문장 <?= (int) $startIndex + 1 ?> / <?= count($sentences) ?></p>
-      <?php if ($sleepMin > 0 || abs($speed - 1.0) > 0.01): ?>
-      <div class="flex flex-wrap gap-1.5 pt-0.5">
-        <?php if ($sleepMin > 0): ?>
-        <span id="pl-sleep" class="inline-flex items-center gap-1 rounded-full bg-surface-container-high px-2.5 py-0.5 text-[11px] font-bold text-on-surface-variant"><span class="material-symbols-outlined text-[14px]">bedtime</span><span id="pl-sleep-text">잠자기 <?= $sleepMin ?>분</span></span>
-        <?php endif; ?>
-        <?php if (abs($speed - 1.0) > 0.01): ?>
-        <span class="inline-flex items-center gap-1 rounded-full bg-surface-container-high px-2.5 py-0.5 text-[11px] font-bold text-on-surface-variant"><span class="material-symbols-outlined text-[14px]">speed</span><?= e(rtrim(rtrim(number_format($speed, 2), '0'), '.')) ?>배속</span>
-        <?php endif; ?>
-      </div>
+      <?php if ($sleepMin > 0): ?>
+      <span id="pl-sleep" class="inline-flex items-center gap-1 rounded-full bg-surface-container-high px-2.5 py-0.5 text-[11px] font-bold text-on-surface-variant"><span class="material-symbols-outlined text-[14px]">bedtime</span><span id="pl-sleep-text">잠자기 <?= $sleepMin ?>분</span></span>
+      <?php endif; ?>
+      <?php if (abs($speed - 1.0) > 0.01): ?>
+      <span class="inline-flex items-center gap-1 rounded-full bg-surface-container-high px-2.5 py-0.5 text-[11px] font-bold text-on-surface-variant"><span class="material-symbols-outlined text-[14px]">speed</span><?= e(rtrim(rtrim(number_format($speed, 2), '0'), '.')) ?>배속</span>
       <?php endif; ?>
     </div>
-  </section>
+  </div>
 
   <!-- 읽기 카드 -->
-  <section class="glass relative flex min-h-[196px] flex-col justify-center gap-3 rounded-3xl border border-surface-variant/40 px-md py-6 text-center shadow-soft">
+  <section class="glass relative flex min-h-[150px] flex-col justify-center gap-2 rounded-3xl border border-surface-variant/40 px-md py-5 text-center shadow-soft">
     <p id="pl-prev" class="font-story text-body-md text-on-surface-variant/60 line-clamp-2<?= $prev ? '' : ' invisible' ?>"><?= $prev ? e($prev['content']) : '&nbsp;' ?></p>
     <p id="pl-text" class="font-story <?= e($textSize) ?> text-on-surface break-keep" aria-live="polite"><?php
         $n = count($current['words']);
@@ -84,8 +82,8 @@ $askSub = !$qa['enabled'] ? $qa['message'] : ($remaining > 0 ? '질문 ' . $rema
   <!-- 목소리 고르기 -->
   <section class="<?= e($chipWrap) ?>" aria-label="목소리 고르기">
     <?php foreach ($voices as $v): $active = $v['id'] === $voice; ?>
-    <button type="button" data-voice="<?= e($v['id']) ?>" class="relative flex <?= e($chipSize) ?> flex-col items-center gap-1.5 rounded-3xl border-2 bg-surface-container-lowest px-2 py-3 shadow-sm transition-all duration-200 active:scale-95 <?= $active ? 'border-primary-container' : 'border-transparent' ?> <?= $v['ready'] ? '' : 'cursor-not-allowed opacity-60' ?>"<?= $v['ready'] ? '' : ' disabled' ?> aria-pressed="<?= $active ? 'true' : 'false' ?>">
-      <div class="flex h-12 w-12 items-center justify-center rounded-full <?= $active ? 'bg-primary-container/30' : 'bg-secondary-container/30' ?>">
+    <button type="button" data-voice="<?= e($v['id']) ?>" class="relative flex <?= e($chipSize) ?> flex-col items-center gap-1 rounded-3xl border-2 bg-surface-container-lowest px-2 py-2.5 shadow-sm transition-all duration-200 active:scale-95 <?= $active ? 'border-primary-container' : 'border-transparent' ?> <?= $v['ready'] ? '' : 'cursor-not-allowed opacity-60' ?>"<?= $v['ready'] ? '' : ' disabled' ?> aria-pressed="<?= $active ? 'true' : 'false' ?>">
+      <div class="flex h-11 w-11 items-center justify-center rounded-full <?= $active ? 'bg-primary-container/30' : 'bg-secondary-container/30' ?>">
         <span class="material-symbols-outlined text-3xl <?= $active ? 'text-primary' : 'text-secondary' ?>"><?= e($v['icon']) ?></span>
       </div>
       <span class="font-label-lg text-label-lg <?= $active ? 'text-primary' : 'text-on-surface-variant' ?> max-w-full truncate"><?= e($v['label']) ?> 목소리</span>
@@ -96,16 +94,16 @@ $askSub = !$qa['enabled'] ? $qa['message'] : ($remaining > 0 ? '질문 ' . $rema
     </button>
     <?php endforeach; ?>
     <?php $active = $device; ?>
-    <button type="button" data-voice="device" class="relative flex <?= e($chipSize) ?> flex-col items-center gap-1.5 rounded-3xl border-2 bg-surface-container-lowest px-2 py-3 shadow-sm transition-all duration-200 active:scale-95 <?= $active ? 'border-primary-container' : 'border-transparent' ?>" aria-pressed="<?= $active ? 'true' : 'false' ?>">
-      <div class="flex h-12 w-12 items-center justify-center rounded-full <?= $active ? 'bg-primary-container/30' : 'bg-secondary-container/30' ?>">
+    <button type="button" data-voice="device" class="relative flex <?= e($chipSize) ?> flex-col items-center gap-1 rounded-3xl border-2 bg-surface-container-lowest px-2 py-2.5 shadow-sm transition-all duration-200 active:scale-95 <?= $active ? 'border-primary-container' : 'border-transparent' ?>" aria-pressed="<?= $active ? 'true' : 'false' ?>">
+      <div class="flex h-11 w-11 items-center justify-center rounded-full <?= $active ? 'bg-primary-container/30' : 'bg-secondary-container/30' ?>">
         <span class="material-symbols-outlined text-3xl <?= $active ? 'text-primary' : 'text-secondary' ?>">smartphone</span>
       </div>
       <span class="font-label-lg text-label-lg <?= $active ? 'text-primary' : 'text-on-surface-variant' ?>">기기 음성</span>
       <?php if ($active): ?><div class="absolute -right-1 -top-1 h-4 w-4 rounded-full border-2 border-surface-container-lowest bg-primary"></div><?php endif; ?>
     </button>
     <?php if (!$voices): ?>
-    <a href="<?= e(url('/voice-lab/new')) ?>" class="relative flex <?= e($chipSize) ?> flex-col items-center gap-1.5 rounded-3xl border-2 border-dashed border-outline-variant bg-surface-container-low/60 px-2 py-3 transition-all duration-200 active:scale-95">
-      <div class="flex h-12 w-12 items-center justify-center rounded-full bg-surface-container-lowest">
+    <a href="<?= e(url('/voice-lab/new')) ?>" class="relative flex <?= e($chipSize) ?> flex-col items-center gap-1 rounded-3xl border-2 border-dashed border-outline-variant bg-surface-container-low/60 px-2 py-2.5 transition-all duration-200 active:scale-95">
+      <div class="flex h-11 w-11 items-center justify-center rounded-full bg-surface-container-lowest">
         <span class="material-symbols-outlined text-3xl text-primary">add</span>
       </div>
       <span class="font-label-lg text-label-lg text-primary">가족 목소리 만들기</span>

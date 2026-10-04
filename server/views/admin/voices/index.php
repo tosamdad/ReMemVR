@@ -102,12 +102,12 @@ $to = min($total, $page * 20);
   <div class="grid grid-cols-1 items-start gap-6 xl:grid-cols-12">
     <!-- 왼쪽: 탭, 필터, 표 -->
     <div class="flex min-w-0 flex-col gap-4 xl:col-span-8">
-      <nav class="flex flex-wrap items-center gap-1.5 rounded-xl bg-surface-container-lowest p-2 shadow-card" aria-label="상태">
+      <nav class="no-scrollbar flex items-center gap-1 overflow-x-auto rounded-xl bg-surface-container-lowest p-2 shadow-card" aria-label="상태">
         <?php foreach ($tabs as $key => $t):
             $on = $filters['status'] === $key;
             $href = url('/admin/voices', array_filter(array_merge($query, ['status' => $key]), static function ($v) { return $v !== ''; }));
         ?>
-        <a href="<?= e($href) ?>" class="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 font-label-md text-label-md transition-colors <?= $on ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-high' ?>"<?= $on ? ' aria-current="page"' : '' ?>>
+        <a href="<?= e($href) ?>" class="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-2 font-label-md text-label-md transition-colors <?= $on ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-high' ?>"<?= $on ? ' aria-current="page"' : '' ?>>
           <span><?= e($t[0]) ?></span>
           <span class="rounded-full px-2 py-0.5 font-label-sm text-label-sm <?= $t[2] ?>"><?= fmt_number($counts[$t[1]]) ?></span>
         </a>
@@ -147,7 +147,7 @@ $to = min($total, $page * 20);
           <?php if ($query): ?><a href="<?= e(url('/admin/voices')) ?>" class="a-btn-tonal mt-1">필터 초기화</a><?php endif; ?>
         </div>
         <?php else: ?>
-        <div class="overflow-x-auto">
+        <div class="relative overflow-x-auto">
           <table class="w-full border-collapse text-left">
             <thead>
               <tr class="bg-surface-container-low font-label-sm text-label-sm uppercase tracking-wider text-on-surface-variant">

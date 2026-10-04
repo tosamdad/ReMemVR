@@ -315,7 +315,7 @@ $to = min($list['total'], $list['page'] * $list['per_page']);
       </form>
     </div>
 
-    <div class="overflow-x-auto">
+    <div class="relative overflow-x-auto">
       <table class="w-full border-collapse text-left">
         <thead>
           <tr class="bg-surface-container-low font-label-md text-label-md text-on-surface-variant">

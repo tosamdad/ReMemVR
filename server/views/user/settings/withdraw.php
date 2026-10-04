@@ -1,7 +1,7 @@
 <?php
 /** 회원 탈퇴. 변수: $user, $hasPassword, $phrase, $counts */
 layout('user/layout', ['title' => '회원 탈퇴', 'header' => 'sub', 'back' => '/settings', 'mainClass' => 'px-margin-mobile pt-6 pb-6 break-keep']);
-$input = 'w-full min-h-12 rounded-2xl border-2 bg-surface-container-lowest px-4 font-body-md text-body-md text-on-surface transition-all placeholder:text-outline-variant focus:border-error focus:ring-0';
+$input = 'w-full min-h-12 rounded-2xl border-2 bg-surface-container-lowest px-4 font-body-md text-body-md text-on-surface transition-all placeholder:text-outline focus:border-error focus:ring-0';
 $label = 'ml-2 text-[14px] font-semibold leading-5 tracking-[0.02em] text-on-surface-variant';
 $items = [
     ['record_voice_over', '가족 목소리 ' . (int) $counts['voices'] . '개', '녹음 원본, 복제된 AI 목소리(ElevenLabs), 미리 만든 동화 오디오를 모두 지워요.'],

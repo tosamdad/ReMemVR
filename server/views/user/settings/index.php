@@ -92,6 +92,7 @@ $notifyOn = !empty($prefs['notify_voice_ready']) || !empty($prefs['notify_notice
         <?= $item('dark_mode', '다크 모드') ?>
         <label class="switch">
           <input type="checkbox" class="peer" aria-label="다크 모드" data-pref-switch="dark_mode"<?= !empty($prefs['dark_mode']) ? ' checked' : '' ?>>
+          <?php if (!\App\Core\Auth::darkModeChosen()): ?><script>document.currentScript.previousElementSibling.checked = document.documentElement.classList.contains('dark');</script><?php endif; ?>
           <span class="peer-checked:bg-primary peer-focus-visible:ring-2 peer-focus-visible:ring-primary/40"></span>
         </label>
       </div>

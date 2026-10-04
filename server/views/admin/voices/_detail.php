@@ -97,12 +97,15 @@ $slider = static function ($key, $label, $value, $help, $accent) {
     <span class="font-label-sm text-[11px] text-on-surface-variant">권장 <?= (int) $detail['length']['rec_sec'] ?>초 이상, 최소 <?= (int) $detail['length']['min_sec'] ?>초 · 품질 등급: <?= e($grade['label']) ?></span>
     <?php if ($detail['samples']): ?>
     <div class="flex flex-col gap-2 border-t border-surface-container-high pt-3">
-      <?php foreach ($detail['samples'] as $i => $s):
+      <?php $scripts = \App\Controllers\User\VoiceLabController::scripts();
+      foreach ($detail['samples'] as $i => $s):
           $sg = DashboardStats::gradeInfo($s['snr_db'], $s['quality_grade']);
+          $sk = (string) $s['script_key'];
+          $scriptName = $sk === '' ? '' : (isset($scripts[$sk]) ? $scripts[$sk]['no'] . '. ' . $scripts[$sk]['title'] : $sk);
       ?>
       <div class="flex flex-col gap-1 rounded-lg bg-surface-container-lowest p-2">
         <div class="flex items-center justify-between gap-2 font-label-sm text-label-sm">
-          <span class="text-on-surface">샘플 <?= $i + 1 ?><?= $s['script_key'] ? ' · 대본 ' . e($s['script_key']) : '' ?><?= $s['source'] === 'upload' ? ' · 업로드' : '' ?></span>
+          <span class="min-w-0 text-on-surface">샘플 <?= $i + 1 ?><?= $scriptName !== '' ? ' · 대본 ' . e($scriptName) : '' ?><?= $s['source'] === 'upload' ? ' · 업로드' : '' ?></span>
           <span class="text-on-surface-variant"><?= $s['snr_db'] !== null ? 'SNR ' . e(fmt_number($s['snr_db'], 1)) . 'dB · ' : '' ?><?= e($sg['short']) ?><?= (int) $s['clip_count'] > 0 ? ' · 클리핑 ' . (int) $s['clip_count'] : '' ?></span>
         </div>
         <?= partial('admin/voices/_player', ['src' => url('/admin/media/sample/' . (int) $s['id']), 'ms' => (int) $s['duration_ms'], 'variant' => 'list', 'seed' => (int) $s['id']]) ?>

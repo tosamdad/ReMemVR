@@ -1,7 +1,7 @@
 <?php
 /** 프로필 수정. 변수: $user, $hasPassword, $placeholderEmail, $linked */
 layout('user/layout', ['title' => '프로필 수정', 'header' => 'sub', 'back' => '/settings', 'mainClass' => 'px-margin-mobile pt-6 pb-6 break-keep']);
-$input = 'w-full min-h-12 rounded-2xl border-2 bg-surface-container-lowest px-4 font-body-md text-body-md text-on-surface transition-all placeholder:text-outline-variant focus:border-primary focus:ring-0';
+$input = 'w-full min-h-12 rounded-2xl border-2 bg-surface-container-lowest px-4 font-body-md text-body-md text-on-surface transition-all placeholder:text-outline focus:border-primary focus:ring-0';
 $label = 'ml-2 text-[14px] font-semibold leading-5 tracking-[0.02em] text-on-surface-variant';
 $cls = function ($key) use ($input) {
     return $input . ' ' . (errors($key) ? 'border-error' : 'border-surface-variant');

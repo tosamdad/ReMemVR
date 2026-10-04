@@ -407,7 +407,7 @@ $savedSentences = array_map(static function ($s) {
             </div>
 
             <?php if (errors('sentences')): ?><p class="rounded-lg bg-error-container px-3 py-2 font-label-sm text-label-sm text-on-error-container"><?= e(errors('sentences')) ?></p><?php endif; ?>
-            <div class="overflow-x-auto rounded-xl bg-surface-container-low p-1">
+            <div class="relative overflow-x-auto rounded-xl bg-surface-container-low p-1">
               <table class="w-full text-left font-body-md text-body-md">
                 <thead>
                   <tr class="bg-surface-container-high/60 font-label-sm text-label-sm text-on-surface-variant">

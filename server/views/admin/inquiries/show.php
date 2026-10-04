@@ -60,9 +60,9 @@ $wait = (int) floor(((($inq['answered_at'] ? strtotime((string) $inq['answered_a
           </div>
           <div class="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
             <?php if ($canMail): ?>
-            <label class="flex cursor-pointer items-center gap-2 font-label-md text-label-md text-on-surface">
+            <label class="flex min-w-0 cursor-pointer flex-wrap items-center gap-x-2 gap-y-1 font-label-md text-label-md text-on-surface">
               <input type="checkbox" name="notify" value="1" class="h-4 w-4 rounded border-outline text-primary focus:ring-primary/30"<?= $hasAnswer ? '' : ' checked' ?>>
-              회원에게 이메일로 알리기 <span class="font-label-sm text-label-sm text-on-surface-variant">(<?= e(mask_email((string) $user['email'])) ?>)</span>
+              <span class="whitespace-nowrap">회원에게 이메일로 알리기</span> <span class="min-w-0 break-all font-label-sm text-label-sm text-on-surface-variant">(<?= e(mask_email((string) $user['email'])) ?>)</span>
             </label>
             <?php else: ?>
             <span class="font-label-sm text-label-sm text-on-surface-variant">탈퇴했거나 메일 주소가 없는 회원이라 메일 알림을 보낼 수 없습니다. 답변은 앱에서만 보입니다.</span>

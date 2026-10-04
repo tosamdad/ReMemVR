@@ -23,6 +23,8 @@ $showNav = isset($showNav) ? (bool) $showNav : true;
 $header = isset($header) ? $header : 'main';
 $brand = setting('app.brand', '르멤버');
 $dark = !empty($prefs['dark_mode']);
+// 회원이 화면 모드를 직접 고른 적이 없으면 기기 설정(다크 모드)을 따른다.
+$darkChosen = Auth::darkModeChosen();
 $tabs = [
     'home' => ['/home', 'home', '홈'],
     'voice' => ['/voice-lab', 'mic', '목소리 연구실'],
@@ -48,7 +50,10 @@ $tabs = [
 <link href="<?= e(asset('css/user.css')) ?>" rel="stylesheet">
 <script>
   window.RM_CONFIG = <?= json_encode_u(['base' => base_path(), 'csrf' => csrf_token(), 'loggedIn' => (bool) $user, 'prefs' => $prefs]) ?>;
-  <?php if (!$user): ?>try { if (localStorage.getItem('rm-dark') === '1') { document.documentElement.classList.replace('light', 'dark'); } } catch (e) {}<?php endif; ?>
+  <?php if (!$darkChosen): ?>try {
+    var rmDark = <?= $user ? 'null' : "localStorage.getItem('rm-dark')" ?>;
+    if (rmDark === '1' || (rmDark === null && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)) { document.documentElement.classList.replace('light', 'dark'); }
+  } catch (e) {}<?php endif; ?>
 </script>
 <?= yield_section('head') ?>
 </head>
