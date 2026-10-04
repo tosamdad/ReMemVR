@@ -1,12 +1,14 @@
-# PR 과 main 푸시마다 PHP 문법과 DB 마이그레이션을 검증한다.
-# 실제 MariaDB 에 마이그레이션을 두 번 적용(두 번째는 변경 없음)하고, 백업 덤프를 새 DB 에 복원해 본다.
-# 구버전(PHP 7.4, MariaDB 10.3)과 실서버 버전(PHP 8.4, MariaDB 10.6)을 함께 확인한다.
+# PR 과 main 푸시마다 PHP 문법, DB 마이그레이션, 테스트, 화면 스타일 빌드를 검증한다.
+# 실제 MariaDB 에 마이그레이션을 두 번 적용(두 번째는 변경 없음)하고, 테스트와 화면 점검(smoke)을 돌린 뒤
+# 백업 덤프를 새 DB 에 복원해 본다. 구버전(PHP 7.4, MariaDB 10.3)과 실서버 버전(PHP 8.4, MariaDB 10.6)을 함께 확인한다.
 name: CI
 
 on:
   pull_request:
   push:
     branches: [main]
+  # 배포 워크플로가 실서버에 올리기 전에 같은 검사를 먼저 돌린다.
+  workflow_call:
 
 jobs:
   php-db:
@@ -40,7 +42,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: pdo_mysql, zlib
+          extensions: pdo_mysql, zlib, curl, mbstring
           coverage: none
 
       - name: PHP 문법 검사
@@ -51,9 +53,10 @@ jobs:
           # shellcheck disable=SC2016  # PHP 코드는 셸에서 확장하지 않는다.
           write_config() {
             php -r '
-              $c = ["env" => "ci", "db" => ["host" => "127.0.0.1", "port" => 3306, "name" => getenv("DBNAME"),
+              $c = ["env" => "ci", "debug" => true, "site_url" => "http://127.0.0.1:8000",
+                "db" => ["host" => "127.0.0.1", "port" => 3306, "name" => getenv("DBNAME"),
                 "user" => "rememvr", "pass" => "ci-password", "charset" => "utf8mb4"],
-                "ops_token" => str_repeat("x", 40)];
+                "ops_token" => str_repeat("x", 40), "providers_fake" => true];
               file_put_contents("server/config.php", "<?php\nreturn " . var_export($c, true) . ";\n");'
           }
           DBNAME=rememvr write_config
@@ -68,6 +71,23 @@ jobs:
           echo "$out" | grep -q '새로 적용 0개'
           php server/bin/migrate.php status
 
+      - name: PHP 테스트
+        run: php server/tests/run.php
+
+      - name: 화면 점검(smoke)
+        run: |
+          # 관리자 1명과 데모 회원을 만들고 내장 서버로 주요 화면을 실제로 열어 본다(외부 API 는 가짜 응답).
+          php server/bin/create-admin.php ciadmin ci-admin-pass-1234 "CI 관리자" super
+          php server/bin/demo-seed.php --users=3
+          email=$(mysql -h 127.0.0.1 -urememvr -pci-password rememvr -N -e \
+            "SELECT email FROM users WHERE email LIKE '%@demo.rememvr.local' ORDER BY id LIMIT 1")
+          php -S 127.0.0.1:8000 -t public public/index.php > php-server.log 2>&1 &
+          for _ in $(seq 1 30); do curl -sf http://127.0.0.1:8000/healthz > /dev/null && break; sleep 1; done
+          php server/bin/smoke.php http://127.0.0.1:8000 "$email:demo1234" "ciadmin:ci-admin-pass-1234"
+          if grep -E 'PHP (Fatal error|Warning|Notice|Deprecated|Parse error)' php-server.log; then
+            echo "내장 서버 로그에 PHP 오류가 있다"; exit 1
+          fi
+
       - name: 백업 후 새 DB 에 복원
         run: |
           php server/bin/backup.php backup.sql.gz
@@ -79,3 +99,20 @@ jobs:
             $c = require "server/config.php"; $c["db"]["name"] = "restore_check";
             file_put_contents("server/config.php", "<?php\nreturn " . var_export($c, true) . ";\n");'
           php server/bin/migrate.php status
+
+  css:
+    name: 화면 스타일 빌드
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Tailwind 빌드
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          ls -la public/assets/css/
+          test -s public/assets/css/user.css
+          test -s public/assets/css/admin.css

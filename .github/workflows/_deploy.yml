@@ -1,6 +1,6 @@
 # cafe24 FTP 배포 공통 절차. deploy.yml 이 테스트 서버와 실서버에 각각 호출한다.
-# 1) server/config.php 를 Secrets 로 생성  2) server/ 를 웹 루트 밖 앱 폴더에 업로드
-# 3) public/ 을 웹 루트(www)에 업로드  4) 마이그레이션 엔드포인트 호출
+# 1) 화면 스타일(Tailwind) 빌드  2) server/config.php 를 Secrets 로 생성  3) server/ 를 웹 루트 밖 앱 폴더에 업로드
+# 4) public/ 을 웹 루트(www)에 업로드  5) 마이그레이션 엔드포인트 호출
 name: _deploy
 
 on:
@@ -47,6 +47,18 @@ on:
       OPS_TOKEN:
         required: false
       SITE_URL:
+        required: false
+      ELEVENLABS_API_KEY:
+        required: false
+      GEMINI_API_KEY:
+        required: false
+      KAKAO_REST_API_KEY:
+        required: false
+      KAKAO_CLIENT_SECRET:
+        required: false
+      GOOGLE_CLIENT_ID:
+        required: false
+      GOOGLE_CLIENT_SECRET:
         required: false
     outputs:
       deployed:
@@ -109,15 +121,41 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
 
+      - name: Node 준비
+        if: steps.check.outputs.ready == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: 화면 스타일 빌드 (Tailwind)
+        if: steps.check.outputs.ready == 'true'
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          test -s public/assets/css/user.css
+          test -s public/assets/css/admin.css
+
       - name: 서버 설정 파일 생성
         if: steps.check.outputs.ready == 'true'
         env:
           APP_ENV: ${{ inputs.environment }}
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
+          KAKAO_CLIENT_SECRET: ${{ secrets.KAKAO_CLIENT_SECRET }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          MAIL_FROM: ${{ vars.MAIL_FROM }}
+          STORAGE_DIR: ${{ vars.STORAGE_DIR }}
         run: |
           # shellcheck disable=SC2016  # PHP 코드는 셸에서 확장하지 않는다.
           php -r '
+            $key = function ($name) { return trim((string) getenv($name)); };
             $config = [
               "env" => getenv("APP_ENV"),
+              "debug" => false,
+              "site_url" => rtrim($key("SITE_URL"), "/"),
               "db" => [
                 "host" => getenv("DB_HOST") ?: "localhost",
                 "port" => 3306,
@@ -127,10 +165,19 @@ jobs:
                 "charset" => "utf8mb4",
               ],
               "ops_token" => getenv("OPS_TOKEN"),
+              "storage_dir" => $key("STORAGE_DIR"),
+              "mail_from" => $key("MAIL_FROM"),
+              "elevenlabs" => ["api_key" => $key("ELEVENLABS_API_KEY")],
+              "gemini" => ["api_key" => $key("GEMINI_API_KEY")],
+              "kakao" => ["rest_api_key" => $key("KAKAO_REST_API_KEY"), "client_secret" => $key("KAKAO_CLIENT_SECRET")],
+              "google" => ["client_id" => $key("GOOGLE_CLIENT_ID"), "client_secret" => $key("GOOGLE_CLIENT_SECRET")],
             ];
             file_put_contents("server/config.php", "<?php\nreturn " . var_export($config, true) . ";\n");
           '
           php -l server/config.php
+          for name in ELEVENLABS_API_KEY GEMINI_API_KEY KAKAO_REST_API_KEY GOOGLE_CLIENT_ID; do
+            if [ -n "${!name}" ]; then echo "$name: 등록됨"; else echo "$name: 미등록(해당 기능은 꺼진 상태로 배포)"; fi
+          done
 
           # 웹 루트에서 앱 폴더까지의 상대 경로를 _app_path.php 로 남긴다. 예) /www/ 와 /rememvr_app/ 이면 ../rememvr_app
           web="${WEB_DIR#/}"; web="${web%/}"
@@ -202,4 +249,11 @@ jobs:
             echo "| 상태 | 파일 |"
             echo "|---|---|"
             jq -r '.status[] | "| \(.state) | \(.file) |"' response.json
+            if jq -e '.env' response.json > /dev/null 2>&1; then
+              echo ""
+              echo "서버 환경: PHP $(jq -r '.env.php // "?"' response.json), 저장 폴더 쓰기 $(jq -r 'if .env.storage.writable then "가능" else "불가" end' response.json), 업로드 한도 $(jq -r '.env.upload_max_filesize // "?"' response.json)"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
+          if jq -e '.env.storage.writable == false' response.json > /dev/null 2>&1; then
+            echo "::warning::서버 저장 폴더에 쓸 수 없다. 녹음 업로드와 오디오 생성이 실패하므로 저장소 변수 STORAGE_DIR 로 쓰기 가능한 경로를 지정한다."
+          fi

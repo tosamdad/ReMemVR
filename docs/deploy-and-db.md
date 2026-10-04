@@ -30,6 +30,17 @@ cafe24 호스팅 MariaDB 는 서버 내부(localhost)에서만 접속된다. 그
     OPS_TOKEN       운영 스크립트 호출용 비밀 토큰. 32자 이상 임의 문자열
     BACKUP_PASSPHRASE   (선택) 백업 파일 암호화 비밀번호
 
+외부 API 키(서비스 기능용, 없으면 해당 기능만 꺼진 상태로 배포된다)
+
+    ELEVENLABS_API_KEY      ElevenLabs API 키. 목소리 복제와 동화, 답변 음성 합성. 목소리 복제는 Starter 이상 요금제 필요
+    GEMINI_API_KEY          Google AI Studio 의 Gemini API 키. 아이 질문 음성 이해와 답변 생성
+    KAKAO_REST_API_KEY      (선택) 카카오 로그인 REST API 키. Redirect URI: 사이트주소/auth/kakao/callback
+    KAKAO_CLIENT_SECRET     (선택) 카카오 로그인 Client Secret 을 켰을 때만
+    GOOGLE_CLIENT_ID        (선택) 구글 로그인 OAuth 클라이언트 ID. 승인된 리디렉션 URI: 사이트주소/auth/google/callback
+    GOOGLE_CLIENT_SECRET    (선택) 구글 로그인 OAuth 클라이언트 보안 비밀
+
+키를 등록하거나 바꾼 뒤에는 Actions → Deploy → Run workflow 로 한 번 배포해야 서버 설정에 반영된다.
+
 OPS_TOKEN 은 아래 방법 중 하나로 만든다.
 
     터미널:      openssl rand -hex 32
@@ -47,6 +58,8 @@ cafe24 정보 위치: cafe24 호스팅 관리 → 나의 서비스 관리 → �
     FTP_APP_DIR     기본 /rememvr_app/  (웹 루트 밖에 둘 수 없는 상품이면 /www/_app/ 로 지정. server/.htaccess 가 외부 접근을 막는다)
     DB_HOST         기본 localhost
     BACKUP_RETENTION_DAYS   백업 보관 일수. 기본 30
+    MAIL_FROM       보내는 메일 주소. 기본 no-reply@사이트도메인
+    STORAGE_DIR     녹음 파일, 생성 오디오, 세션을 둘 서버 폴더(절대 경로 또는 앱 폴더 기준 상대 경로). 기본은 호스팅 홈의 rememvr_data
 
 2-3. 테스트 서버(선택)
 
@@ -55,6 +68,10 @@ cafe24 정보 위치: cafe24 호스팅 관리 → 나의 서비스 관리 → �
 2-4. 실서버 배포 승인자(선택)
 
 Settings → Environments → production → Required reviewers 에 본인을 지정하면 실서버 배포 전에 승인 버튼을 한 번 더 누르게 된다. 비공개 저장소는 GitHub 유료 요금제에서만 이 기능이 보인다. 설정하면 main 머지 후 자동 배포도 승인 뒤에 진행된다.
+
+2-5. 관리자 계정 만들기(최초 1회)
+
+첫 배포 후 https://사이트주소/admin 에 접속하면 관리자 최초 설정 화면이 열린다. GitHub Secrets 에 넣은 OPS_TOKEN 값을 입력해 본인 확인을 하고 최고 관리자 계정을 만든다. 관리자가 한 명이라도 있으면 이 화면은 닫힌다. 다른 관리자는 관리자 화면 → 관리자 계정에서 추가한다.
 
 3. 배포
 
@@ -95,6 +112,16 @@ server/migrations/ 에 다음 번호로 새 파일을 만든다. 파일 이름�
 
 확인된 서버 환경(2026-10-04 접속 점검): PHP 8.4, Apache 모듈 방식, open_basedir 제한 없음, MariaDB 10.6, 홈 폴더 쓰기 가능.
 접속정보가 맞는지는 Actions → Connection Check → Run workflow 로 언제든 다시 확인할 수 있다. 점검 파일은 끝나면 지워진다.
+
+5-1. 서버 파일(녹음, 생성 오디오) 보관
+
+DB 백업에는 녹음 파일과 생성 오디오가 들어가지 않는다. 파일은 서버 저장 폴더(기본 rememvr_data/)에 있으며 FTP 로 내려받아 따로 보관할 수 있다. 동화 오디오는 관리자 화면에서 다시 생성할 수 있지만 크레딧이 들고, 녹음 원본은 다시 만들 수 없으므로 주기적으로 내려받아 두기를 권한다.
+
+5-2. 백그라운드 작업
+
+목소리 생성, 동화 오디오 일괄 생성, 대체 음성 생성은 jobs 테이블에 쌓인 뒤 처리된다. cafe24 웹호스팅에는 예약 작업(cron)이 없으므로 다음 두 방법으로 진행된다.
+- 사이트에 요청이 들어올 때 대기 작업이 있으면 서버가 스스로 /_ops/worker.php 를 호출한다(1분에 한 번 이하).
+- 관리자 화면이 열려 있으면 45초마다 작업을 한 단계씩 진행한다. 목소리 관리 화면에서 처리 콘솔을 열어 두면 진행이 빠르다.
 
 6. 보안
 
