@@ -39,6 +39,9 @@ jobs:
             if [ -z "${!name}" ]; then echo "::error::$name 이 없어 접속을 확인할 수 없다."; exit 1; fi
           done
           # 점검만을 위해 빠진 값은 임시로 채운다. 실제 배포에는 두 Secrets 가 모두 필요하다.
+          # 복사·붙여넣기로 섞여 들어간 줄바꿈과 공백을 지운다(HTTP 헤더에 줄바꿈이 있으면 요청이 실패한다).
+          clean=$(printf '%s' "$OPS_TOKEN" | tr -d '[:space:]')
+          if [ -n "$clean" ]; then echo "::add-mask::$clean"; echo "OPS_TOKEN=$clean" >> "$GITHUB_ENV"; OPS_TOKEN="$clean"; fi
           if [ -z "$OPS_TOKEN" ]; then
             echo "::warning::OPS_TOKEN 이 없어 이번 점검에서는 일회용 토큰을 쓴다. 배포 전에 등록해야 한다."
             token=$(openssl rand -hex 32); echo "::add-mask::$token"; echo "OPS_TOKEN=$token" >> "$GITHUB_ENV"

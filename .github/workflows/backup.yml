@@ -28,6 +28,9 @@ jobs:
             echo "::error::SITE_URL, OPS_TOKEN Secrets 가 필요하다."
             exit 1
           fi
+          # 복사·붙여넣기로 섞여 들어간 줄바꿈과 공백을 지운다(HTTP 헤더에 줄바꿈이 있으면 요청이 실패한다).
+          clean=$(printf '%s' "$OPS_TOKEN" | tr -d '[:space:]')
+          if [ -n "$clean" ]; then echo "::add-mask::$clean"; echo "OPS_TOKEN=$clean" >> "$GITHUB_ENV"; OPS_TOKEN="$clean"; fi
 
       - name: 덤프 내려받기
         id: dump
