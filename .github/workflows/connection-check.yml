@@ -52,23 +52,36 @@ jobs:
             case "$SITE_URL" in http://*|https://*) ;; *) echo "::error::SITE_URL 은 http:// 또는 https:// 로 시작해야 한다."; exit 1 ;; esac
           fi
 
-      - name: FTP 로그인과 폴더 목록
+      # cafe24 는 FTP 로그인 직후 위치가 /www 이므로 경로는 항상 절대 경로(%2F)로 다룬다.
+      - name: FTP 로그인과 폴더 확인
         run: |
           umask 077
           printf 'user = "%s:%s"\n' "$FTP_USERNAME" "$FTP_PASSWORD" > "$RUNNER_TEMP/ftp.cfg"
-          echo "--- FTP 서버 응답(현재 폴더, 쓰기 권한 시험)"
-          probe="_probe_$(openssl rand -hex 4)"
-          curl -sS --max-time 30 -K "$RUNNER_TEMP/ftp.cfg" -v --list-only "ftp://$FTP_SERVER:$FTP_PORT/" \
-            -Q "*PWD" -Q "*MKD $probe" -Q "*RMD $probe" -Q "*CWD www" -Q "*PWD" 2>&1 | grep -E '^[<>] ' || true
-          echo "--- 로그인 폴더 목록(숨김 포함)"
-          curl -sS --max-time 30 -K "$RUNNER_TEMP/ftp.cfg" -X "LIST -a" "ftp://$FTP_SERVER:$FTP_PORT/"
-          echo "--- 웹 루트 $WEB_DIR 확인"
-          if curl -sS --max-time 30 -K "$RUNNER_TEMP/ftp.cfg" -X "LIST -a" "ftp://$FTP_SERVER:$FTP_PORT$WEB_DIR"; then
-            echo "$WEB_DIR 폴더가 있다."
+          base="ftp://$FTP_SERVER:$FTP_PORT/%2F"
+          probe="/_probe_$(openssl rand -hex 4)"
+          echo "--- FTP 서버 응답(로그인 위치, 홈 폴더 쓰기 시험)"
+          curl -sS --max-time 30 -K "$RUNNER_TEMP/ftp.cfg" -v --list-only "${base}" \
+            -Q "*PWD" -Q "*MKD $probe" -Q "*RMD $probe" 2>&1 | grep -E '^[<>] ' | tee "$RUNNER_TEMP/ftp.log" || true
+          echo "--- 홈 폴더 목록"
+          curl -sS --max-time 30 -K "$RUNNER_TEMP/ftp.cfg" -X "LIST -a" "${base}"
+          echo "--- 웹 루트 $WEB_DIR 목록"
+          curl -sS --max-time 30 -K "$RUNNER_TEMP/ftp.cfg" -X "LIST -a" "${base}${WEB_DIR#/}"
+          if grep -q "^< 257 \"$probe\"" "$RUNNER_TEMP/ftp.log"; then
+            echo "홈 폴더에 쓸 수 있다. 앱 폴더를 웹 루트 밖($APP_DIR)에 둔다."
           else
-            echo "::warning::$WEB_DIR 폴더가 없다. 로그인 폴더(/)가 웹 루트인지 시험한다."
-            { echo "WEB_DIR=/"; echo "APP_DIR=/_conncheck_app/"; echo "TEMP_APP_DIR=/_conncheck_app"; } >> "$GITHUB_ENV"
+            echo "::warning::홈 폴더에 쓸 수 없어 이번 점검은 앱 폴더를 웹 루트 안(${WEB_DIR%/}/_rememvr_app/)에 둔다."
+            echo "APP_DIR=${WEB_DIR%/}/_rememvr_app/" >> "$GITHUB_ENV"
           fi
+
+      - name: 이전 점검에서 남은 파일 정리
+        run: |
+          base="ftp://$FTP_SERVER:$FTP_PORT/%2F"
+          for f in $(curl -sS --max-time 30 -K "$RUNNER_TEMP/ftp.cfg" --list-only "${base}${WEB_DIR#/}" | tr -d '\r' | grep -E '^conncheck-[0-9a-f]+\.php$' || true); do
+            curl -sS --max-time 30 -K "$RUNNER_TEMP/ftp.cfg" -o /dev/null --list-only "${base}" -Q "DELE ${WEB_DIR%/}/$f" && echo "삭제: ${WEB_DIR%/}/$f"
+          done
+          old="${WEB_DIR%/}/_conncheck_app"
+          curl -sS --max-time 30 -K "$RUNNER_TEMP/ftp.cfg" -o /dev/null --list-only "${base}" \
+            -Q "*DELE $old/config.php" -Q "*RMD $old" && echo "정리 완료"
 
       - name: 점검 파일 준비
         run: |
@@ -111,11 +124,12 @@ jobs:
 
       - name: 점검 파일 업로드
         run: |
+          base="ftp://$FTP_SERVER:$FTP_PORT/%2F"
           curl -sS --max-time 60 -K "$RUNNER_TEMP/ftp.cfg" --ftp-create-dirs \
-            -T "$RUNNER_TEMP/config.php" "ftp://$FTP_SERVER:$FTP_PORT${APP_DIR%/}/config.php"
+            -T "$RUNNER_TEMP/config.php" "${base}${APP_DIR#/}config.php"
           curl -sS --max-time 60 -K "$RUNNER_TEMP/ftp.cfg" \
-            -T "$RUNNER_TEMP/$CHECK_NAME" "ftp://$FTP_SERVER:$FTP_PORT${WEB_DIR%/}/$CHECK_NAME"
-          echo "업로드 완료"
+            -T "$RUNNER_TEMP/$CHECK_NAME" "${base}${WEB_DIR#/}$CHECK_NAME"
+          echo "업로드 완료: ${APP_DIR}config.php, ${WEB_DIR}$CHECK_NAME"
 
       - name: 서버 내부 DB 접속 확인
         run: |
@@ -127,9 +141,5 @@ jobs:
       - name: 점검 파일 삭제
         if: always() && env.CHECK_NAME != ''
         run: |
-          curl -sS --max-time 30 -K "$RUNNER_TEMP/ftp.cfg" -o /dev/null "ftp://$FTP_SERVER:$FTP_PORT/" \
-            -Q "DELE ${WEB_DIR%/}/$CHECK_NAME" && echo "점검 스크립트 삭제 완료"
-          if [ -n "$TEMP_APP_DIR" ]; then
-            curl -sS --max-time 30 -K "$RUNNER_TEMP/ftp.cfg" -o /dev/null "ftp://$FTP_SERVER:$FTP_PORT/" \
-              -Q "DELE $TEMP_APP_DIR/config.php" -Q "RMD $TEMP_APP_DIR" && echo "임시 앱 폴더 삭제 완료"
-          fi
+          curl -sS --max-time 30 -K "$RUNNER_TEMP/ftp.cfg" -o /dev/null --list-only "ftp://$FTP_SERVER:$FTP_PORT/%2F" \
+            -Q "*DELE ${WEB_DIR%/}/$CHECK_NAME" -Q "*DELE ${APP_DIR%/}/config.php" -Q "*RMD ${APP_DIR%/}" -v 2>&1 | grep -E '^[<>] (DELE|RMD|2|5)' || true
