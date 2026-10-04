@@ -67,7 +67,16 @@ class QuestionService
                 $max = (int) $story['max_questions'];
             }
 
-            // 3) 질문 음성 저장(관리자 검토, 재처리용)
+            // 3) 질문 기능이 꺼져 있음(전체 설정 또는 동화별 설정). 아이 음성은 저장하지 않고 바로 지운다.
+            if ($story && (!qa_available() || (int) $story['barge_in_enabled'] === 0)) {
+                @unlink($audioTmpPath);
+                $interactionId = self::insert($row);
+                $line = self::pickLine(self::fallbackLines($story), $fallbackCount);
+
+                return self::finish($interactionId, 'disabled', null, $line, $profile, [], max(0, $max - $count), $started);
+            }
+
+            // 4) 질문 음성 저장(관리자 검토, 재처리용)
             $stored = self::storeQuestionAudio($audioTmpPath, $mime);
             $row['question_audio_path'] = $stored['path'];
             $interactionId = self::insert($row);
@@ -81,13 +90,6 @@ class QuestionService
                 return self::finish($interactionId, 'error', null, self::pickLine(self::errorLines(), $count), $profile, [
                     'error_message' => $stored['error'],
                 ], max(0, $max - $count), $started);
-            }
-
-            // 4) 질문 기능이 꺼져 있음(전체 설정 또는 동화별 설정)
-            if (!qa_available() || (int) $story['barge_in_enabled'] === 0) {
-                $line = self::pickLine(self::fallbackLines($story), $fallbackCount);
-
-                return self::finish($interactionId, 'disabled', null, $line, $profile, [], max(0, $max - $count), $started);
             }
 
             // 5) 질문 한도: 자리를 먼저 원자적으로 잡는다(동시에 두 질문이 와도 한도를 넘지 않게).

@@ -7,6 +7,8 @@ on:
   pull_request:
   push:
     branches: [main]
+  # 배포 워크플로가 실서버에 올리기 전에 같은 검사를 먼저 돌린다.
+  workflow_call:
 
 jobs:
   php-db:

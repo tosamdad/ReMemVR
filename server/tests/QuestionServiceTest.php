@@ -201,8 +201,10 @@ test('끼어들기 꺼짐: 동화별 설정, 전체 설정 모두 disabled', fun
     qs_run(function (QsFixture $f) {
         db_update('stories', ['barge_in_enabled' => 0], 'id = ?', [$f->storyId]);
         $s = $f->session($f->profileId);
-        $r = QuestionService::ask($f->user, $s, $f->audio(), 'audio/wav', 1, 0);
+        $tmp = $f->audio();
+        $r = QuestionService::ask($f->user, $s, $tmp, 'audio/wav', 1, 0);
         assert_same('disabled', $r['mode']);
+        assert_true(!is_file($tmp), '받은 임시 녹음 파일은 지운다');
         assert_same(true, $r['ok']);
         assert_true($r['answer_text'] !== '');
         assert_same((int) setting('qa.max_questions'), $r['remaining']);
@@ -214,7 +216,7 @@ test('끼어들기 꺼짐: 동화별 설정, 전체 설정 모두 disabled', fun
         assert_same(0, (int) db_value('SELECT question_count FROM play_sessions WHERE id = ?', [$s['id']]));
         $i = db_one('SELECT * FROM interactions WHERE id = ?', [$r2['interaction_id']]);
         assert_same('disabled', $i['mode']);
-        assert_true(Storage::exists($i['question_audio_path']), '꺼져 있어도 질문 음성은 남긴다');
+        assert_same(null, $i['question_audio_path'], '꺼져 있으면 아이 음성을 저장하지 않는다');
     });
 });
 

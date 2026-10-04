@@ -1,6 +1,7 @@
 # 배포 워크플로
 # - main 에 머지(푸시)되면 실서버에 자동 배포한다.
 # - Actions 탭의 "Run workflow" 로 원하는 브랜치나 태그를 실서버 또는 테스트 서버(TEST_ Secrets)에 수동 배포할 수 있다.
+# - main 푸시 배포는 CI 가 먼저 통과해야 진행된다.
 # - 실서버 배포가 성공하면 prod-YYYYMMDD-HHMMSS 태그를 남긴다. 롤백은 ref 에 이전 태그를 넣고 실행한다.
 #   DB 마이그레이션은 되돌리지 않으므로, 스키마를 되돌려야 하면 새 마이그레이션 파일로 처리한다.
 name: Deploy
@@ -62,8 +63,17 @@ jobs:
       GOOGLE_CLIENT_ID: ${{ secrets.TEST_GOOGLE_CLIENT_ID }}
       GOOGLE_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_CLIENT_SECRET }}
 
+  # main 푸시 배포는 CI(문법, 마이그레이션, 테스트, 화면 점검)가 통과해야 진행한다.
+  # 수동 실행(롤백 포함)은 이미 배포했던 버전을 다시 올리는 경우가 많아 CI 를 기다리지 않는다.
+  ci:
+    if: github.event_name == 'push'
+    uses: ./.github/workflows/ci.yml
+
   production:
-    if: github.event_name == 'push' || inputs.target == 'production'
+    needs: ci
+    if: >-
+      always() && (needs.ci.result == 'success' || needs.ci.result == 'skipped')
+      && (github.event_name == 'push' || inputs.target == 'production')
     uses: ./.github/workflows/_deploy.yml
     with:
       environment: production

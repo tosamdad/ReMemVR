@@ -46,7 +46,7 @@ class MemberController
         header('Cache-Control: no-store');
         $out = fopen('php://output', 'w');
         fwrite($out, "\xEF\xBB\xBF");
-        fputcsv($out, ['회원 ID', '이름', '이메일', '가입 경로', '가입일', '최근 로그인', '자녀', '등록된 목소리', '주 이용 시간대', '재생 수', '완독 수', '총 청취 시간(시간)', '질문 수', '끼어들기 빈도(회/편)', '상태']);
+        fputcsv($out, ['회원 ID', '이름', '이메일', '가입 경로', '가입일', '최근 로그인', '자녀', '등록된 목소리', '주 이용 시간대', '재생 수', '완독 수', '총 청취 시간(시간)', '질문 수', '끼어들기 빈도(회/편)', '상태'], ',', '"', '');
         MemberStats::eachMember($filters, function (array $row) use ($out) {
             $u = $row['user'];
             $children = array_map([MemberStats::class, 'childText'], $row['children']);
@@ -69,7 +69,7 @@ class MemberController
                 $row['questions'],
                 $row['per_story'] === null ? '' : number_format($row['per_story'], 1, '.', ''),
                 $row['status']['label'],
-            ]);
+            ], ',', '"', '');
         });
         fclose($out);
         exit;

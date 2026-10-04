@@ -15,7 +15,7 @@ $adminCred = isset($argv[3]) ? $argv[3] : '';
 $jar = tempnam(sys_get_temp_dir(), 'smoke');
 $failures = 0;
 
-function http(string $method, string $url, array $form = null, string $jar = '', array $headers = []): array
+function http(string $method, string $url, ?array $form = null, string $jar = '', array $headers = []): array
 {
     $ch = curl_init($url);
     curl_setopt_array($ch, [
