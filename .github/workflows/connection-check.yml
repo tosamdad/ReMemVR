@@ -59,7 +59,7 @@ jobs:
           echo "--- FTP 서버 응답(현재 폴더, 쓰기 권한 시험)"
           probe="_probe_$(openssl rand -hex 4)"
           curl -sS --max-time 30 -K "$RUNNER_TEMP/ftp.cfg" -v --list-only "ftp://$FTP_SERVER:$FTP_PORT/" \
-            -Q "PWD" -Q "*MKD $probe" -Q "*RMD $probe" -Q "*CWD www" -Q "*PWD" 2>&1 | grep -E '^[<>] ' || true
+            -Q "*PWD" -Q "*MKD $probe" -Q "*RMD $probe" -Q "*CWD www" -Q "*PWD" 2>&1 | grep -E '^[<>] ' || true
           echo "--- 로그인 폴더 목록(숨김 포함)"
           curl -sS --max-time 30 -K "$RUNNER_TEMP/ftp.cfg" -X "LIST -a" "ftp://$FTP_SERVER:$FTP_PORT/"
           echo "--- 웹 루트 $WEB_DIR 확인"
