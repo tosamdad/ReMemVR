@@ -32,6 +32,8 @@ final class DemoSeed
     private static $files = [];
     /** @var array 같은 소리를 여러 번 만들지 않도록 */
     private static $wavCache = [];
+    /** @var array 낭독 흉내용 낱말 음 */
+    private static $burstCache = [];
     /** @var array 출력용 개수 */
     private static $count = [];
 
@@ -374,12 +376,83 @@ final class DemoSeed
             $v = sin(2 * M_PI * (float) $freqs[$k] * $i / $rate) * 0.35 * $env;
             $data .= chr(128 + (int) round($v * 127));
         }
-        $wav = 'RIFF' . pack('V', 36 + strlen($data)) . 'WAVE'
-            . 'fmt ' . pack('VvvVVvv', 16, 1, 1, $rate, $rate, 1, 8)
-            . 'data' . pack('V', strlen($data)) . $data;
+        $wav = self::wavBytes($data, $rate);
         self::$wavCache[$key] = $wav;
 
         return $wav;
+    }
+
+    /**
+     * 문장 시각에 맞춘 낭독 흉내 WAV(8kHz 8비트). 낱말마다 짧은 음을 내고 낱말, 문장 사이는 쉰다.
+     * 길이가 duration_ms 와 같아서 재생 화면의 글자 강조가 소리를 따라간다. 데모 로그인 회원의 동화에만 쓴다.
+     */
+    public static function speechWav(array $timings, int $rate = self::WAV_RATE): string
+    {
+        $total = max(1, (int) round((int) $timings['duration'] * $rate / 1000));
+        $notes = [261.63, 293.66, 329.63, 392.0, 440.0, 523.25];
+        // 음 길이를 10ms 단위로 맞춰 같은 음을 다시 쓴다
+        $step = max(1, intdiv($rate, 100));
+        $data = '';
+        $w = 0;
+        foreach ($timings['sentences'] as $s) {
+            foreach ($s['words'] as $word) {
+                $a = min($total, (int) round($word[0] * $rate / 1000));
+                $b = min($total, (int) round($word[1] * $rate / 1000));
+                $len = strlen($data);
+                if ($a > $len) {
+                    $data .= str_repeat("\x80", $a - $len);
+                    $len = $a;
+                }
+                $n = intdiv(max(0, $b - $len), $step) * $step;
+                if ($n > 0) {
+                    $data .= self::burst($notes[($w * 3 + (int) $s['seq']) % count($notes)], $n, $rate);
+                }
+                $w++;
+            }
+        }
+        $len = strlen($data);
+        if ($len < $total) {
+            $data .= str_repeat("\x80", $total - $len);
+        } elseif ($len > $total) {
+            $data = substr($data, 0, $total);
+        }
+
+        return self::wavBytes($data, $rate);
+    }
+
+    /** 낱말 하나의 음. 음절처럼 부풀었다 줄어들고 앞뒤를 부드럽게 줄인다. */
+    private static function burst(float $freq, int $n, int $rate): string
+    {
+        $key = $freq . '|' . $n . '|' . $rate;
+        if (isset(self::$burstCache[$key])) {
+            return self::$burstCache[$key];
+        }
+        $fade = min((int) ($rate * 0.012), intdiv($n, 2));
+        $syllable = $rate * 0.16;
+        $w1 = 2 * M_PI * $freq / $rate;
+        $samples = [];
+        for ($i = 0; $i < $n; $i++) {
+            $env = 0.55 + 0.45 * sin(M_PI * fmod((float) $i, $syllable) / $syllable);
+            if ($fade > 0 && $i < $fade) {
+                $env *= $i / $fade;
+            } elseif ($fade > 0 && $i >= $n - $fade) {
+                $env *= ($n - 1 - $i) / $fade;
+            }
+            $v = (sin($w1 * $i) + 0.25 * sin(2 * $w1 * $i)) / 1.25 * 0.3 * $env;
+            $samples[] = 128 + (int) round($v * 127);
+        }
+        $bytes = $samples ? pack('C*', ...$samples) : '';
+        self::$burstCache[$key] = $bytes;
+
+        return $bytes;
+    }
+
+    /** 8비트 모노 PCM 을 WAV 로 감싼다. */
+    private static function wavBytes(string $data, int $rate): string
+    {
+        return 'RIFF' . pack('V', 36 + strlen($data)) . 'WAVE'
+            . 'fmt ' . pack('VvvVVvv', 16, 1, 1, $rate, $rate, 1, 8)
+            . 'data' . pack('V', strlen($data)) . $data;
     }
 
     private static function putWav(string $rel, int $ms, array $freqs): int
@@ -947,7 +1020,15 @@ final class DemoSeed
                 $duration = (int) (round($s['est_ms'] * self::rf(0.94, 1.08) / 10) * 10);
                 $timings = self::timings($s['sentences'], $duration);
                 $rel = 'story-audio/' . $pid . '/' . $sid . '-' . substr((string) $s['content_hash'], 0, 8) . '.wav';
-                $size = self::putWav($rel, 1500, [392.0, 440.0, 523.25, 440.0]);
+                if ($u['index'] === 0) {
+                    // 데모 로그인 회원은 실제 길이의 낭독 흉내 음성(재생, 글자 강조, 이어 듣기 확인용)
+                    $bytes = self::speechWav($timings);
+                    Storage::put($rel, $bytes);
+                    self::$files[] = $rel;
+                    $size = strlen($bytes);
+                } else {
+                    $size = self::putWav($rel, 1500, [392.0, 440.0, 523.25, 440.0]);
+                }
                 $aid = db_insert('story_audios', [
                     'story_id' => $sid,
                     'voice_profile_id' => $pid,

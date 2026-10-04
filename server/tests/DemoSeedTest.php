@@ -74,6 +74,32 @@ test('데모: 8kHz 8비트 WAV 머리글과 길이가 맞다', function () {
     assert_true(abs(ord($w[44]) - 128) <= 2 && abs(ord($w[strlen($w) - 1]) - 128) <= 2);
 });
 
+test('데모: 낭독 흉내 음성은 길이가 duration_ms 와 같고 낱말에서만 소리가 난다', function () {
+    $t = DemoSeed::timings([
+        ['seq' => 1, 'content' => '달님이 방긋 웃었어요.'],
+        ['seq' => 2, 'content' => '“안녕, 다온아!”'],
+    ], 4000);
+    $w = DemoSeed::speechWav($t);
+    assert_same('RIFF', substr($w, 0, 4));
+    assert_same(8000, unpack('V', substr($w, 24, 4))[1]);
+    assert_same(4000 * 8, strlen($w) - 44, '4초 = 32000 표본');
+    $pcm = substr($w, 44);
+    $peak = function (int $fromMs, int $toMs) use ($pcm) {
+        $m = 0;
+        for ($i = $fromMs * 8; $i < $toMs * 8; $i++) {
+            $m = max($m, abs(ord($pcm[$i]) - 128));
+        }
+        return $m;
+    };
+    $first = $t['sentences'][0]['words'][0];
+    $s1 = $t['sentences'][0];
+    $s2 = $t['sentences'][1];
+    assert_true($peak(0, max(1, $first[0] - 5)) === 0, '시작 전 쉼은 조용하다');
+    assert_true($peak($first[0] + 20, $first[1] - 20) > 20, '낱말에서는 소리가 난다');
+    assert_true($peak($s1['end'] + 5, $s2['start'] - 5) === 0, '문장 사이 쉼은 조용하다');
+    assert_true($peak($s2['end'] + 5, 4000) === 0, '끝난 뒤는 조용하다');
+});
+
 test('데모: 받침에 맞춰 조사를 붙이고 자리를 채운다', function () {
     assert_same('달님은', DemoSeed::josa('달님', '은', '는'));
     assert_same('부엉이는', DemoSeed::josa('부엉이', '은', '는'));
