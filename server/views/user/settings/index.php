@@ -1,9 +1,9 @@
 <?php
 /**
- * 설정 메인(시안 _1). 변수: $user, $child, $childCount, $prefs, $hasPassword, $newNotice, $newAnswers, $version
+ * 설정 메인(시안 _1). 스위치 켜짐 색은 peer-checked 로 직접 준다(공통 .switch 규칙이 켜짐 색을 못 바꾸는 문제 대비). 변수: $user, $child, $childCount, $prefs, $hasPassword, $newNotice, $newAnswers, $version
  * 알림, 다크 모드 스위치와 캐시 삭제는 settings.js 가 처리한다.
  */
-layout('user/layout', ['title' => '설정']);
+layout('user/layout', ['title' => '설정', 'mainClass' => 'px-margin-mobile pt-6 pb-6 break-keep']);
 $card = 'overflow-hidden rounded-[24px] border border-surface-variant/30 bg-surface-container-lowest shadow-[0_4px_20px_0_rgba(0,0,0,0.05)]';
 $row = 'flex w-full items-center justify-between gap-3 p-md text-left transition-colors hover:bg-surface-container';
 $line = ' border-b border-surface-variant/30';
@@ -83,16 +83,16 @@ $notifyOn = !empty($prefs['notify_voice_ready']) || !empty($prefs['notify_notice
             <span class="block font-label-sm text-label-sm font-normal text-on-surface-variant">목소리 준비 완료, 새 공지 메일</span>
           </span>
         </span>
-        <label class="switch" aria-label="알림 받기">
-          <input type="checkbox" data-pref-switch="notify"<?= $notifyOn ? ' checked' : '' ?>>
-          <span></span>
+        <label class="switch">
+          <input type="checkbox" class="peer" aria-label="알림 받기" data-pref-switch="notify"<?= $notifyOn ? ' checked' : '' ?>>
+          <span class="peer-checked:bg-primary peer-focus-visible:ring-2 peer-focus-visible:ring-primary/40"></span>
         </label>
       </div>
       <div class="flex w-full items-center justify-between gap-3 p-md<?= $line ?>">
         <?= $item('dark_mode', '다크 모드') ?>
-        <label class="switch" aria-label="다크 모드">
-          <input type="checkbox" data-pref-switch="dark_mode"<?= !empty($prefs['dark_mode']) ? ' checked' : '' ?>>
-          <span></span>
+        <label class="switch">
+          <input type="checkbox" class="peer" aria-label="다크 모드" data-pref-switch="dark_mode"<?= !empty($prefs['dark_mode']) ? ' checked' : '' ?>>
+          <span class="peer-checked:bg-primary peer-focus-visible:ring-2 peer-focus-visible:ring-primary/40"></span>
         </label>
       </div>
       <button type="button" data-cache-clear class="<?= $row ?>">

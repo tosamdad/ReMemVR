@@ -6,7 +6,6 @@ use App\Core\Mailer;
 use App\Core\RateLimiter;
 use App\Core\Request;
 use App\Core\Session;
-use App\Core\Validator;
 
 /** 비밀번호 찾기(재설정 메일)와 새 비밀번호 설정 */
 class PasswordController
@@ -24,9 +23,9 @@ class PasswordController
     public function sendForgot(): void
     {
         $email = AuthController::normalizeEmail(Request::str('email'));
-        $v = Validator::make(['email' => $email], ['email' => 'required|email|max:191'], ['email' => '이메일']);
-        if ($v->fails()) {
-            back_with_errors($v->errors(), '/password/forgot');
+        $emailError = AuthController::emailError($email);
+        if ($emailError !== null) {
+            back_with_errors(['email' => $emailError], '/password/forgot');
         }
         if (!RateLimiter::hit('pwreset:ip:' . client_ip(), 10, 3600) || !RateLimiter::hit('pwreset:email:' . $email, 3, 900)) {
             back_with_errors(['email' => '요청이 너무 많아요. 잠시 후 다시 시도해 주세요.'], '/password/forgot');

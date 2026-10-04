@@ -14,7 +14,7 @@
  * @var array $qa
  * @var int $estMs
  */
-layout('user/layout', ['title' => $story['title'], 'nav' => 'player', 'mainClass' => 'px-margin-mobile pt-5 pb-6 space-y-5']);
+layout('user/layout', ['title' => $story['title'], 'nav' => 'player', 'mainClass' => 'px-margin-mobile pt-4 pb-6']);
 
 $current = isset($sentences[$startIndex]) ? $sentences[$startIndex] : ['seq' => 1, 'content' => '', 'words' => []];
 $prev = $startIndex > 0 && isset($sentences[$startIndex - 1]) ? $sentences[$startIndex - 1] : null;
@@ -27,13 +27,23 @@ $textSize = isset($sizes[$prefs['text_size']]) ? $sizes[$prefs['text_size']] : $
 $device = $voice === 'device';
 $speed = (float) $prefs['playback_speed'];
 $sleepMin = (int) $prefs['sleep_timer_min'];
-$totalMs = $audio ? (int) $audio['duration_ms'] : $estMs;
+// 기기 음성은 글자 수로 길이를 어림한다(player.js 의 deviceTotalMs 와 같은 식)
+$chars = 0;
+foreach ($sentences as $s) {
+    $chars += mb_strlen($s['content']) + 1;
+}
+$totalMs = $audio ? (int) $audio['duration_ms'] : (int) round($chars * 160 / ($speed > 0 ? $speed : 1));
+// 목소리 칩: 3개까지는 한 줄 칸으로, 더 많으면 옆으로 넘겨 본다.
+$chipCount = max(2, count($voices) + 1); // 목소리가 없으면 '가족 목소리 만들기' 칸을 함께 보여 준다
+$chipCols = [1 => 'grid-cols-1', 2 => 'grid-cols-2', 3 => 'grid-cols-3'];
+$chipWrap = $chipCount <= 3 ? 'grid gap-3 pt-1 ' . $chipCols[$chipCount] : '-mx-margin-mobile flex gap-3 overflow-x-auto no-scrollbar px-margin-mobile pt-1 pb-1';
+$chipSize = $chipCount <= 3 ? 'min-w-0' : 'w-[124px] shrink-0';
 $askSub = !$qa['enabled'] ? $qa['message'] : ($remaining > 0 ? '질문 ' . $remaining . '번 남았어요' : '이야기 끝나고 또 물어보자');
 ?>
-<div id="player" class="space-y-5" data-mode="<?= $device ? 'device' : 'audio' ?>">
+<div id="player" class="space-y-4" data-mode="<?= $device ? 'device' : 'audio' ?>">
   <!-- 표지, 분류, 제목 -->
   <section class="flex items-center gap-4">
-    <div class="relative h-[120px] w-24 shrink-0 overflow-hidden rounded-[24px] border-4 border-surface-container-lowest bg-surface-container shadow-lg">
+    <div class="relative h-[104px] w-[84px] shrink-0 overflow-hidden rounded-[22px] border-4 border-surface-container-lowest bg-surface-container shadow-lg">
       <img src="<?= e(cover_url($story)) ?>" alt="" class="h-full w-full object-cover">
     </div>
     <div class="min-w-0 flex-1 space-y-1.5">
@@ -58,7 +68,7 @@ $askSub = !$qa['enabled'] ? $qa['message'] : ($remaining > 0 ? '질문 ' . $rema
   </section>
 
   <!-- 읽기 카드 -->
-  <section class="glass relative flex min-h-[230px] flex-col justify-center gap-3 rounded-3xl border border-surface-variant/40 px-md py-7 text-center shadow-soft">
+  <section class="glass relative flex min-h-[196px] flex-col justify-center gap-3 rounded-3xl border border-surface-variant/40 px-md py-6 text-center shadow-soft">
     <p id="pl-prev" class="font-story text-body-md text-on-surface-variant/60 line-clamp-2<?= $prev ? '' : ' invisible' ?>"><?= $prev ? e($prev['content']) : '&nbsp;' ?></p>
     <p id="pl-text" class="font-story <?= e($textSize) ?> text-on-surface break-keep" aria-live="polite"><?php
         $n = count($current['words']);
@@ -72,10 +82,10 @@ $askSub = !$qa['enabled'] ? $qa['message'] : ($remaining > 0 ? '질문 ' . $rema
   </section>
 
   <!-- 목소리 고르기 -->
-  <section class="-mx-margin-mobile flex gap-3 overflow-x-auto no-scrollbar px-margin-mobile py-1" aria-label="목소리 고르기">
+  <section class="<?= e($chipWrap) ?>" aria-label="목소리 고르기">
     <?php foreach ($voices as $v): $active = $v['id'] === $voice; ?>
-    <button type="button" data-voice="<?= e($v['id']) ?>" class="relative flex min-w-[140px] flex-1 flex-col items-center gap-2 rounded-3xl border-2 bg-surface-container-lowest p-4 shadow-sm transition-all duration-200 active:scale-95 <?= $active ? 'border-primary-container' : 'border-transparent' ?> <?= $v['ready'] ? '' : 'cursor-not-allowed opacity-60' ?>"<?= $v['ready'] ? '' : ' disabled' ?> aria-pressed="<?= $active ? 'true' : 'false' ?>">
-      <div class="flex h-14 w-14 items-center justify-center rounded-full <?= $active ? 'bg-primary-container/30' : 'bg-secondary-container/30' ?>">
+    <button type="button" data-voice="<?= e($v['id']) ?>" class="relative flex <?= e($chipSize) ?> flex-col items-center gap-1.5 rounded-3xl border-2 bg-surface-container-lowest px-2 py-3 shadow-sm transition-all duration-200 active:scale-95 <?= $active ? 'border-primary-container' : 'border-transparent' ?> <?= $v['ready'] ? '' : 'cursor-not-allowed opacity-60' ?>"<?= $v['ready'] ? '' : ' disabled' ?> aria-pressed="<?= $active ? 'true' : 'false' ?>">
+      <div class="flex h-12 w-12 items-center justify-center rounded-full <?= $active ? 'bg-primary-container/30' : 'bg-secondary-container/30' ?>">
         <span class="material-symbols-outlined text-3xl <?= $active ? 'text-primary' : 'text-secondary' ?>"><?= e($v['icon']) ?></span>
       </div>
       <span class="font-label-lg text-label-lg <?= $active ? 'text-primary' : 'text-on-surface-variant' ?> max-w-full truncate"><?= e($v['label']) ?> 목소리</span>
@@ -86,13 +96,21 @@ $askSub = !$qa['enabled'] ? $qa['message'] : ($remaining > 0 ? '질문 ' . $rema
     </button>
     <?php endforeach; ?>
     <?php $active = $device; ?>
-    <button type="button" data-voice="device" class="relative flex min-w-[140px] flex-1 flex-col items-center gap-2 rounded-3xl border-2 bg-surface-container-lowest p-4 shadow-sm transition-all duration-200 active:scale-95 <?= $active ? 'border-primary-container' : 'border-transparent' ?>" aria-pressed="<?= $active ? 'true' : 'false' ?>">
-      <div class="flex h-14 w-14 items-center justify-center rounded-full <?= $active ? 'bg-primary-container/30' : 'bg-secondary-container/30' ?>">
+    <button type="button" data-voice="device" class="relative flex <?= e($chipSize) ?> flex-col items-center gap-1.5 rounded-3xl border-2 bg-surface-container-lowest px-2 py-3 shadow-sm transition-all duration-200 active:scale-95 <?= $active ? 'border-primary-container' : 'border-transparent' ?>" aria-pressed="<?= $active ? 'true' : 'false' ?>">
+      <div class="flex h-12 w-12 items-center justify-center rounded-full <?= $active ? 'bg-primary-container/30' : 'bg-secondary-container/30' ?>">
         <span class="material-symbols-outlined text-3xl <?= $active ? 'text-primary' : 'text-secondary' ?>">smartphone</span>
       </div>
       <span class="font-label-lg text-label-lg <?= $active ? 'text-primary' : 'text-on-surface-variant' ?>">기기 음성</span>
       <?php if ($active): ?><div class="absolute -right-1 -top-1 h-4 w-4 rounded-full border-2 border-surface-container-lowest bg-primary"></div><?php endif; ?>
     </button>
+    <?php if (!$voices): ?>
+    <a href="<?= e(url('/voice-lab/new')) ?>" class="relative flex <?= e($chipSize) ?> flex-col items-center gap-1.5 rounded-3xl border-2 border-dashed border-outline-variant bg-surface-container-low/60 px-2 py-3 transition-all duration-200 active:scale-95">
+      <div class="flex h-12 w-12 items-center justify-center rounded-full bg-surface-container-lowest">
+        <span class="material-symbols-outlined text-3xl text-primary">add</span>
+      </div>
+      <span class="font-label-lg text-label-lg text-primary">가족 목소리 만들기</span>
+    </a>
+    <?php endif; ?>
   </section>
 
   <!-- 진행 막대 -->
@@ -120,8 +138,8 @@ $askSub = !$qa['enabled'] ? $qa['message'] : ($remaining > 0 ? '질문 ' . $rema
   </section>
 
   <!-- 질문하기 -->
-  <button type="button" id="pl-ask" class="flex w-full items-center gap-4 rounded-3xl bg-secondary-container p-4 text-left text-on-secondary-container shadow-sm transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"<?= $qa['enabled'] ? '' : ' disabled' ?>>
-    <span class="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-secondary text-on-secondary shadow-sm">
+  <button type="button" id="pl-ask" class="flex w-full items-center gap-4 rounded-3xl bg-secondary-container px-4 py-3 text-left text-on-secondary-container shadow-sm transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"<?= $qa['enabled'] ? '' : ' disabled' ?>>
+    <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-secondary text-on-secondary shadow-sm">
       <span class="material-symbols-outlined icon-fill text-3xl">mic</span>
     </span>
     <span class="min-w-0 flex-1">

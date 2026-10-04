@@ -1,7 +1,7 @@
 <?php
 /** 비밀번호 변경(간편 로그인만 쓰던 회원은 새로 설정). 변수: $user, $hasPassword */
 $title = $hasPassword ? '비밀번호 변경' : '비밀번호 설정';
-layout('user/layout', ['title' => $title, 'header' => 'sub', 'back' => '/settings']);
+layout('user/layout', ['title' => $title, 'header' => 'sub', 'back' => '/settings', 'mainClass' => 'px-margin-mobile pt-6 pb-6 break-keep']);
 $input = 'w-full min-h-12 rounded-2xl border-2 bg-surface-container-lowest px-4 pr-12 font-body-md text-body-md text-on-surface transition-all placeholder:text-outline-variant focus:border-primary focus:ring-0';
 $label = 'ml-2 text-[14px] font-semibold leading-5 tracking-[0.02em] text-on-surface-variant';
 $field = function ($name, $text, $autocomplete, $placeholder, $help = '') use ($input, $label) {

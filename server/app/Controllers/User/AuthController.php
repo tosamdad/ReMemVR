@@ -5,7 +5,6 @@ use App\Core\Auth;
 use App\Core\RateLimiter;
 use App\Core\Request;
 use App\Core\Session;
-use App\Core\Validator;
 use App\Services\SocialLogin;
 
 /** 이메일 로그인, 회원가입, 로그아웃 */
@@ -37,6 +36,19 @@ class AuthController
         }
         if (!preg_match('/[A-Za-z]/', $password) || !preg_match('/[0-9]/', $password)) {
             return '비밀번호에 영문과 숫자를 함께 넣어 주세요.';
+        }
+
+        return null;
+    }
+
+    /** 이메일 형식 검사. 문제가 없으면 null */
+    public static function emailError(string $email): ?string
+    {
+        if ($email === '') {
+            return '이메일을 입력해 주세요.';
+        }
+        if (strlen($email) > 191 || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return '올바른 이메일 주소를 입력해 주세요.';
         }
 
         return null;
@@ -90,12 +102,16 @@ class AuthController
         $password = (string) input('password', '');
         $next = safe_next(Request::str('next'), '');
 
-        $v = Validator::make(['email' => $email, 'password' => $password], [
-            'email' => 'required|email|max:191',
-            'password' => 'required',
-        ], ['email' => '이메일', 'password' => '비밀번호']);
-        if ($v->fails()) {
-            back_with_errors($v->errors(), '/login');
+        $errors = [];
+        $emailError = self::emailError($email);
+        if ($emailError !== null) {
+            $errors['email'] = $emailError;
+        }
+        if ($password === '') {
+            $errors['password'] = '비밀번호를 입력해 주세요.';
+        }
+        if ($errors) {
+            back_with_errors($errors, '/login');
         }
 
         $key = 'login:' . client_ip() . ':' . $email;
@@ -143,11 +159,16 @@ class AuthController
             'email' => self::normalizeEmail(Request::str('email')),
             'password' => (string) input('password', ''),
         ];
-        $v = Validator::make($data, [
-            'name' => 'required|max:30',
-            'email' => 'required|email|max:191',
-        ], ['name' => '이름', 'email' => '이메일']);
-        $errors = $v->errors();
+        $errors = [];
+        if ($data['name'] === '') {
+            $errors['name'] = '이름을 입력해 주세요.';
+        } elseif (mb_strlen($data['name']) > 30) {
+            $errors['name'] = '이름은 30자 이하로 입력해 주세요.';
+        }
+        $emailError = self::emailError($data['email']);
+        if ($emailError !== null) {
+            $errors['email'] = $emailError;
+        }
         $pwError = self::passwordError($data['password']);
         if ($pwError !== null) {
             $errors['password'] = $pwError;

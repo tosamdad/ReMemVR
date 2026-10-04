@@ -368,23 +368,30 @@ class Progress
     }
 
     /**
-     * 동화별 이어 듣기 상태: 아직 끝나지 않은 가장 최근 기록의 위치.
+     * 동화별 이어 듣기 상태. 동화마다 가장 최근 재생 기록이 끝나지 않았을 때만 넣는다(최근 순서).
+     * $withPositionOnly 가 true 면 조금이라도 들은 기록만 넣는다.
      * @return array story_id => ['session_id', 'position_ms', 'sentence_seq', 'voice'(id 또는 'device'), 'voice_profile_id']
      */
-    public static function resumeStates(array $scope): array
+    public static function resumeStates(array $scope, bool $withPositionOnly = true): array
     {
         list($where, $params) = $scope;
         $rows = db_all(
-            "SELECT ps.id, ps.story_id, ps.voice_profile_id, ps.audio_source, ps.last_position_ms, ps.last_sentence_seq
+            "SELECT ps.id, ps.story_id, ps.voice_profile_id, ps.audio_source, ps.last_position_ms, ps.last_sentence_seq, ps.completed
              FROM play_sessions ps
-             WHERE $where AND ps.completed = 0 AND (ps.last_position_ms > 0 OR ps.last_sentence_seq > 1)
-             ORDER BY ps.updated_at DESC, ps.id DESC LIMIT 200",
+             WHERE $where
+             ORDER BY ps.updated_at DESC, ps.id DESC LIMIT 300",
             $params
         );
+        $seen = [];
         $out = [];
         foreach ($rows as $r) {
             $sid = (int) $r['story_id'];
-            if (isset($out[$sid])) {
+            if (isset($seen[$sid])) {
+                continue;
+            }
+            $seen[$sid] = true;
+            $started = (int) $r['last_position_ms'] > 0 || (int) $r['last_sentence_seq'] > 1;
+            if ((int) $r['completed'] === 1 || ($withPositionOnly && !$started)) {
                 continue;
             }
             $out[$sid] = [

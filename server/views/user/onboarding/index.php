@@ -2,7 +2,7 @@
 /** 첫 자녀 등록. 변수: $user, $values */
 layout('user/layout_auth', ['title' => '아이 프로필 만들기']);
 ?>
-<div class="relative isolate">
+<div class="relative isolate break-keep">
   <?= partial('user/auth/backdrop') ?>
   <div class="mx-auto w-full max-w-md space-y-8">
     <header class="space-y-3 text-center">

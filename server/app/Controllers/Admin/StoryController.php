@@ -68,9 +68,6 @@ class StoryController
             );
             foreach ($rows as $r) {
                 $fresh = $story['content_hash'] !== null && $r['content_hash'] === $story['content_hash'];
-                if (!$fresh) {
-                    $outdated++;
-                }
                 $timings = json_decode_array($r['sentence_timings']);
                 $audios[] = [
                     'id' => (int) $r['id'],
@@ -83,6 +80,13 @@ class StoryController
                     }, $timings['sentences']) : [],
                 ];
             }
+        }
+        if ($storyId) {
+            $outdated = (int) db_value(
+                "SELECT COUNT(*) FROM story_audios sa JOIN voice_profiles vp ON vp.id = sa.voice_profile_id
+                  WHERE sa.story_id = ? AND sa.status = 'completed' AND vp.deleted_at IS NULL AND (sa.content_hash IS NULL OR sa.content_hash <> ?)",
+                [$storyId, (string) $story['content_hash']]
+            );
         }
         $timecodeSource = $storyId && $story['content_hash'] !== null ? db_one(
             "SELECT sa.id, vp.label FROM story_audios sa JOIN voice_profiles vp ON vp.id = sa.voice_profile_id
@@ -101,7 +105,6 @@ class StoryController
             'totalCount' => (int) db_value('SELECT COUNT(*) FROM stories WHERE deleted_at IS NULL'),
             'audios' => $audios,
             'outdated' => $outdated,
-            'staleNotice' => (int) Request::query('stale', 0),
             'timecodeSource' => $timecodeSource,
             'categories' => self::CATEGORIES,
             'statuses' => self::STATUSES,
@@ -271,7 +274,6 @@ class StoryController
             'content_changed' => $hashChanged,
         ]);
 
-        $query = [];
         if ($hashChanged) {
             $stale = (int) db_value(
                 "SELECT COUNT(*) FROM story_audios sa JOIN voice_profiles vp ON vp.id = sa.voice_profile_id
@@ -279,14 +281,13 @@ class StoryController
                 [$id, (string) $fields['content_hash']]
             );
             if ($stale > 0) {
-                $query['stale'] = $stale;
                 flash('info', '본문이 바뀌어 목소리 ' . $stale . '개의 동화 오디오가 옛 본문 기준이 되었습니다. 배포 상태 점검에서 다시 생성해 주세요.');
             }
         }
         flash('success', $story ? '변경사항을 저장했습니다.' : '새 동화를 등록했습니다.');
         $tab = (string) input('_tab', '');
         $hash = in_array($tab, ['basic', 'sentences', 'bargein'], true) ? '#' . $tab : '';
-        header('Location: ' . url('/admin/stories/' . $id, $query) . $hash, true, 302);
+        header('Location: ' . url('/admin/stories/' . $id) . $hash, true, 302);
         exit;
     }
 

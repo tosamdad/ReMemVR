@@ -41,8 +41,8 @@ $data = [
 $uploadMb = rtrim(rtrim(number_format($maxUpload / 1048576, 1), '0'), '.');
 $stepTabs = [1 => ['준비', 'tune'], 2 => ['녹음', 'mic'], 3 => ['확인 & 제출', 'send']];
 ?>
+<script type="application/json" id="vl-record-data"><?= json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) ?></script>
 <div class="space-y-6" data-vl-record>
-  <script type="application/json" id="vl-record-data"><?= json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) ?></script>
 
   <!-- 누구 목소리 -->
   <div class="flex items-center gap-4">
@@ -188,7 +188,7 @@ $stepTabs = [1 => ['준비', 'tune'], 2 => ['녹음', 'mic'], 3 => ['확인 & �
       </p>
       <div class="flex items-center justify-center">
         <div class="relative h-24 w-24">
-          <span class="pulse-ring absolute inset-0 hidden rounded-full bg-primary/40" data-rec-ring aria-hidden="true"></span>
+          <span class="pulse-ring absolute inset-0 hidden rounded-full bg-error/40" data-rec-ring aria-hidden="true"></span>
           <button type="button" class="relative flex h-24 w-24 items-center justify-center rounded-full bg-primary text-on-primary shadow-lg transition-all active:scale-90" data-rec-btn aria-label="녹음 시작">
             <span class="material-symbols-outlined icon-fill text-[44px]" data-rec-icon>mic</span>
           </button>

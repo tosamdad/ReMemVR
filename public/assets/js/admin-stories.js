@@ -127,7 +127,19 @@
     var ta = $('[data-content]', row);
     if (ta) { autoGrow(ta); ta.addEventListener('input', function () { autoGrow(ta); renumber(); }); }
     var kw = $('[data-keywords]', row);
-    if (kw) kw.addEventListener('input', function () { renderChips(row); });
+    var chips = $('[data-chips]', row);
+    if (kw) {
+      // 키워드가 있으면 칩만 보이고, 칩을 누르면 입력칸이 열린다.
+      kw.addEventListener('input', function () { renderChips(row); });
+      kw.addEventListener('blur', function () { if (kw.value.trim()) kw.classList.add('hidden'); });
+      if (kw.value.trim() && !kw.closest('td').querySelector('.text-error')) kw.classList.add('hidden');
+    }
+    if (chips && kw) chips.addEventListener('click', function () {
+      kw.classList.remove('hidden');
+      kw.focus();
+      var len = kw.value.length;
+      try { kw.setSelectionRange(len, len); } catch (e) { /* 일부 입력 형식은 지원 안 함 */ }
+    });
     $$('[data-time]', row).forEach(function (inp) { inp.addEventListener('blur', function () { normalizeTime(inp); }); });
   }
   function newRow(values) {

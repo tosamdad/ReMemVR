@@ -14,7 +14,7 @@ if ($src === '') {
 }
 // 막대 높이는 장식이며 재생 진행률만 색으로 보여 준다.
 $heights = $variant === 'dash' ? ['h-1', 'h-2', 'h-3', 'h-4', 'h-2', 'h-3'] : ['h-2', 'h-3', 'h-4', 'h-5', 'h-6', 'h-3'];
-$count = $variant === 'dash' ? 10 : 14;
+$count = $variant === 'list' ? 14 : ($variant === 'table' ? 8 : 10);
 $bars = '';
 for ($i = 0; $i < $count; $i++) {
     $h = $heights[($seed * 7 + $i * 5 + intdiv($i, 3)) % count($heights)];

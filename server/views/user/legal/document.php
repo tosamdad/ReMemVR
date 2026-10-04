@@ -1,6 +1,6 @@
 <?php
 /** 이용약관, 개인정보 처리방침 화면. 변수: $kind(terms|privacy), $docTitle, $blocks, $loggedIn */
-layout('user/layout', ['title' => $docTitle, 'header' => 'sub', 'back' => $loggedIn ? '/settings' : null]);
+layout('user/layout', ['title' => $docTitle, 'header' => 'sub', 'back' => $loggedIn ? '/settings' : null, 'mainClass' => 'px-margin-mobile pt-6 pb-6 break-keep']);
 $other = $kind === 'terms' ? ['/settings/privacy', '개인정보 처리방침'] : ['/settings/terms', '이용약관'];
 ?>
 <article class="card p-md">

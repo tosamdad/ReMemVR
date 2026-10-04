@@ -95,7 +95,7 @@ layout('user/layout', ['title' => '홈', 'nav' => 'home', 'mainClass' => 'px-mar
         <?php endif; ?>
       </div>
       <span class="text-label-lg font-label-lg text-on-surface max-w-full truncate"><?= e($v['label']) ?></span>
-      <span class="text-label-sm font-label-sm <?= e($line['class']) ?>"><?= e($line['text']) ?></span>
+      <span class="text-label-sm font-label-sm break-keep <?= e($line['class']) ?>"><?= e($line['text']) ?></span>
     </a>
     <?php endforeach; ?>
     <?php if ($canAddVoice): ?>
@@ -103,7 +103,7 @@ layout('user/layout', ['title' => '홈', 'nav' => 'home', 'mainClass' => 'px-mar
       <div class="w-16 h-16 rounded-full bg-surface-container-lowest flex items-center justify-center">
         <span class="material-symbols-outlined text-primary text-3xl">add</span>
       </div>
-      <span class="text-label-lg font-label-lg text-primary">목소리 추가</span>
+      <span class="text-label-lg font-label-lg text-primary break-keep leading-5">목소리 추가</span>
       <span class="text-label-sm font-label-sm text-on-surface-variant">녹음하기</span>
     </a>
     <?php endif; ?>

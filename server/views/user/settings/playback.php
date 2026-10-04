@@ -1,6 +1,6 @@
 <?php
 /** 재생 설정. 변수: $prefs, $speeds, $timers */
-layout('user/layout', ['title' => '재생 설정', 'header' => 'sub', 'back' => '/settings']);
+layout('user/layout', ['title' => '재생 설정', 'header' => 'sub', 'back' => '/settings', 'mainClass' => 'px-margin-mobile pt-6 pb-6 break-keep']);
 $seg = 'flex min-h-11 cursor-pointer items-center justify-center rounded-xl px-2 text-[14px] font-semibold text-on-surface-variant transition-all peer-checked:bg-surface-container-lowest peer-checked:text-primary peer-checked:shadow-sm peer-focus-visible:ring-2 peer-focus-visible:ring-primary/40';
 $heading = 'mb-3 px-2 text-[14px] font-bold leading-5 text-primary';
 $card = 'overflow-hidden rounded-[24px] border border-surface-variant/30 bg-surface-container-lowest shadow-[0_4px_20px_0_rgba(0,0,0,0.05)]';
@@ -29,7 +29,7 @@ $switchRow = function ($name, $icon, $title, $desc, $on, $badge = '') {
         . '<span class="min-w-0"><span class="flex flex-wrap items-center gap-2 font-body-md text-body-md text-on-surface">' . e($title)
         . ($badge !== '' ? '<span class="rounded-full bg-tertiary-container px-2 py-0.5 text-[10px] font-bold text-on-tertiary-container">' . e($badge) . '</span>' : '')
         . '</span><span class="mt-0.5 block font-label-sm text-label-sm font-normal leading-5 text-on-surface-variant">' . e($desc) . '</span></span></span>'
-        . '<label class="switch mt-0.5" aria-label="' . e($title) . '"><input type="hidden" name="' . e($name) . '" value="0"><input type="checkbox" name="' . e($name) . '" value="1"' . ($on ? ' checked' : '') . '><span></span></label>'
+        . '<label class="switch mt-0.5"><input type="hidden" name="' . e($name) . '" value="0"><input type="checkbox" class="peer" aria-label="' . e($title) . '" name="' . e($name) . '" value="1"' . ($on ? ' checked' : '') . '><span class="peer-checked:bg-primary peer-focus-visible:ring-2 peer-focus-visible:ring-primary/40"></span></label>'
         . '</div>';
 };
 ?>

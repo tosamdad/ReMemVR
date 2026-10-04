@@ -28,19 +28,15 @@ class PlayerController
     {
         $user = require_user();
         $this->requireChild();
-        list($where, $params) = Progress::currentScope();
-        $row = db_one(
-            "SELECT ps.story_id, ps.voice_profile_id, ps.audio_source, ps.last_position_ms, ps.last_sentence_seq
-             FROM play_sessions ps
-             JOIN stories s ON s.id = ps.story_id AND s.status = 'published' AND s.deleted_at IS NULL
-             WHERE $where AND ps.completed = 0
-             ORDER BY ps.updated_at DESC, ps.id DESC LIMIT 1",
-            $params
-        );
-        if ($row) {
-            $voice = ($row['audio_source'] === 'device' || $row['voice_profile_id'] === null) ? 'device' : (string) (int) $row['voice_profile_id'];
-
-            return $this->render($user, (int) $row['story_id'], $voice, (int) $row['last_position_ms'], (int) $row['last_sentence_seq']);
+        // 동화마다 가장 최근 기록이 끝나지 않은 것 중 가장 최근 것(게시 중인 동화만)
+        $published = array_flip(array_map('intval', array_column(
+            db_all("SELECT id FROM stories WHERE status = 'published' AND deleted_at IS NULL"),
+            'id'
+        )));
+        foreach (Progress::resumeStates(Progress::currentScope(), false) as $storyId => $r) {
+            if (isset($published[$storyId])) {
+                return $this->render($user, (int) $storyId, $r['voice'], $r['position_ms'], $r['sentence_seq']);
+            }
         }
         $first = db_value("SELECT id FROM stories WHERE status = 'published' AND deleted_at IS NULL ORDER BY sort_order, id LIMIT 1");
         if (!$first) {
@@ -89,7 +85,7 @@ class PlayerController
         // 목소리 칩: 이 동화 오디오가 준비된 목소리는 고를 수 있고, 만드는 중인 목소리는 '준비 중'
         $rows = db_all(
             'SELECT vp.id, vp.label, vp.icon, vp.status, sa.id AS audio_id, sa.status AS audio_status, sa.file_path,
-                    sa.duration_ms, sa.sentence_timings, sa.content_hash
+                    sa.duration_ms, sa.sentence_timings, sa.content_hash, sa.generated_at
              FROM voice_profiles vp
              LEFT JOIN story_audios sa ON sa.voice_profile_id = vp.id AND sa.story_id = ?
              WHERE vp.user_id = ? AND vp.deleted_at IS NULL
@@ -137,7 +133,8 @@ class PlayerController
             $timings = json_decode_array($a['sentence_timings']);
             $audio = [
                 'id' => (int) $a['audio_id'],
-                'url' => url('/media/story-audio/' . (int) $a['audio_id']),
+                // 다시 만든 오디오는 같은 주소를 쓰므로 버전 값을 붙여 브라우저 캐시를 피한다.
+                'url' => url('/media/story-audio/' . (int) $a['audio_id']) . '?v=' . substr(md5($a['file_path'] . '|' . $a['generated_at']), 0, 8),
                 'duration_ms' => (int) $a['duration_ms'],
                 'timings' => !empty($timings['sentences']) ? $timings : null,
                 'outdated' => !empty($story['content_hash']) && (string) $a['content_hash'] !== (string) $story['content_hash'],
@@ -339,8 +336,11 @@ class PlayerController
         $session = $this->ownSession((int) $id, (int) $user['id']);
         $file = Request::file('audio');
         if ($file === null) {
-            $err = Request::uploadError('audio');
-            abort(422, $err !== null ? $err : '질문 녹음을 받지 못했어요. 다시 말해 줄래요?');
+            $code = isset($_FILES['audio']['error']) ? (int) $_FILES['audio']['error'] : -1;
+            if ($code === UPLOAD_ERR_INI_SIZE || $code === UPLOAD_ERR_FORM_SIZE) {
+                abort(413, '질문 녹음이 너무 길어요. 조금 짧게 물어봐 줄래요?');
+            }
+            abort(422, '질문 녹음을 받지 못했어요. 다시 말해 줄래요?');
         }
         if ((int) $file['size'] <= 0 || (int) $file['size'] > self::MAX_QUESTION_BYTES) {
             abort(413, '질문 녹음이 너무 길어요. 조금 짧게 물어봐 줄래요?');

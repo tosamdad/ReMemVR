@@ -17,7 +17,7 @@ $agreeOld = function ($key) {
     return old($key) ? ' checked' : '';
 };
 ?>
-<div class="relative isolate">
+<div class="relative isolate break-keep">
   <?= partial('user/auth/backdrop') ?>
   <div class="mx-auto w-full max-w-md space-y-8">
     <header class="space-y-3 text-center">
@@ -67,27 +67,27 @@ $agreeOld = function ($key) {
             <li class="flex items-center gap-3">
               <label class="flex flex-1 cursor-pointer items-center gap-3">
                 <input type="checkbox" name="agree_terms" value="1" data-agree-item required class="<?= $box ?>"<?= $agreeOld('agree_terms') ?>>
-                <span class="font-body-md text-[15px] text-on-surface">이용약관 동의 <span class="text-primary">(필수)</span></span>
+                <span class="font-body-md text-[15px] leading-6 text-on-surface">이용약관 <span class="text-primary">(필수)</span></span>
               </label>
               <a href="<?= e(url('/settings/terms')) ?>" target="_blank" rel="noopener" class="flex items-center font-label-sm text-label-sm text-outline hover:text-primary">보기<span class="material-symbols-outlined text-[18px]">chevron_right</span></a>
             </li>
             <li class="flex items-center gap-3">
               <label class="flex flex-1 cursor-pointer items-center gap-3">
                 <input type="checkbox" name="agree_privacy" value="1" data-agree-item required class="<?= $box ?>"<?= $agreeOld('agree_privacy') ?>>
-                <span class="font-body-md text-[15px] text-on-surface">개인정보 수집·이용 동의 <span class="text-primary">(필수)</span></span>
+                <span class="font-body-md text-[15px] leading-6 text-on-surface">개인정보 수집·이용 <span class="text-primary">(필수)</span></span>
               </label>
               <a href="<?= e(url('/settings/privacy')) ?>" target="_blank" rel="noopener" class="flex items-center font-label-sm text-label-sm text-outline hover:text-primary">보기<span class="material-symbols-outlined text-[18px]">chevron_right</span></a>
             </li>
             <li>
               <label class="flex cursor-pointer items-center gap-3">
                 <input type="checkbox" name="agree_age" value="1" data-agree-item required class="<?= $box ?>"<?= $agreeOld('agree_age') ?>>
-                <span class="font-body-md text-[15px] text-on-surface">만 14세 이상 보호자입니다 <span class="text-primary">(필수)</span></span>
+                <span class="font-body-md text-[15px] leading-6 text-on-surface">만 14세 이상 보호자입니다 <span class="text-primary">(필수)</span></span>
               </label>
             </li>
             <li>
               <label class="flex cursor-pointer items-center gap-3">
                 <input type="checkbox" name="agree_marketing" value="1" data-agree-item class="<?= $box ?>"<?= $agreeOld('agree_marketing') ?>>
-                <span class="font-body-md text-[15px] text-on-surface">새 동화, 이벤트 소식 받기 <span class="text-on-surface-variant">(선택)</span></span>
+                <span class="font-body-md text-[15px] leading-6 text-on-surface">마케팅 정보 수신 <span class="text-on-surface-variant">(선택)</span></span>
               </label>
             </li>
           </ul>

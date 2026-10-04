@@ -21,7 +21,8 @@ class LandingController
         return view('user/landing', [
             'storyCount' => $storyCount,
             'sampleSeconds' => (int) setting('voice.recommended_sample_seconds', 120),
-            'maxQuestions' => (int) setting('qa.max_questions', 3),
+            'maxQuestions' => setting('qa.enabled', true) ? (int) setting('qa.max_questions', 3) : 0,
+            'maxVoices' => (int) setting('voice.max_per_user', 5),
         ]);
     }
 }

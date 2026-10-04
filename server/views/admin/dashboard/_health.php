@@ -18,17 +18,17 @@ $policy = $d['policy'];
 </div>
 <div class="flex flex-col gap-2.5">
   <?php foreach ($h['items'] as $it): ?>
-  <div class="flex items-center justify-between gap-3 rounded-xl bg-surface-container-low p-3.5">
+  <div class="flex items-center justify-between gap-3 rounded-xl bg-surface-container-low p-3.5" title="<?= e($it['text']) ?>">
     <div class="flex min-w-0 items-center gap-3">
       <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg <?= $it['ok'] ? 'bg-emerald-100 text-emerald-700' : 'bg-error-container text-on-error-container' ?>"><span class="material-symbols-outlined text-[18px]"><?= e($it['icon']) ?></span></div>
       <div class="flex min-w-0 flex-col">
-        <span class="truncate font-label-md text-label-md font-semibold text-on-surface"><?= e($it['name']) ?></span>
-        <span class="truncate font-label-sm text-label-sm text-on-surface-variant"><?= e($it['desc']) ?></span>
+        <span class="font-label-md text-label-md font-semibold text-on-surface"><?= e($it['name']) ?></span>
+        <span class="font-label-sm text-label-sm leading-snug text-on-surface-variant"><?= e($it['detail']) ?></span>
       </div>
     </div>
-    <div class="flex max-w-[55%] shrink-0 items-center gap-1.5 rounded-full bg-surface-container-lowest px-2.5 py-1 text-on-surface">
+    <div class="flex shrink-0 items-center gap-1.5 rounded-full bg-surface-container-lowest px-2.5 py-1 text-on-surface">
       <span class="h-2 w-2 shrink-0 rounded-full <?= $it['ok'] ? 'bg-emerald-500' : 'bg-error' ?>"></span>
-      <span class="truncate font-label-sm text-label-sm font-semibold" title="<?= e($it['text']) ?>"><?= e($it['text']) ?></span>
+      <span class="whitespace-nowrap font-label-sm text-label-sm font-semibold"><?= e($it['badge']) ?></span>
     </div>
   </div>
   <?php endforeach; ?>

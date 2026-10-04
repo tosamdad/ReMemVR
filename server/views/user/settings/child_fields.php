@@ -60,7 +60,7 @@ $genders = ['boy' => '남아', 'girl' => '여아', '' => '선택 안 함'];
     <?php foreach (avatar_presets() as $key => $p): ?>
     <label class="flex cursor-pointer items-center justify-center" title="<?= e($key) ?>">
       <input type="radio" name="avatar" value="<?= e($key) ?>" class="peer sr-only"<?= $values['avatar'] === $key ? ' checked' : '' ?>>
-      <?= child_avatar(['avatar' => $key], 'w-11 h-11 text-2xl', 'transition-all ring-offset-2 ring-offset-surface-container-low peer-checked:ring-[3px] peer-checked:ring-primary peer-checked:scale-110 peer-focus-visible:ring-2 peer-focus-visible:ring-primary/50') ?>
+      <?= child_avatar(['avatar' => $key], 'w-11 h-11 text-2xl', 'transition-all ring-offset-2 ring-offset-surface-container-low peer-checked:ring-[3px] peer-checked:ring-primary peer-focus-visible:ring-2 peer-focus-visible:ring-primary/50') ?>
     </label>
     <?php endforeach; ?>
   </div>

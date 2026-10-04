@@ -102,12 +102,12 @@ $to = min($total, $page * 20);
   <div class="grid grid-cols-1 items-start gap-6 xl:grid-cols-12">
     <!-- 왼쪽: 탭, 필터, 표 -->
     <div class="flex min-w-0 flex-col gap-4 xl:col-span-8">
-      <nav class="no-scrollbar flex items-center gap-1.5 overflow-x-auto rounded-xl bg-surface-container-lowest p-2 shadow-card" aria-label="상태">
+      <nav class="flex flex-wrap items-center gap-1.5 rounded-xl bg-surface-container-lowest p-2 shadow-card" aria-label="상태">
         <?php foreach ($tabs as $key => $t):
             $on = $filters['status'] === $key;
             $href = url('/admin/voices', array_filter(array_merge($query, ['status' => $key]), static function ($v) { return $v !== ''; }));
         ?>
-        <a href="<?= e($href) ?>" class="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-4 py-2 font-label-md text-label-md transition-colors <?= $on ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-high' ?>"<?= $on ? ' aria-current="page"' : '' ?>>
+        <a href="<?= e($href) ?>" class="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 font-label-md text-label-md transition-colors <?= $on ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-high' ?>"<?= $on ? ' aria-current="page"' : '' ?>>
           <span><?= e($t[0]) ?></span>
           <span class="rounded-full px-2 py-0.5 font-label-sm text-label-sm <?= $t[2] ?>"><?= fmt_number($counts[$t[1]]) ?></span>
         </a>
@@ -151,11 +151,11 @@ $to = min($total, $page * 20);
           <table class="w-full border-collapse text-left">
             <thead>
               <tr class="bg-surface-container-low font-label-sm text-label-sm uppercase tracking-wider text-on-surface-variant">
-                <th class="px-3 py-3 font-label-sm">신청 ID / 대상</th>
-                <th class="px-3 py-3 font-label-sm">음성 샘플 및 품질</th>
-                <th class="px-3 py-3 font-label-sm">ElevenLabs 모델</th>
-                <th class="px-3 py-3 font-label-sm"><?= $storyCount ?>편 사전 캐싱</th>
-                <th class="px-3 py-3 text-right font-label-sm">수동 파이프라인 액션</th>
+                <th class="px-2.5 py-3 font-label-sm">신청 ID / 대상</th>
+                <th class="px-2.5 py-3 font-label-sm">음성 샘플 및 품질</th>
+                <th class="px-2.5 py-3 font-label-sm">ElevenLabs 모델</th>
+                <th class="px-2.5 py-3 font-label-sm"><?= $storyCount ?>편 사전 캐싱</th>
+                <th class="px-2.5 py-3 text-right font-label-sm">수동 액션</th>
               </tr>
             </thead>
             <tbody class="font-body-md text-body-md text-on-surface">
@@ -185,13 +185,13 @@ $to = min($total, $page * 20);
                 }
             ?>
               <tr class="group cursor-pointer border-t border-surface-container-high transition-colors <?= $sel ? 'bg-primary/5 hover:bg-primary/10' : 'hover:bg-surface-container-low' ?>" data-href="<?= e($detailUrl) ?>">
-                <td class="px-3 py-4 align-top">
+                <td class="px-2.5 py-4 align-top">
                   <div class="flex flex-col">
                     <div class="flex flex-wrap items-center gap-2">
                       <a href="<?= e($detailUrl) ?>" class="font-label-sm text-label-sm font-bold <?= $sel ? 'text-primary' : 'text-on-surface-variant' ?> hover:underline"><?= e(DashboardStats::reqId($id)) ?></a>
                       <?= $chip($r['status']) ?>
                     </div>
-                    <span class="mt-1 font-headline-md text-[17px] font-bold leading-6 text-on-surface"><?= e($name) ?></span>
+                    <span class="mt-1 min-w-[112px] break-keep font-headline-md text-[16px] font-bold leading-6 text-on-surface"><?= e($name) ?></span>
                     <span class="font-label-sm text-label-sm text-on-surface-variant"><?= e($contact) ?></span>
                     <div class="mt-1 flex w-fit items-center gap-1.5 rounded bg-tertiary-fixed/60 px-2 py-0.5 text-on-tertiary-container">
                       <span class="material-symbols-outlined text-[14px]">child_care</span>
@@ -199,8 +199,8 @@ $to = min($total, $page * 20);
                     </div>
                   </div>
                 </td>
-                <td class="px-3 py-4 align-top">
-                  <div class="flex min-w-[180px] flex-col gap-2">
+                <td class="px-2.5 py-4 align-top">
+                  <div class="flex min-w-[148px] flex-col gap-2">
                     <?= partial('admin/voices/_player', ['src' => $smp['first_id'] ? url('/admin/media/sample/' . $smp['first_id']) : '', 'ms' => $smp['first_ms'], 'variant' => 'table', 'seed' => $id]) ?>
                     <div class="flex flex-wrap gap-1.5">
                       <span class="flex items-center gap-1 rounded-full bg-surface-container-high px-2 py-0.5 font-label-sm text-label-sm text-on-surface"><span class="material-symbols-outlined text-[13px] text-primary">timer</span><?= (int) $smp['count'] ?>개 · <?= e(DashboardStats::koDuration($smp['total_ms'])) ?></span>
@@ -208,60 +208,61 @@ $to = min($total, $page * 20);
                     </div>
                   </div>
                 </td>
-                <td class="px-3 py-4 align-top">
+                <td class="px-2.5 py-4 align-top">
                   <div class="flex flex-col">
                     <?php if ($hasVoice): ?>
-                    <span class="w-fit rounded-md <?= $r['status'] === 'completed' ? 'bg-surface-container-high text-on-surface' : 'bg-primary-container text-on-primary-container' ?> px-2.5 py-1 font-label-sm text-label-sm font-bold" title="ElevenLabs voice_id(가림)"><?= e(DashboardStats::maskVoiceId($r['provider_voice_id'])) ?></span>
-                    <span class="mt-1.5 font-label-sm text-label-sm text-on-surface-variant">복제 완료 (IVC)<?= $r['cloned_at'] ? ' · ' . e(date('m.d H:i', strtotime($r['cloned_at']))) : '' ?></span>
+                    <span class="w-fit whitespace-nowrap rounded-md <?= $r['status'] === 'completed' ? 'bg-surface-container-high text-on-surface' : 'bg-primary-container text-on-primary-container' ?> px-2.5 py-1 font-label-sm text-label-sm font-bold" title="ElevenLabs voice_id(가림)"><?= e(DashboardStats::maskVoiceId($r['provider_voice_id'])) ?></span>
+                    <span class="mt-1.5 font-label-sm text-label-sm text-on-surface-variant">복제 완료 (IVC)</span>
+                    <?php if ($r['cloned_at']): ?><span class="font-label-sm text-label-sm text-on-surface-variant/80"><?= e(date('m.d H:i', strtotime($r['cloned_at']))) ?></span><?php endif; ?>
                     <?php elseif ($r['status'] === 'cloning'): ?>
                     <span class="flex w-fit items-center gap-1 rounded-md bg-primary-fixed px-2.5 py-1 font-label-sm text-label-sm text-on-primary-fixed-variant"><span class="material-symbols-outlined animate-spin text-[14px]">progress_activity</span>생성 중</span>
                     <span class="mt-1.5 font-label-sm text-label-sm text-on-surface-variant">ElevenLabs 응답 대기</span>
                     <?php else: ?>
                     <span class="flex w-fit items-center gap-1 rounded-md bg-surface-container-highest px-2.5 py-1 font-label-sm text-label-sm text-on-surface-variant"><span class="h-2 w-2 rounded-full bg-outline"></span> 미생성</span>
                     <?php if (in_array($r['status'], ['pending', 'failed', 'rejected'], true) && $storyCount > 0): ?>
-                    <span class="mt-2 font-label-sm text-label-sm text-on-surface-variant">예상 소모: 동화 <?= $storyCount ?>편 약 <?= fmt_number($estimate['credits']) ?> 크레딧</span>
+                    <span class="mt-2 max-w-[104px] font-label-sm text-label-sm text-on-surface-variant" title="게시된 동화 <?= $storyCount ?>편 본문 글자 수 기준 예상치">예상 소모 약 <?= fmt_number($estimate['credits']) ?> 크레딧</span>
                     <?php endif; ?>
                     <?php endif; ?>
                   </div>
                 </td>
-                <td class="px-3 py-4 align-top">
+                <td class="px-2.5 py-4 align-top">
                   <div class="flex flex-col gap-1.5">
                     <?php if ($p['total'] > 0 && $p['completed'] >= $p['total'] && $p['stale'] === 0): ?>
                     <span class="flex items-center gap-1 font-label-sm text-label-sm font-bold text-primary"><span class="material-symbols-outlined text-[16px]">verified</span><?= (int) $p['total'] ?>편 전체 완료</span>
-                    <div class="h-2 w-28 rounded-full bg-primary"></div>
+                    <div class="h-2 w-24 rounded-full bg-primary"></div>
                     <?php else: ?>
-                    <div class="flex w-28 items-center justify-between font-label-sm text-label-sm">
+                    <div class="flex w-24 items-center justify-between font-label-sm text-label-sm">
                       <span class="<?= $p['completed'] > 0 ? 'font-bold text-primary' : 'text-on-surface-variant' ?>"><?= (int) $p['completed'] ?> / <?= (int) $p['total'] ?>편</span>
                       <?php if ($p['completed'] > 0): ?><span class="font-bold text-secondary"><?= (int) $p['percent'] ?>%</span><?php endif; ?>
                     </div>
-                    <div class="h-2 w-28 overflow-hidden rounded-full bg-surface-container-high"><div class="h-full rounded-full bg-secondary <?= $r['batch_status'] === 'running' ? 'animate-pulse' : '' ?>" style="width: <?= (int) $p['percent'] ?>%"></div></div>
+                    <div class="h-2 w-24 overflow-hidden rounded-full bg-surface-container-high"><div class="h-full rounded-full bg-secondary <?= $r['batch_status'] === 'running' ? 'animate-pulse' : '' ?>" style="width: <?= (int) $p['percent'] ?>%"></div></div>
                     <?php endif; ?>
-                    <span class="font-label-sm text-label-sm <?= in_array($r['batch_status'], ['partial', 'failed'], true) || $p['stale'] > 0 ? 'text-error' : 'text-on-surface-variant' ?>"><?= e($state) ?></span>
+                    <span class="max-w-[112px] font-label-sm text-label-sm <?= in_array($r['batch_status'], ['partial', 'failed'], true) || $p['stale'] > 0 ? 'text-error' : 'text-on-surface-variant' ?>"><?= e($state) ?></span>
                   </div>
                 </td>
-                <td class="px-3 py-4 text-right align-top">
-                  <div class="flex min-w-[140px] flex-col items-end gap-2">
+                <td class="px-2.5 py-4 text-right align-top">
+                  <div class="flex w-[118px] flex-col items-end gap-1.5">
                     <?php if (in_array($r['status'], ['pending', 'failed'], true) && !$hasVoice): ?>
                     <form method="post" action="<?= e(url('/admin/voices/' . $id . '/clone')) ?>" class="w-full" data-confirm="<?= e($name . ' 목소리로 ElevenLabs 목소리 생성을 시작할까요?') ?>">
                       <?= csrf_field() ?>
-                      <button type="submit" class="flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 font-label-sm text-label-sm text-on-primary shadow-sm transition-colors hover:bg-on-primary-fixed-variant disabled:cursor-not-allowed disabled:opacity-40"<?= $elReady ? '' : ' disabled title="' . e($elTip) . '"' ?>><span class="material-symbols-outlined text-[16px]">record_voice_over</span>ElevenLabs 모델 생성</button>
+                      <button type="submit" class="flex w-full items-center justify-center gap-1 rounded-lg bg-primary px-2 py-1.5 text-center font-label-sm text-label-sm leading-tight text-on-primary shadow-sm transition-colors hover:bg-on-primary-fixed-variant disabled:cursor-not-allowed disabled:opacity-40"<?= $elReady ? '' : ' disabled title="' . e($elTip) . '"' ?>><span class="material-symbols-outlined shrink-0 text-[16px]">record_voice_over</span>ElevenLabs 모델 생성</button>
                     </form>
                     <?php elseif ($r['status'] === 'cloning'): ?>
-                    <button type="button" class="flex w-full cursor-not-allowed items-center justify-center gap-1.5 rounded-lg bg-surface-container px-3 py-1.5 font-label-sm text-label-sm text-on-surface-variant/60" disabled><span class="material-symbols-outlined animate-spin text-[16px]">sync</span>모델 생성 중</button>
+                    <button type="button" class="flex w-full cursor-not-allowed items-center justify-center gap-1 rounded-lg bg-surface-container px-2 py-1.5 text-center font-label-sm text-label-sm leading-tight text-on-surface-variant/60" disabled><span class="material-symbols-outlined shrink-0 animate-spin text-[16px]">sync</span>모델 생성 중</button>
                     <?php endif; ?>
 
                     <?php if ($r['status'] === 'processing' || $r['batch_status'] === 'running' || $r['batch_status'] === 'queued'): ?>
-                    <button type="button" class="flex w-full cursor-default items-center justify-center gap-1.5 rounded-lg bg-secondary px-3 py-1.5 font-label-sm text-label-sm text-on-secondary shadow-sm" disabled><span class="material-symbols-outlined animate-spin text-[16px]">sync</span>일괄 캐싱 진행중</button>
+                    <button type="button" class="flex w-full cursor-default items-center justify-center gap-1 rounded-lg bg-secondary px-2 py-1.5 text-center font-label-sm text-label-sm leading-tight text-on-secondary shadow-sm" disabled><span class="material-symbols-outlined shrink-0 animate-spin text-[16px]">sync</span>캐싱 진행중</button>
                     <?php elseif ($r['status'] !== 'rejected'): ?>
                     <form method="post" action="<?= e(url('/admin/voices/' . $id . '/batch')) ?>" class="w-full" data-confirm="<?= e('게시된 동화 ' . $storyCount . '편 중 아직 없는 오디오를 ' . $name . ' 목소리로 만들까요? ElevenLabs 크레딧이 소모됩니다.') ?>">
                       <?= csrf_field() ?>
                       <?php $canBatch = $hasVoice && $elReady && $storyCount > 0; ?>
-                      <button type="submit" class="flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 font-label-sm text-label-sm transition-colors <?= $canBatch ? 'bg-surface-container-high text-on-surface hover:bg-surface-container-highest' : 'cursor-not-allowed bg-surface-container-high text-on-surface-variant/40' ?>"<?= $canBatch ? '' : ' disabled title="' . e(!$elReady ? $elTip : (!$hasVoice ? 'ElevenLabs 목소리를 먼저 생성하세요' : '게시된 동화가 없습니다')) . '"' ?>><span class="material-symbols-outlined text-[16px]">queue_music</span><?= $storyCount ?>편 일괄 생성</button>
+                      <button type="submit" class="flex w-full items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-center font-label-sm text-label-sm leading-tight transition-colors <?= $canBatch ? 'bg-surface-container-high text-on-surface hover:bg-surface-container-highest' : 'cursor-not-allowed bg-surface-container-high text-on-surface-variant/40' ?>"<?= $canBatch ? '' : ' disabled title="' . e(!$elReady ? $elTip : (!$hasVoice ? 'ElevenLabs 목소리를 먼저 생성하세요' : '게시된 동화가 없습니다')) . '"' ?>><span class="material-symbols-outlined shrink-0 text-[16px]">queue_music</span><?= $storyCount ?>편 일괄 생성</button>
                     </form>
                     <?php endif; ?>
 
                     <?php if ($hasVoice || $p['completed'] > 0): ?>
-                    <button type="button" class="flex items-center gap-1.5 rounded-lg bg-surface-container-high px-3 py-1.5 font-label-sm text-label-sm text-on-surface transition-colors hover:bg-surface-container-highest" data-audios-url="<?= e(url('/admin/api/voices/' . $id . '/audios')) ?>" data-audios-name="<?= e($name) ?>"><span class="material-symbols-outlined text-[16px]">visibility</span>캐시 파일 목록</button>
+                    <button type="button" class="flex w-full items-center justify-center gap-1 rounded-lg bg-surface-container-high px-2 py-1.5 text-center font-label-sm text-label-sm leading-tight text-on-surface transition-colors hover:bg-surface-container-highest" data-audios-url="<?= e(url('/admin/api/voices/' . $id . '/audios')) ?>" data-audios-name="<?= e($name) ?>"><span class="material-symbols-outlined shrink-0 text-[16px]">visibility</span>캐시 파일 목록</button>
                     <?php endif; ?>
                     <?php if ($hasVoice && in_array($r['status'], ['processing', 'completed'], true)): ?>
                     <button type="button" class="rounded px-2.5 py-1 font-label-sm text-label-sm text-primary hover:bg-primary-fixed/30 disabled:cursor-not-allowed disabled:opacity-40" data-test-url="<?= e(url('/admin/voices/' . $id . '/test')) ?>" data-test-name="<?= e($name) ?>"<?= $elReady ? '' : ' disabled title="' . e($elTip) . '"' ?>>테스트 재생</button>
@@ -275,7 +276,7 @@ $to = min($total, $page * 20);
                     <?php if (in_array($r['status'], ['pending', 'failed', 'completed'], true)): ?>
                     <button type="button" class="rounded px-2.5 py-1 font-label-sm text-label-sm text-error transition-colors hover:bg-error-container hover:text-on-error-container" data-reject-url="<?= e(url('/admin/voices/' . $id . '/reject')) ?>" data-reject-name="<?= e($name) ?>">반려 / 재요청</button>
                     <?php elseif ($r['status'] === 'rejected'): ?>
-                    <span class="max-w-[160px] text-right font-label-sm text-label-sm text-on-surface-variant" title="<?= e((string) $r['reject_reason']) ?>">재녹음 대기<?= $r['reject_reason'] ? ': ' . e(str_limit($r['reject_reason'], 24)) : '' ?></span>
+                    <span class="max-w-[118px] text-right font-label-sm text-label-sm text-on-surface-variant" title="<?= e((string) $r['reject_reason']) ?>">재녹음 대기<?= $r['reject_reason'] ? ': ' . e(str_limit($r['reject_reason'], 24)) : '' ?></span>
                     <?php endif; ?>
                   </div>
                 </td>

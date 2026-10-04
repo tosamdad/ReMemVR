@@ -38,9 +38,11 @@
   .a-table tbody tr { @apply border-t border-surface-container-high transition-colors hover:bg-surface-container-low/60; }
 
   .switch { @apply relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center; }
-  .switch input { @apply peer sr-only; }
-  .switch span { @apply absolute inset-0 rounded-full bg-surface-container-highest transition-colors peer-checked:bg-primary; }
+  .switch input { @apply sr-only; }
+  .switch span { @apply absolute inset-0 rounded-full bg-surface-container-highest transition-colors; }
+  .switch input:checked + span { @apply bg-primary; }
   .switch span::after { content: ''; @apply absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform; }
+  .switch input:focus-visible + span { @apply ring-2 ring-primary ring-offset-2; }
   .switch input:checked + span::after { transform: translateX(20px); }
 }
 

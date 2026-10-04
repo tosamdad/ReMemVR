@@ -218,8 +218,13 @@ class VoiceLabController
             abort(422, '녹음은 목소리 하나에 ' . self::MAX_SAMPLES . '개까지 저장할 수 있어요. 필요 없는 녹음을 지운 뒤 다시 시도해 주세요.');
         }
 
-        // 길이: WAV 는 서버에서 직접 계산하고, 그 밖에는 브라우저가 잰 값을 쓴다(모르면 NULL).
-        $durationMs = $ext === 'wav' ? self::wavDurationMs((string) $file['tmp_name']) : 0;
+        // 길이: WAV, M4A 는 서버에서 직접 계산하고, 그 밖에는 브라우저가 잰 값을 쓴다(모르면 NULL).
+        $durationMs = 0;
+        if ($ext === 'wav') {
+            $durationMs = self::wavDurationMs((string) $file['tmp_name']);
+        } elseif ($ext === 'm4a' || $ext === 'mp4') {
+            $durationMs = self::mp4DurationMs((string) $file['tmp_name']);
+        }
         if ($durationMs <= 0) {
             $clientMs = Request::int('duration_ms');
             $durationMs = ($clientMs > 0 && $clientMs <= 3600000) ? $clientMs : 0;
@@ -587,10 +592,29 @@ class VoiceLabController
             || $four === "\x1A\x45\xDF\xA3" || substr($head, 0, 3) === 'ID3' || substr($head, 4, 4) === 'ftyp') {
             return true;
         }
-        // MP3 프레임 또는 AAC(ADTS) 동기 신호: 0xFFF? / 0xFFE?
-        $len = strlen($head) - 1;
+        // 흔한 다른 형식(JPEG, PNG, PDF, ZIP, GIF, 실행 파일, HTML/PHP)은 바로 거른다.
+        foreach (["\xFF\xD8\xFF", "\x89PNG", '%PDF', "PK\x03\x04", 'GIF8', 'MZ', '<'] as $magic) {
+            if (strncmp(ltrim(substr($head, 0, 64)), $magic, strlen($magic)) === 0) {
+                return false;
+            }
+        }
+        // 머리글 없는 MP3 프레임 또는 AAC(ADTS) 동기 신호
+        $len = strlen($head) - 2;
         for ($i = 0; $i < $len; $i++) {
-            if ($head[$i] === "\xFF" && (ord($head[$i + 1]) & 0xE0) === 0xE0) {
+            if ($head[$i] !== "\xFF") {
+                continue;
+            }
+            $b1 = ord($head[$i + 1]);
+            if (($b1 & 0xE0) !== 0xE0) {
+                continue;
+            }
+            if (($b1 & 0xF6) === 0xF0) {
+                return true; // ADTS: 1111 x 00 x
+            }
+            $version = ($b1 >> 3) & 3;
+            $layer = ($b1 >> 1) & 3;
+            $b2 = ord($head[$i + 2]);
+            if ($version !== 1 && $layer !== 0 && ($b2 >> 4) !== 15 && (($b2 >> 2) & 3) !== 3) {
                 return true;
             }
         }
@@ -643,6 +667,37 @@ class VoiceLabController
         fclose($fp);
 
         return $byteRate > 0 && $dataSize > 0 ? (int) round($dataSize * 1000 / $byteRate) : 0;
+    }
+
+    /** M4A, MP4 의 mvhd 상자에서 길이(ms)를 읽는다. 찾지 못하면 0 */
+    public static function mp4DurationMs(string $path): int
+    {
+        $bytes = @file_get_contents($path);
+        if (!is_string($bytes) || substr($bytes, 4, 4) !== 'ftyp') {
+            return 0;
+        }
+        $pos = strpos($bytes, 'mvhd');
+        if ($pos === false || strlen($bytes) < $pos + 32) {
+            return 0;
+        }
+        $version = ord($bytes[$pos + 4]);
+        if ($version === 1) {
+            $scale = unpack('N', substr($bytes, $pos + 24, 4));
+            $hi = unpack('N', substr($bytes, $pos + 28, 4));
+            $lo = unpack('N', substr($bytes, $pos + 32, 4));
+            $duration = $hi && $lo ? $hi[1] * 4294967296 + $lo[1] : 0;
+        } else {
+            $scale = unpack('N', substr($bytes, $pos + 16, 4));
+            $d = unpack('N', substr($bytes, $pos + 20, 4));
+            $duration = $d ? $d[1] : 0;
+        }
+        $timescale = $scale ? (int) $scale[1] : 0;
+        if ($timescale <= 0 || $duration <= 0) {
+            return 0;
+        }
+        $ms = (int) round($duration * 1000 / $timescale);
+
+        return $ms > 0 && $ms <= 3600000 ? $ms : 0;
     }
 
     /** 브라우저가 보낸 품질 지표(JSON)를 DB 열 범위에 맞게 정리한다. */

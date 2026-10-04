@@ -28,8 +28,13 @@ $grades = [
     'poor' => ['다시 녹음을 권해요', 'bg-error-container text-on-error-container'],
 ];
 $p = $progress ?: ['total' => 0, 'completed' => 0, 'percent' => 0, 'failed' => 0];
+// 녹음 합계는 지금 남아 있는 샘플 기준으로 보여 준다.
+$sampleMs = 0;
+foreach ($samples as $s) {
+    $sampleMs += (int) $s['duration_ms'];
+}
 $stepDesc = [
-    'record' => $samples ? '녹음 ' . count($samples) . '개 · 총 ' . fmt_duration((int) $voice['sample_total_ms']) : '대본을 읽어 녹음해 주세요',
+    'record' => $samples ? '녹음 ' . count($samples) . '개 · 총 ' . fmt_duration($sampleMs) : '대본을 읽어 녹음해 주세요',
     'review' => $status === 'rejected' ? '다시 녹음이 필요해요' : ($status === 'pending' ? '운영팀이 녹음 상태를 확인하고 있어요' : ($status === 'draft' ? '제출하면 운영팀이 확인해요' : '확인을 마쳤어요')),
     'clone' => $status === 'cloning' ? 'AI가 목소리를 배우고 있어요' : (!empty($voice['cloned_at']) ? time_ago($voice['cloned_at']) . ' 완료' : ($status === 'failed' ? '목소리를 만들지 못했어요' : 'AI가 목소리의 특징을 배워요')),
     'stories' => in_array($status, ['processing', 'completed', 'failed'], true) && $p['total'] > 0 ? '동화 ' . (int) $p['total'] . '편 중 ' . (int) $p['completed'] . '편 준비' : '무료 동화를 이 목소리로 미리 읽어 둬요',
@@ -150,7 +155,7 @@ $dot = [
                 <img src="<?= e(cover_url($st)) ?>" alt="" class="h-16 w-16 shrink-0 rounded-2xl bg-surface-container object-cover" width="64" height="64" loading="lazy">
                 <div class="min-w-0 flex-1">
                   <p class="truncate font-label-lg text-[16px] leading-6 text-on-surface"><?= e($st['title']) ?></p>
-                  <p class="text-label-sm text-on-surface-variant"><?= e(trim(((string) $st['category'] !== '' ? $st['category'] . ' · ' : '') . ($st['duration_ms'] ? fmt_duration((int) $st['duration_ms']) : ''), ' ·')) ?></p>
+                  <p class="text-label-sm text-on-surface-variant"><?= e(trim(((string) $st['category'] !== '' ? $st['category'] . ' · ' : '') . ($st['duration_ms'] ? fmt_duration((int) $st['duration_ms']) : ($st['est_duration_sec'] ? fmt_duration((int) $st['est_duration_sec'] * 1000) : '')), ' ·')) ?></p>
                 </div>
                 <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-on-primary"><span class="material-symbols-outlined icon-fill">play_arrow</span></span>
               </a>
@@ -165,7 +170,7 @@ $dot = [
   <section class="space-y-4">
     <div class="flex items-end justify-between">
       <h3 class="font-headline-md text-[20px] font-bold leading-7 text-on-surface">녹음한 목소리</h3>
-      <span class="font-label-sm text-label-sm text-outline"><?= count($samples) ?>개 · <?= e(fmt_duration((int) $voice['sample_total_ms'])) ?></span>
+      <span class="font-label-sm text-label-sm text-outline"><?= count($samples) ?>개 · <?= e(fmt_duration($sampleMs)) ?></span>
     </div>
     <?php if (!$samples): ?>
       <p class="rounded-2xl bg-surface-container-low px-4 py-5 text-center text-[14px] text-on-surface-variant">아직 녹음이 없어요.</p>
@@ -178,9 +183,11 @@ $dot = [
             </button>
             <div class="min-w-0 flex-1">
               <p class="truncate font-label-lg text-label-lg text-on-surface"><?= e($s['title']) ?></p>
-              <p class="text-label-sm text-on-surface-variant"><?= e(($s['duration_ms'] ? fmt_duration($s['duration_ms']) : '길이 확인 중') . ' · ' . ($s['source'] === 'record' ? '녹음' : '파일')) ?></p>
+              <p class="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-label-sm text-on-surface-variant">
+                <span><?= e(($s['duration_ms'] ? fmt_duration($s['duration_ms']) : '길이 알 수 없음') . ' · ' . ($s['source'] === 'record' ? '녹음' : '파일')) ?></span>
+                <?php if ($g): ?><span class="rounded-full px-2 py-0.5 text-[11px] leading-4 <?= $g[1] ?>"><?= e($g[0]) ?></span><?php endif; ?>
+              </p>
             </div>
-            <?php if ($g): ?><span class="shrink-0 rounded-full px-2.5 py-1 font-label-sm text-label-sm <?= $g[1] ?>"><?= e($g[0]) ?></span><?php endif; ?>
           </li>
         <?php endforeach; ?>
       </ul>

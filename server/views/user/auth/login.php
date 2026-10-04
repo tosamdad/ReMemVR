@@ -13,7 +13,7 @@ $cls = function ($key) use ($input) {
     return $input . ' ' . (errors($key) ? 'border-error' : 'border-surface-variant');
 };
 ?>
-<div class="relative isolate">
+<div class="relative isolate break-keep">
   <?= partial('user/auth/backdrop') ?>
   <div class="mx-auto w-full max-w-md space-y-8">
     <header class="space-y-3 text-center">

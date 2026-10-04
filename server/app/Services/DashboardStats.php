@@ -418,7 +418,7 @@ class DashboardStats
 
     /**
      * 코어 엔진 헬스체크(Health::status 결과를 화면용으로 정리).
-     * ['all_ok', 'fake', 'checked_at', 'items' => [[key, icon, name, desc, ok, text]]]
+     * ['all_ok', 'fake', 'checked_at', 'items' => [[key, icon, name, detail(세부 수치), ok, badge(짧은 상태), text(설명)]]]
      */
     public static function health(): array
     {
@@ -435,20 +435,25 @@ class DashboardStats
 
         $model = (string) setting('gemini.model', 'gemini-2.5-flash');
         $items = [];
+        $msText = static function ($ms) {
+            return $ms !== null ? ' (' . number_format((int) $ms) . 'ms)' : '';
+        };
         $items[] = [
-            'key' => 'gemini', 'icon' => 'neurology', 'name' => 'Gemini · ' . $model,
-            'desc' => '아이 질문 음성 이해, 답변 작성',
+            'key' => 'gemini', 'icon' => 'neurology', 'name' => 'Gemini',
+            'detail' => $model . ' · ' . (!empty($g['ok']) ? '아이 질문 이해, 답변 작성' : (string) $g['message']),
             'ok' => !empty($g['ok']),
-            'text' => !empty($g['ok']) ? '정상 (' . number_format((int) $g['ms']) . 'ms)' : (string) $g['message'],
+            'badge' => !empty($g['ok']) ? '정상' . $msText($g['ms']) : '점검 필요',
+            'text' => !empty($g['ok']) ? '정상' . $msText($g['ms']) : (string) $g['message'],
         ];
         $credits = isset($el['credits']) && is_array($el['credits']) ? $el['credits'] : null;
         $items[] = [
             'key' => 'elevenlabs', 'icon' => 'graphic_eq', 'name' => 'ElevenLabs',
-            'desc' => '목소리 복제, 동화·답변 음성 합성',
-            'ok' => !empty($el['ok']),
-            'text' => !empty($el['ok'])
-                ? ($credits ? '잔여 ' . number_format((int) $credits['remaining']) . ' / ' . number_format((int) $credits['limit']) . ' 크레딧' : '정상')
+            'detail' => !empty($el['ok'])
+                ? ($credits ? '잔여 ' . number_format((int) $credits['remaining']) . ' / ' . number_format((int) $credits['limit']) . ' 크레딧' : '목소리 복제, 음성 합성')
                 : (string) $el['message'],
+            'ok' => !empty($el['ok']),
+            'badge' => !empty($el['ok']) ? '정상' . $msText($el['ms']) : '점검 필요',
+            'text' => !empty($el['ok']) ? '정상' : (string) $el['message'],
             'credit_percent' => $credits && (int) $credits['limit'] > 0 ? (int) round((int) $credits['remaining'] * 100 / (int) $credits['limit']) : null,
         ];
         $freeText = $st['free_mb'] !== null
@@ -456,16 +461,18 @@ class DashboardStats
             : '여유 공간 알 수 없음';
         $items[] = [
             'key' => 'storage', 'icon' => 'hard_drive', 'name' => '저장 공간',
-            'desc' => '녹음 샘플, 사전 생성 오디오 파일',
+            'detail' => !empty($st['writable']) ? '녹음 샘플, 동화 오디오 · ' . $freeText : (string) $st['message'],
             'ok' => !empty($st['ok']),
-            'text' => !empty($st['writable']) ? '쓰기 가능 · ' . $freeText : '쓰기 불가',
+            'badge' => !empty($st['writable']) ? (!empty($st['ok']) ? '쓰기 가능' : '공간 부족') : '쓰기 불가',
+            'text' => (string) $st['message'],
         ];
         $workerOk = (int) $wk['failed_24h'] === 0 && (int) $wk['stale'] === 0;
         $items[] = [
             'key' => 'worker', 'icon' => 'memory', 'name' => '작업 처리기',
-            'desc' => '목소리 생성, 동화 오디오 생성 작업',
+            'detail' => '대기 ' . number_format((int) $wk['pending']) . ' · 실행 ' . number_format((int) $wk['running']) . ' · 24시간 실패 ' . number_format((int) $wk['failed_24h']),
             'ok' => $workerOk,
-            'text' => '대기 ' . number_format((int) $wk['pending']) . ' · 실패 ' . number_format((int) $wk['failed_24h']) . ' (24시간)',
+            'badge' => $workerOk ? '정상' : ((int) $wk['stale'] > 0 ? '멈춘 작업' : '실패 확인'),
+            'text' => $workerOk ? '정상' : '실패한 작업이 있습니다',
         ];
         $allOk = true;
         foreach ($items as $it) {

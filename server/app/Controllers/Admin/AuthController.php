@@ -4,7 +4,6 @@ namespace App\Controllers\Admin;
 use App\Core\AdminAuth;
 use App\Core\RateLimiter;
 use App\Core\Request;
-use App\Core\Validator;
 
 /**
  * 관리자 진입(/admin), 최초 설정(/admin/setup), 로그인, 로그아웃.
@@ -55,32 +54,8 @@ class AuthController
             back_with_errors(['ops_token' => '시도가 너무 많습니다. 10분 뒤에 다시 시도하세요.'], '/admin/setup');
         }
 
-        $v = Validator::make($_POST, [
-            'ops_token' => 'required',
-            'login_id' => 'required|min:4|max:50',
-            'name' => 'required|max:50',
-            'email' => 'required|email|max:191',
-            'password' => 'required|min:10|max:200|confirmed',
-        ], [
-            'ops_token' => 'OPS_TOKEN',
-            'login_id' => '아이디',
-            'name' => '이름',
-            'email' => '이메일',
-            'password' => '비밀번호',
-        ]);
-        $errors = $v->errors();
-        $data = $v->validated();
-
-        if (!isset($errors['ops_token'])) {
-            if (!self::opsTokenConfigured()) {
-                $errors['ops_token'] = '서버 설정에 OPS_TOKEN 이 없거나 32자보다 짧습니다. 배포 설정을 먼저 확인하세요.';
-            } elseif (!hash_equals((string) config('ops_token'), (string) $data['ops_token'])) {
-                $errors['ops_token'] = 'OPS_TOKEN 이 일치하지 않습니다.';
-            }
-        }
-        if (!isset($errors['login_id']) && !preg_match('/^[A-Za-z0-9._-]+$/', (string) $data['login_id'])) {
-            $errors['login_id'] = '아이디는 영문, 숫자, 점(.), 밑줄(_), 하이픈(-)만 쓸 수 있습니다.';
-        }
+        $data = self::setupInput($_POST);
+        $errors = self::validateSetup($data);
         if ($errors) {
             back_with_errors($errors, '/admin/setup');
         }
@@ -94,7 +69,7 @@ class AuthController
 
             return db_insert('admins', [
                 'login_id' => (string) $data['login_id'],
-                'password_hash' => password_hash((string) $_POST['password'], PASSWORD_DEFAULT),
+                'password_hash' => password_hash($data['password'], PASSWORD_DEFAULT),
                 'name' => (string) $data['name'],
                 'email' => (string) $data['email'],
                 'role' => 'super',
@@ -190,6 +165,70 @@ class AuthController
     }
 
     // ───────────────────────── 내부 ─────────────────────────
+
+    /** 최초 설정 입력값(앞뒤 공백 정리, 비밀번호는 그대로) */
+    private static function setupInput(array $post): array
+    {
+        $str = static function ($k) use ($post) {
+            return isset($post[$k]) && is_string($post[$k]) ? $post[$k] : '';
+        };
+
+        return [
+            'ops_token' => trim($str('ops_token')),
+            'login_id' => trim($str('login_id')),
+            'name' => trim($str('name')),
+            'email' => trim($str('email')),
+            'password' => $str('password'),
+            'password_confirmation' => $str('password_confirmation'),
+        ];
+    }
+
+    /** 최초 설정 검증. 항목별 오류 메시지 */
+    private static function validateSetup(array $d): array
+    {
+        $errors = [];
+        if ($d['ops_token'] === '') {
+            $errors['ops_token'] = 'OPS_TOKEN 을 입력하세요.';
+        } elseif (!self::opsTokenConfigured()) {
+            $errors['ops_token'] = '서버 설정에 OPS_TOKEN 이 없거나 32자보다 짧습니다. 배포 설정을 먼저 확인하세요.';
+        } elseif (!hash_equals((string) config('ops_token'), $d['ops_token'])) {
+            $errors['ops_token'] = 'OPS_TOKEN 이 일치하지 않습니다.';
+        }
+
+        $len = mb_strlen($d['login_id']);
+        if ($len === 0) {
+            $errors['login_id'] = '아이디를 입력하세요.';
+        } elseif ($len < 4 || $len > 50) {
+            $errors['login_id'] = '아이디는 4자 이상 50자 이하로 입력하세요.';
+        } elseif (!preg_match('/^[A-Za-z0-9._-]+$/', $d['login_id'])) {
+            $errors['login_id'] = '아이디는 영문, 숫자, 점(.), 밑줄(_), 하이픈(-)만 쓸 수 있습니다.';
+        }
+
+        if ($d['name'] === '') {
+            $errors['name'] = '이름을 입력하세요.';
+        } elseif (mb_strlen($d['name']) > 50) {
+            $errors['name'] = '이름은 50자 이하로 입력하세요.';
+        }
+
+        if ($d['email'] === '') {
+            $errors['email'] = '이메일을 입력하세요.';
+        } elseif (!filter_var($d['email'], FILTER_VALIDATE_EMAIL) || mb_strlen($d['email']) > 191) {
+            $errors['email'] = '올바른 이메일 주소를 입력하세요.';
+        }
+
+        $pl = mb_strlen($d['password']);
+        if ($pl === 0) {
+            $errors['password'] = '비밀번호를 입력하세요.';
+        } elseif ($pl < 10) {
+            $errors['password'] = '비밀번호는 10자 이상으로 정하세요.';
+        } elseif ($pl > 200) {
+            $errors['password'] = '비밀번호는 200자 이하로 정하세요.';
+        } elseif (!hash_equals($d['password'], $d['password_confirmation'])) {
+            $errors['password_confirmation'] = '비밀번호 확인이 일치하지 않습니다.';
+        }
+
+        return $errors;
+    }
 
     /** 배포 설정에 쓸 만한 OPS_TOKEN 이 있는지(32자 이상) */
     private static function opsTokenConfigured(): bool

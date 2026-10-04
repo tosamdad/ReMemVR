@@ -4,7 +4,7 @@ layout('user/layout_auth', ['title' => '새 비밀번호']);
 $input = 'w-full min-h-12 rounded-2xl border-2 bg-surface-container-lowest px-4 pr-12 font-body-md text-body-md text-on-surface transition-all placeholder:text-outline-variant focus:border-primary focus:ring-0';
 $label = 'ml-2 text-[14px] font-semibold leading-5 tracking-[0.02em] text-on-surface-variant';
 ?>
-<div class="relative isolate">
+<div class="relative isolate break-keep">
   <?= partial('user/auth/backdrop') ?>
   <div class="mx-auto w-full max-w-md space-y-8">
     <header class="space-y-3 text-center">

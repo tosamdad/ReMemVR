@@ -101,10 +101,10 @@
     return tl.length ? tl : estimateTimeline(durationMs || M.est_ms || S.length * 4000);
   }
 
+  /** 기기 음성은 글자 수로 길이를 어림한다(한 글자 약 160ms, 배속 반영). 서버의 show.php 와 같은 식 */
   function deviceTotalMs() {
     var chars = S.reduce(function (a, s) { return a + charLen(s.content) + 1; }, 0);
-    var base = M.est_ms > 0 ? M.est_ms : chars * 200;
-    return base / rate;
+    return Math.round(chars * 160 / rate);
   }
 
   var audio = null;
@@ -183,13 +183,13 @@
   }
 
   function setPlaying(on) {
+    accumulate();
     state.playing = on;
     el.playIcon.textContent = on ? 'pause' : 'play_arrow';
     el.play.setAttribute('aria-label', on ? '일시 정지' : '재생');
     if ('mediaSession' in navigator) {
       try { navigator.mediaSession.playbackState = on ? 'playing' : 'paused'; } catch (e) {}
     }
-    state.lastTick = performance.now();
   }
 
   function updateAskLabel() {
@@ -198,9 +198,10 @@
   }
 
   // 들은 시간은 실제로 재생 중인 동안의 벽시계 시간으로 잰다(배속이어도 아이가 들은 시간).
+  // 화면이 꺼지면 애니메이션 프레임이 멈추고 타이머도 1분 간격까지 느려지므로 한 번에 70초까지 인정한다.
   function accumulate() {
     var now = performance.now();
-    if (state.playing && state.lastTick) state.listenedMs += Math.min(1000, Math.max(0, now - state.lastTick));
+    if (state.playing && state.lastTick) state.listenedMs += Math.min(70000, Math.max(0, now - state.lastTick));
     state.lastTick = now;
   }
 
@@ -588,7 +589,7 @@
       return RM.api('/api/play-sessions/' + sid + '/complete', { method: 'POST', body: p });
     }).then(function (res) {
       if (res && res.xp_gained > 0) {
-        el.endXp.textContent = '+' + res.xp_gained + ' XP' + (res.level_up ? ' · 레벨 ' + res.level.level + ' ' + res.level.title + '이 되었어요!' : '');
+        el.endXp.textContent = '+' + res.xp_gained + ' XP' + (res.level_up ? ' · 레벨 업! 레벨 ' + res.level.level + ' ' + res.level.title : '');
         el.endXp.hidden = false;
       }
     }).catch(function () {});
@@ -655,7 +656,7 @@
 
   // ───────────────────────── 질문하기 ─────────────────────────
 
-  var rec = null, recording = false, uploadCtl = null, answerAudio = null, wasPlaying = false;
+  var rec = null, recording = false, uploadCtl = null, answerAudio = null;
   var levelBars = [];
   if (el.levels) {
     for (var b = 0; b < 14; b++) {
@@ -682,13 +683,15 @@
   }
 
   // iOS 는 사용자 조작 없이 새 오디오를 재생하지 못하므로 버튼을 누를 때 답 오디오를 미리 깨워 둔다.
-  var SILENT = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=';
   function unlockAnswerAudio() {
     if (answerAudio) return;
     answerAudio = new Audio();
-    answerAudio.src = SILENT;
-    var p = answerAudio.play();
-    if (p && p.catch) p.catch(function () {});
+    try {
+      // 0.1초 무음 WAV
+      answerAudio.src = URL.createObjectURL(RMRecorder.encodeWav(new Float32Array(800), 8000));
+      var p = answerAudio.play();
+      if (p && p.catch) p.catch(function () {});
+    } catch (e) {}
   }
 
   function startQuestion() {
@@ -701,7 +704,6 @@
     unlockAnswerAudio();
     cancelCountdown();
     el.end.hidden = true;
-    wasPlaying = state.playing;
     state.busy = true;
     pause(true);
     levelHist = [];
@@ -722,14 +724,15 @@
         else finishRecording();
       }
     });
-    ensureSession()
-      .then(function () { return rec.start(); })
-      .then(function () { recording = true; })
+    // 마이크는 버튼을 누른 그 순간에 켠다(브라우저가 사용자 조작 안에서만 오디오를 허용하는 경우 대비). 재생 기록은 함께 준비한다.
+    var r = rec;
+    r.start()
+      .then(function () { if (rec === r) recording = true; else r.cancel(); })
       .catch(function (err) {
-        if (rec) rec.cancel();
-        rec = null;
+        if (rec === r) { r.cancel(); rec = null; }
         endQuestion(err && err.message ? err.message : '마이크를 시작하지 못했어요.', 'error');
       });
+    ensureSession().catch(function () {});
   }
 
   function noSpeech() {
@@ -761,7 +764,11 @@
     fd.append('sentence_seq', String(S[state.index].seq));
     fd.append('position_ms', String(Math.round(positionMs())));
     uploadCtl = window.AbortController ? new AbortController() : null;
-    RM.api('/api/play-sessions/' + state.sessionId + '/question', { method: 'POST', body: fd, signal: uploadCtl ? uploadCtl.signal : undefined })
+    var signal = uploadCtl ? uploadCtl.signal : undefined;
+    ensureSession()
+      .then(function (sid) {
+        return RM.api('/api/play-sessions/' + sid + '/question', { method: 'POST', body: fd, signal: signal });
+      })
       .then(function (res) {
         uploadCtl = null;
         if (!state.busy) return;
@@ -827,7 +834,7 @@
 
   function stopAnswer() {
     if (answerAudio) { try { answerAudio.pause(); } catch (e) {} answerAudio.onended = null; answerAudio.onerror = null; }
-    if (synth && mode === 'audio') { try { synth.cancel(); } catch (e) {} }
+    if (synth) { try { synth.cancel(); } catch (e) {} }
   }
 
   /** 질문 화면을 닫고 지금 문장 처음부터 이야기를 이어 간다. */
@@ -840,7 +847,7 @@
     el.overlay.hidden = true;
     state.busy = false;
     if (message) RM.toast(message, type || 'info');
-    if (state.ended) return;
+    if (state.ended) { el.end.hidden = false; return; }
     rewindSentence();
     play();
   }

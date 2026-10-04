@@ -61,6 +61,10 @@ class SocialAuthController
             && hash_equals((string) $saved['state'], $state)
             && time() - (int) $saved['at'] <= self::STATE_TTL;
         if (!$valid || $code === '') {
+            // 이미 로그인한 상태에서 뒤로 가기 등으로 콜백을 다시 연 경우는 조용히 홈으로 보낸다.
+            if (Auth::user()) {
+                redirect(AuthController::afterLoginPath());
+            }
             flash('error', '로그인 요청이 만료되었어요. 다시 시도해 주세요.');
             redirect('/login');
         }

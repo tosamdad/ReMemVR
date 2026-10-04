@@ -1,7 +1,7 @@
 <?php
 /** 아이 추가, 수정. 변수: $child(null 이면 새로 만들기), $values, $canDelete */
 $isNew = $child === null;
-layout('user/layout', ['title' => $isNew ? '아이 추가' : '아이 프로필 수정', 'header' => 'sub', 'back' => '/settings/children']);
+layout('user/layout', ['title' => $isNew ? '아이 추가' : '아이 프로필 수정', 'header' => 'sub', 'back' => '/settings/children', 'mainClass' => 'px-margin-mobile pt-6 pb-6 break-keep']);
 $action = $isNew ? '/settings/children' : '/settings/children/' . (int) $child['id'];
 ?>
 <form method="post" action="<?= e(url($action)) ?>" class="card space-y-6 p-md" novalidate>

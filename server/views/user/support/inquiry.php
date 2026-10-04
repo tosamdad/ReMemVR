@@ -2,7 +2,7 @@
 /** 1:1 문의 상세와 운영자 답변. 변수: $inquiry */
 use App\Controllers\User\SupportController;
 
-layout('user/layout', ['title' => '문의 내역', 'header' => 'sub', 'back' => '/settings/support#my-inquiries']);
+layout('user/layout', ['title' => '문의 내역', 'header' => 'sub', 'back' => '/settings/support#my-inquiries', 'mainClass' => 'px-margin-mobile pt-6 pb-6 break-keep']);
 $chip = SupportController::statusChip((string) $inquiry['status']);
 $answered = trim((string) $inquiry['answer']) !== '';
 ?>

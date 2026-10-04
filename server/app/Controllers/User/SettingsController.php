@@ -67,10 +67,9 @@ class SettingsController
         } elseif (mb_strlen($name) > 30) {
             $errors['name'] = '이름은 30자 이하로 입력해 주세요.';
         }
-        if ($email === '') {
-            $errors['email'] = '이메일을 입력해 주세요.';
-        } elseif (strlen($email) > 191 || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $errors['email'] = '올바른 이메일 주소를 입력해 주세요.';
+        $emailError = AuthController::emailError($email);
+        if ($emailError !== null) {
+            $errors['email'] = $emailError;
         } elseif ($email !== $user['email'] && SocialLogin::isPlaceholderEmail($email)) {
             $errors['email'] = '사용할 수 없는 이메일 주소예요.';
         } elseif ($email !== $user['email'] && db_value('SELECT id FROM users WHERE email = ? AND id <> ?', [$email, (int) $user['id']])) {
@@ -180,7 +179,7 @@ class SettingsController
     // ───────────────────────── 환경 설정 API ─────────────────────────
 
     /** POST /api/settings/prefs {dark_mode: true, notify_voice_ready: false, ...} → {ok, prefs} */
-    public function savePrefs(): array
+    public function savePrefs(): ?array
     {
         require_user();
         $input = Request::json();
@@ -190,9 +189,9 @@ class SettingsController
         unset($input['_token']);
         $changes = self::sanitizePrefs($input);
         if (!$changes) {
-            http_response_code(422);
+            json_error('바꿀 설정이 없어요.', 422);
 
-            return ['ok' => false, 'error' => '바꿀 설정이 없어요.'];
+            return null;
         }
         $prefs = Auth::savePrefs($changes);
 

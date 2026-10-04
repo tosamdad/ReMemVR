@@ -47,8 +47,8 @@ $chip = static function (bool $active): string {
       <div class="absolute top-2.5 right-2.5 whitespace-nowrap rounded-full bg-surface-container-lowest/90 px-2 py-1 text-[10px] font-bold tracking-wider text-primary shadow-sm backdrop-blur-md"><?= e($s['category']) ?></div>
       <?php endif; ?>
       <?php if ($s['completed']): ?>
-      <div class="absolute top-2.5 left-2.5 flex items-center gap-0.5 rounded-full bg-secondary py-1 pl-1.5 pr-2 text-[10px] font-bold text-on-secondary shadow-sm">
-        <span class="material-symbols-outlined text-[14px]">check</span>다 들었어요
+      <div class="absolute top-2.5 left-2.5 flex h-7 w-7 items-center justify-center rounded-full bg-secondary text-on-secondary shadow-sm" title="다 들은 동화">
+        <span class="material-symbols-outlined text-[18px]">check</span>
       </div>
       <?php endif; ?>
       <?php if ($s['resume']): ?>
@@ -71,6 +71,9 @@ $chip = static function (bool $active): string {
         <span class="material-symbols-outlined text-[14px]">schedule</span><?= e($s['duration_label']) ?>
         <?php else: ?>
         <span class="material-symbols-outlined text-[14px]">auto_stories</span>동화
+        <?php endif; ?>
+        <?php if ($s['completed']): ?>
+        <span class="ml-auto text-secondary">다 들었어요</span>
         <?php endif; ?>
       </p>
     </div>

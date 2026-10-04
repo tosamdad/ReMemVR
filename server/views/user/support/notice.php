@@ -1,6 +1,6 @@
 <?php
 /** 공지사항 본문. 변수: $notice */
-layout('user/layout', ['title' => $notice['title'], 'header' => 'sub', 'headerTitle' => '공지사항', 'back' => '/settings/notices']);
+layout('user/layout', ['title' => $notice['title'], 'header' => 'sub', 'headerTitle' => '공지사항', 'back' => '/settings/notices', 'mainClass' => 'px-margin-mobile pt-6 pb-6 break-keep']);
 ?>
 <article class="card p-md">
   <header class="border-b border-surface-variant/30 pb-4">

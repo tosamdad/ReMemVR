@@ -3,6 +3,7 @@ namespace App\Controllers\User;
 
 use App\Core\RateLimiter;
 use App\Core\Request;
+use App\Core\Session;
 use App\Services\Jobs;
 
 /** 공지사항, 고객 센터(연락처, 자주 묻는 질문, 1:1 문의) */
@@ -48,6 +49,10 @@ class SupportController
              ORDER BY is_pinned DESC, posted_at DESC, id DESC LIMIT ? OFFSET ?",
             [self::NOTICES_PER_PAGE, ($page - 1) * self::NOTICES_PER_PAGE]
         );
+
+        if (!$rows && $page > 1) {
+            redirect('/settings/notices');
+        }
 
         return view('user/support/notices', [
             'notices' => $rows,
@@ -117,11 +122,13 @@ class SupportController
         } elseif (mb_strlen($body) > 3000) {
             $errors['body'] = '문의 내용은 3,000자 이하로 입력해 주세요.';
         }
-        if ($errors) {
-            back_with_errors($errors, '/settings/support#inquiry-form');
+        if (!$errors && !RateLimiter::hit('inquiry:' . (int) $user['id'], 5, 3600)) {
+            $errors['body'] = '문의를 짧은 시간에 너무 많이 보냈어요. 잠시 후 다시 시도해 주세요.';
         }
-        if (!RateLimiter::hit('inquiry:' . (int) $user['id'], 5, 3600)) {
-            back_with_errors(['body' => '문의를 짧은 시간에 너무 많이 보냈어요. 잠시 후 다시 시도해 주세요.'], '/settings/support#inquiry-form');
+        if ($errors) {
+            // 폼이 화면 아래쪽에 있으므로 오류와 함께 폼 위치로 바로 돌아간다.
+            Session::setOldInput(['category' => $category, 'title' => $title, 'body' => $body], $errors);
+            redirect('/settings/support#inquiry-form');
         }
 
         $id = db_insert('inquiries', [

@@ -1,6 +1,6 @@
 <?php
 /** 공지사항 목록(고정 공지 먼저). 변수: $notices, $page, $hasMore */
-layout('user/layout', ['title' => '공지사항', 'header' => 'sub', 'back' => '/settings']);
+layout('user/layout', ['title' => '공지사항', 'header' => 'sub', 'back' => '/settings', 'mainClass' => 'px-margin-mobile pt-6 pb-6 break-keep']);
 ?>
 <?php if (!$notices): ?>
   <div class="card flex flex-col items-center gap-4 p-lg text-center">

@@ -462,8 +462,8 @@
           + '<button type="button" class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-secondary-container text-on-secondary-container active:scale-90" data-play-src="' + RM.escapeHtml(s.url) + '" aria-label="' + RM.escapeHtml(s.title) + ' 듣기">'
           + '<span class="material-symbols-outlined icon-fill" data-play-icon>play_arrow</span></button>'
           + '<div class="min-w-0 flex-1"><p class="truncate font-label-lg text-label-lg text-on-surface">' + RM.escapeHtml(s.title) + '</p>'
-          + '<p class="text-label-sm text-on-surface-variant">' + (s.duration_ms ? RM.fmtTime(s.duration_ms) : '길이 알 수 없음') + ' · ' + (s.source === 'record' ? '녹음' : '파일') + '</p></div>'
-          + (g ? '<span class="shrink-0 rounded-full px-2.5 py-1 font-label-sm text-label-sm ' + g.cls + '">' + g.label + '</span>' : '')
+          + '<p class="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-label-sm text-on-surface-variant"><span>' + (s.duration_ms ? RM.fmtTime(s.duration_ms) : '길이 알 수 없음') + ' · ' + (s.source === 'record' ? '녹음' : '파일') + '</span>'
+          + (g ? '<span class="rounded-full px-2 py-0.5 text-[11px] leading-4 ' + g.cls + '">' + g.label + '</span>' : '') + '</p></div>'
           + '<button type="button" class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-on-surface-variant transition-colors hover:bg-error-container hover:text-on-error-container" data-delete-sample="' + s.id + '" aria-label="녹음 지우기">'
           + '<span class="material-symbols-outlined">delete</span></button></li>';
       }).join('');
@@ -637,7 +637,11 @@
       try { el.reviewAudio.pause(); } catch (e) {}
       el.reviewAudio.removeAttribute('src');
       el.review.hidden = true;
-      if (!recording) setRecUi('idle');
+      if (!recording) {
+        setRecUi('idle');
+        meter.reset();
+        el.timer.textContent = '00:00';
+      }
     }
 
     el.recBtn.addEventListener('click', function () {

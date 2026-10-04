@@ -2,7 +2,7 @@
 /** 아이 프로필 목록. 변수: $children, $currentId, $canAdd */
 use App\Controllers\User\ChildrenController;
 
-layout('user/layout', ['title' => '아이 프로필 설정', 'header' => 'sub', 'back' => '/settings']);
+layout('user/layout', ['title' => '아이 프로필 설정', 'header' => 'sub', 'back' => '/settings', 'mainClass' => 'px-margin-mobile pt-6 pb-6 break-keep']);
 ?>
 <p class="mb-6 px-1 font-body-md text-body-md text-on-surface-variant">지금 듣는 아이를 고르면 재생 기록과 리포트가 그 아이 기준으로 쌓여요.</p>
 

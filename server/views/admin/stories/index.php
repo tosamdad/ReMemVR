@@ -2,7 +2,7 @@
 /**
  * 동화 콘텐츠 관리(CMS). 디자인 시안 cms 기준.
  * 변수: story(선택한 동화 또는 null), empty(동화가 하나도 없음), sentences, library, filters, publishedCount, totalCount,
- *       audios(시뮬레이션용 완료 오디오), outdated, staleNotice, timecodeSource, categories, statuses, aecLevels, presets, global, ttsReady
+ *       audios(시뮬레이션용 완료 오디오), outdated(옛 본문 오디오 수), timecodeSource, categories, statuses, aecLevels, presets, global, ttsReady
  */
 use App\Controllers\Admin\StoryController;
 
@@ -202,12 +202,12 @@ $savedSentences = array_map(static function ($s) {
         <a href="<?= e(url('/admin/stories/new')) ?>" class="a-btn-primary"><span class="material-symbols-outlined text-[18px]">add_circle</span>새 무료 동화 등록</a>
       </div>
       <?php else: ?>
-      <?php if ($story && ($staleNotice > 0 || $outdated > 0)): ?>
+      <?php if ($story && $outdated > 0): ?>
       <div class="flex flex-col gap-3 rounded-xl bg-secondary-fixed px-5 py-4 text-on-secondary-fixed sm:flex-row sm:items-center sm:justify-between">
         <div class="flex items-start gap-3">
           <span class="material-symbols-outlined text-[22px] text-secondary">sync_problem</span>
           <div>
-            <p class="font-label-md text-label-md">옛 본문으로 만든 목소리 오디오 <?= (int) max($staleNotice, $outdated) ?>개가 있습니다.</p>
+            <p class="font-label-md text-label-md">옛 본문으로 만든 목소리 오디오 <?= (int) $outdated ?>개가 있습니다.</p>
             <p class="font-label-sm text-label-sm text-on-secondary-fixed-variant">회원은 다시 생성될 때까지 옛 본문 오디오를 듣습니다. 다시 생성하면 ElevenLabs 크레딧이 사용됩니다.</p>
           </div>
         </div>
@@ -411,12 +411,12 @@ $savedSentences = array_map(static function ($s) {
               <table class="w-full text-left font-body-md text-body-md">
                 <thead>
                   <tr class="bg-surface-container-high/60 font-label-sm text-label-sm text-on-surface-variant">
-                    <th class="rounded-l-lg px-4 py-3">ID</th>
+                    <th class="rounded-l-lg py-3 pl-4 pr-2">ID</th>
                     <th class="px-4 py-3">본문 텍스트 (아이용 정제 스크립트)</th>
-                    <th class="whitespace-nowrap px-4 py-3">시작 (MM:SS)</th>
-                    <th class="whitespace-nowrap px-4 py-3">종료 (MM:SS)</th>
-                    <th class="px-4 py-3">맥락 키워드</th>
-                    <th class="rounded-r-lg px-4 py-3 text-right">작업</th>
+                    <th class="whitespace-nowrap px-2 py-3">시작 (MM:SS)</th>
+                    <th class="whitespace-nowrap px-2 py-3">종료 (MM:SS)</th>
+                    <th class="px-2 py-3">맥락 키워드</th>
+                    <th class="rounded-r-lg py-3 pl-1 pr-4 text-right">작업</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-surface-variant/40" data-rows>

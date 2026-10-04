@@ -126,3 +126,66 @@ test('동화 길이: 예상 시간, 오디오 길이, 글자 수 순서로 고�
     assert_same('-1', Progress::delta(2, 3));
     assert_same('0', Progress::delta(3, 3));
 });
+
+test('DB 집계: 자녀 범위, 이번 주 읽은 책, 기간 통계, 이어 듣기(되돌림)', function () {
+    $pdo = test_db();
+    try {
+        db_value('SELECT 1 FROM play_sessions LIMIT 1');
+    } catch (Throwable $e) {
+        skip_test('play_sessions 테이블 없음');
+    }
+    $pdo->beginTransaction();
+    try {
+        $uid = db_insert('users', ['email' => 'progress-test-' . bin2hex(random_bytes(4)) . '@example.com', 'name' => '테스트', 'status' => 'active']);
+        $c1 = db_insert('children', ['user_id' => $uid, 'name' => '첫째']);
+        $sid = db_insert('stories', ['title' => '테스트 동화', 'body' => '가. 나.', 'status' => 'published']);
+        $sid2 = db_insert('stories', ['title' => '두 번째', 'body' => '다.', 'status' => 'published']);
+        db_insert('story_sentences', ['story_id' => $sid, 'seq' => 1, 'content' => '가.', 'keywords' => '달님, 별빛']);
+        db_insert('story_sentences', ['story_id' => $sid, 'seq' => 2, 'content' => '나.', 'keywords' => '구름']);
+        db_insert('story_sentences', ['story_id' => $sid2, 'seq' => 1, 'content' => '다.', 'keywords' => '바다']);
+        $now = new DateTimeImmutable('now');
+        $week = Progress::weekStart($now);
+        $inWeek = $week->modify('+1 minute')->format('Y-m-d H:i:s');
+        $lastWeek = $week->modify('-2 days')->format('Y-m-d H:i:s');
+        // 이번 주: 같은 동화를 두 번 다 들음(한 권), 자녀 미지정 기록 하나
+        $a = db_insert('play_sessions', ['user_id' => $uid, 'child_id' => $c1, 'story_id' => $sid, 'started_at' => $inWeek, 'completed' => 1, 'completed_at' => $inWeek, 'listened_ms' => 120000, 'updated_at' => $inWeek]);
+        db_insert('play_sessions', ['user_id' => $uid, 'child_id' => null, 'story_id' => $sid, 'started_at' => $inWeek, 'completed' => 1, 'completed_at' => $inWeek, 'listened_ms' => 60000, 'updated_at' => $inWeek]);
+        // 지난주: 끝나지 않은 다른 동화(첫 문장까지)
+        db_insert('play_sessions', ['user_id' => $uid, 'child_id' => $c1, 'story_id' => $sid2, 'started_at' => $lastWeek, 'last_position_ms' => 1500, 'last_sentence_seq' => 1, 'listened_ms' => 30000, 'updated_at' => $lastWeek]);
+        db_insert('interactions', ['play_session_id' => $a, 'mode' => 'answer', 'question_text' => '왜?', 'answer_text' => '그건 말이야', 'created_at' => $inWeek]);
+        db_insert('interactions', ['play_session_id' => $a, 'mode' => 'quota', 'answer_text' => '나중에', 'created_at' => $inWeek]);
+
+        $one = Progress::scopeSql($uid, $c1, 1);
+        $t = Progress::totals($one);
+        assert_same(2, $t['completed'], '자녀 한 명이면 미지정 기록 포함');
+        assert_same(1, $t['answered'], '답을 들은 질문만');
+        assert_same(210000, $t['listened_ms']);
+        assert_same(Progress::xp(2, 1, 210000), Progress::levelFor($one)['xp']);
+        assert_same(1, Progress::weekBooks($one, $now), '같은 동화는 한 권');
+
+        $two = Progress::scopeSql($uid, $c1, 2);
+        assert_same(1, Progress::totals($two)['completed'], '자녀가 둘이면 미지정 기록 제외');
+
+        $p = Progress::period($one, $week, $week->modify('+7 days'), $week->modify('-7 days'), true, $now);
+        assert_same(1, $p['books']);
+        assert_same(0, $p['books_prev']);
+        assert_same(2, $p['started']);
+        assert_same(100, $p['completion_rate']);
+        assert_same(['구름', '달님', '별빛'], $p['words']['heard'], '최근에 들은 문장 순서');
+        assert_same(3, count($p['words']['mastered']));
+        assert_same(1, count($p['questions']));
+        assert_same(3, $p['daily'][0]['value'], '월요일 들은 분');
+
+        $prev = Progress::period($one, $week->modify('-7 days'), $week, $week->modify('-14 days'), true, $now);
+        assert_same(['바다'], $prev['words']['heard'], '끝나지 않은 동화는 들은 문장까지');
+        assert_same(null, Progress::period($one, $week->modify('-21 days'), $week->modify('-14 days'), $week->modify('-28 days'), true, $now)['completion_rate']);
+
+        $resume = Progress::resumeStates($one);
+        assert_true(isset($resume[$sid2]), '끝나지 않은 동화는 이어 듣기');
+        assert_true(!isset($resume[$sid]), '다 들은 동화는 이어 듣기 없음');
+        assert_same('device', $resume[$sid2]['voice']);
+        assert_same([$sid], Progress::completedStoryIds($one));
+    } finally {
+        $pdo->rollBack();
+    }
+});
