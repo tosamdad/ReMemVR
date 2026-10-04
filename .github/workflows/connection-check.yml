@@ -56,10 +56,17 @@ jobs:
         run: |
           umask 077
           printf 'user = "%s:%s"\n' "$FTP_USERNAME" "$FTP_PASSWORD" > "$RUNNER_TEMP/ftp.cfg"
-          echo "--- 홈 폴더"
-          curl -sS --max-time 30 -K "$RUNNER_TEMP/ftp.cfg" --list-only "ftp://$FTP_SERVER:$FTP_PORT/"
-          echo "--- 웹 루트 $WEB_DIR"
-          curl -sS --max-time 30 -K "$RUNNER_TEMP/ftp.cfg" --list-only "ftp://$FTP_SERVER:$FTP_PORT$WEB_DIR"
+          echo "--- 현재 폴더"
+          curl -sS --max-time 30 -K "$RUNNER_TEMP/ftp.cfg" -o /dev/null -v "ftp://$FTP_SERVER:$FTP_PORT/" -Q "PWD" 2>&1 | grep -E '^< 257|^< 230' || true
+          echo "--- 로그인 폴더 목록(숨김 포함)"
+          curl -sS --max-time 30 -K "$RUNNER_TEMP/ftp.cfg" -X "LIST -a" "ftp://$FTP_SERVER:$FTP_PORT/"
+          echo "--- 웹 루트 $WEB_DIR 확인"
+          if curl -sS --max-time 30 -K "$RUNNER_TEMP/ftp.cfg" -X "LIST -a" "ftp://$FTP_SERVER:$FTP_PORT$WEB_DIR"; then
+            echo "$WEB_DIR 폴더가 있다."
+          else
+            echo "::warning::$WEB_DIR 폴더가 없다. 로그인 폴더(/)가 웹 루트인지 시험한다."
+            { echo "WEB_DIR=/"; echo "APP_DIR=/_conncheck_app/"; echo "TEMP_APP_DIR=/_conncheck_app"; } >> "$GITHUB_ENV"
+          fi
 
       - name: 점검 파일 준비
         run: |
@@ -119,4 +126,8 @@ jobs:
         if: always() && env.CHECK_NAME != ''
         run: |
           curl -sS --max-time 30 -K "$RUNNER_TEMP/ftp.cfg" -o /dev/null "ftp://$FTP_SERVER:$FTP_PORT/" \
-            -Q "DELE ${WEB_DIR%/}/$CHECK_NAME" && echo "삭제 완료"
+            -Q "DELE ${WEB_DIR%/}/$CHECK_NAME" && echo "점검 스크립트 삭제 완료"
+          if [ -n "$TEMP_APP_DIR" ]; then
+            curl -sS --max-time 30 -K "$RUNNER_TEMP/ftp.cfg" -o /dev/null "ftp://$FTP_SERVER:$FTP_PORT/" \
+              -Q "DELE $TEMP_APP_DIR/config.php" -Q "RMD $TEMP_APP_DIR" && echo "임시 앱 폴더 삭제 완료"
+          fi
