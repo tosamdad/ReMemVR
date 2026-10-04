@@ -269,7 +269,7 @@ class SocialLogin
     /**
      * 간편 로그인 결과로 회원을 찾거나 만든다.
      *   1) 이미 연결된 계정 → 그 회원
-     *   2) 같은 인증된 이메일의 회원 → 연결
+     *   2) 같은 이메일의 회원이 이미 있으면 → 원래 방법으로 로그인하라고 안내(자동 연결하지 않는다)
      *   3) 새 회원(비밀번호 없음, 간편 로그인 안내에 따라 약관 동의 시각 기록)
      * 반환: ['user' => 행, 'created' => bool, 'linked' => bool]
      */
@@ -293,14 +293,11 @@ class SocialLogin
                 }
             }
 
-            if ($profile['email'] !== null && $profile['email_verified']) {
-                $user = db_one('SELECT * FROM users WHERE email = ? AND deleted_at IS NULL', [$profile['email']]);
-                if ($user) {
-                    self::assertActive($user);
-                    self::link((int) $user['id'], $profile);
-
-                    return ['user' => $user, 'created' => false, 'linked' => true];
-                }
+            // 이메일 가입은 주소 소유를 확인하지 않으므로, 같은 이메일 계정에 자동으로 연결하면
+            // 남의 주소로 먼저 가입해 둔 사람이 진짜 주인의 간편 로그인 계정을 가로챌 수 있다.
+            if ($profile['email'] !== null && $profile['email_verified']
+                && db_value('SELECT id FROM users WHERE email = ? AND deleted_at IS NULL', [$profile['email']])) {
+                throw new \RuntimeException('이미 같은 이메일로 가입된 계정이 있어요. 처음 가입한 방법(이메일 또는 다른 간편 로그인)으로 로그인해 주세요.');
             }
 
             // 인증되지 않은 이메일은 남의 주소일 수 있어 계정 이메일로 쓰지 않는다.

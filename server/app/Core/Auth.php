@@ -38,7 +38,9 @@ class Auth
             $id = self::id();
             if ($id) {
                 $row = db_one('SELECT * FROM users WHERE id = ? AND deleted_at IS NULL', [$id]);
-                if ($row && $row['status'] === 'active') {
+                // 비밀번호가 바뀌면(재설정, 변경) 다른 기기에 남은 로그인은 끊는다.
+                if ($row && $row['status'] === 'active'
+                    && hash_equals((string) Session::get('pwv', ''), self::passwordVersion($row['password_hash']))) {
                     self::$user = $row;
                 } else {
                     Session::forget('uid');
@@ -53,6 +55,7 @@ class Auth
     {
         Session::regenerate();
         Session::set('uid', (int) $user['id']);
+        Session::set('pwv', self::passwordVersion(db_value('SELECT password_hash FROM users WHERE id = ?', [(int) $user['id']])));
         Session::forget('child_id');
         db_exec('UPDATE users SET last_login_at = NOW() WHERE id = ?', [(int) $user['id']]);
         self::$user = false;
@@ -62,6 +65,22 @@ class Auth
     {
         Session::destroy();
         self::$user = false;
+    }
+
+    /** 이 기기에서 비밀번호를 바꾼 뒤 현재 로그인은 유지한다(다른 기기의 로그인은 끊긴다). */
+    public static function syncPassword(): void
+    {
+        $id = self::id();
+        if ($id) {
+            Session::set('pwv', self::passwordVersion(db_value('SELECT password_hash FROM users WHERE id = ?', [$id])));
+        }
+        self::$user = false;
+    }
+
+    /** 세션에 두는 비밀번호 지문(해시 값 자체는 세션에 넣지 않는다) */
+    public static function passwordVersion($hash): string
+    {
+        return substr(hash('sha256', 'pwv|' . (string) $hash), 0, 16);
     }
 
     /** 다시 읽어야 할 때(정보 수정 직후) */

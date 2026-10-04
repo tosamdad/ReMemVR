@@ -175,6 +175,7 @@ class AdminAccountController
         db_update('admins', ['password_hash' => password_hash($new, PASSWORD_DEFAULT)], 'id = ?', [(int) $me['id']]);
         RateLimiter::clear('admin-password:' . (int) $me['id']);
         Session::regenerate();
+        AdminAuth::syncPassword();
         admin_audit('admin.password_change', 'admin', (int) $me['id'], ['login_id' => $me['login_id']]);
         flash('success', '비밀번호를 바꿨습니다. 다음 로그인부터 새 비밀번호를 쓰세요.');
         redirect('/admin/account/password');

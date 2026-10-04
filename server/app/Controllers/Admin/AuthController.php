@@ -126,7 +126,9 @@ class AuthController
         }
 
         $key = 'admin-login:' . client_ip() . ':' . strtolower(mb_substr($loginId, 0, 50));
-        if (self::recentFailures($key) >= self::LOGIN_MAX_FAILS) {
+        $failKey = 'admin-login:fail:' . strtolower(mb_substr($loginId, 0, 50));
+        if (RateLimiter::count($key) >= self::LOGIN_MAX_FAILS || RateLimiter::count($failKey) >= 20
+            || !RateLimiter::hit('admin-login:ip:' . client_ip(), 30, self::LOGIN_WINDOW)) {
             back_with_errors(['login_id' => '로그인 실패가 너무 많습니다. 10분 뒤에 다시 시도하세요.'], $fallback);
         }
 
@@ -135,6 +137,7 @@ class AuthController
         $hash = $admin ? (string) $admin['password_hash'] : '$2y$10$dQ2lJjMS0BoklVSITCPpJu3kkWXCqLxEHoXa14gU2NjZNNvM3C8KW';
         $ok = password_verify($password, $hash) && $admin !== null;
         if (!$ok) {
+            RateLimiter::hit($failKey, 20, 3600);
             $within = RateLimiter::hit($key, self::LOGIN_MAX_FAILS, self::LOGIN_WINDOW);
             back_with_errors(['password' => $within
                 ? '아이디 또는 비밀번호가 올바르지 않습니다.'
@@ -248,15 +251,5 @@ class AuthController
         }
 
         return $path;
-    }
-
-    /** 제한 창 안의 실패 횟수(기록하지 않고 읽기만 한다) */
-    private static function recentFailures(string $key): int
-    {
-        try {
-            return (int) db_value('SELECT hits FROM rate_limits WHERE k = ? AND reset_at >= NOW()', [substr($key, 0, 191)]);
-        } catch (\Throwable $e) {
-            return 0;
-        }
     }
 }

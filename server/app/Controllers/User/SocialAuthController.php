@@ -88,8 +88,6 @@ class SocialAuthController
         Auth::login($user);
         if ($result['created']) {
             flash('success', $label . ' 계정으로 가입했어요. 반가워요!');
-        } elseif ($result['linked']) {
-            flash('success', '같은 이메일의 계정에 ' . $label . ' 로그인을 연결했어요.');
         }
         $next = isset($saved['next']) ? (string) $saved['next'] : '';
         redirect(AuthController::afterLoginPath($next));

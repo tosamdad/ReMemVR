@@ -114,8 +114,11 @@ class AuthController
             back_with_errors($errors, '/login');
         }
 
+        // IP+이메일, IP 하나(여러 계정 대입), 이메일 하나(여러 IP 에서 한 계정 대입) 세 가지로 제한한다.
         $key = 'login:' . client_ip() . ':' . $email;
-        if (!RateLimiter::hit($key, 10, 600)) {
+        $failKey = 'login:fail:' . $email;
+        if (!RateLimiter::hit('login:ip:' . client_ip(), 30, 600) || !RateLimiter::hit($key, 10, 600)
+            || RateLimiter::count($failKey) >= 20) {
             back_with_errors(['email' => '로그인 시도가 너무 많아요. 10분 뒤에 다시 시도해 주세요.'], '/login');
         }
 
@@ -125,6 +128,7 @@ class AuthController
             back_with_errors(['email' => ($via !== 'email' ? $via . ' ' : '') . '간편 로그인으로 가입한 계정이에요. 아래 간편 로그인 버튼을 이용해 주세요.'], '/login');
         }
         if (!$user || !password_verify($password, (string) $user['password_hash'])) {
+            RateLimiter::hit($failKey, 20, 3600);
             back_with_errors(['password' => '이메일 또는 비밀번호가 맞지 않아요.'], '/login');
         }
         if ($user['status'] !== 'active') {

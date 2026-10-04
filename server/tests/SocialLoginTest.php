@@ -136,3 +136,41 @@ test('약관 텍스트를 소제목과 문단으로 나눈다', function () {
     assert_same(['첫 줄', '둘째 줄'], $blocks[1]['lines']);
     assert_same('1. 수집 항목', $blocks[2]['heading']);
 });
+
+test('로그인 뒤 돌아갈 곳(next): 다른 사이트로 나가는 주소는 받지 않는다', function () {
+    assert_same('/stories?tag=1', safe_next('/stories?tag=1'));
+    foreach (['', 'https://evil.example', '//evil.example', '/\\evil.example', "/\t/evil.example", "/\n/evil.example", "/\t\\evil.example", '/a\\b', "/\x7F/x"] as $bad) {
+        assert_same('/home', safe_next($bad), '거부: ' . json_encode($bad));
+    }
+});
+
+test('간편 로그인: 같은 이메일 계정이 이미 있으면 자동으로 연결하지 않는다', function () {
+    $tag = bin2hex(random_bytes(4));
+    $email = 'link-' . $tag . '@example.com';
+    $uid = db_insert('users', ['email' => $email, 'password_hash' => password_hash('abcd1234', PASSWORD_DEFAULT), 'name' => '먼저 가입', 'status' => 'active']);
+    $thrown = false;
+    try {
+        SocialLogin::findOrCreateUser(['provider' => 'google', 'id' => 'g-' . $tag, 'email' => $email, 'email_verified' => true, 'name' => '진짜 주인']);
+    } catch (\RuntimeException $e) {
+        $thrown = true;
+        assert_contains('처음 가입한 방법', $e->getMessage());
+    }
+    assert_true($thrown, '예외가 나야 한다');
+    assert_same(0, (int) db_value('SELECT COUNT(*) FROM user_social_accounts WHERE user_id = ?', [$uid]));
+
+    // 새 이메일이면 새 회원으로 가입하고, 다시 오면 같은 회원으로 로그인한다.
+    $p = ['provider' => 'kakao', 'id' => 'k-' . $tag, 'email' => 'new-' . $tag . '@example.com', 'email_verified' => true, 'name' => '새 회원'];
+    $first = SocialLogin::findOrCreateUser($p);
+    assert_true($first['created']);
+    $again = SocialLogin::findOrCreateUser($p);
+    assert_same(false, $again['created']);
+    assert_same((int) $first['user']['id'], (int) $again['user']['id']);
+});
+
+test('비밀번호 지문은 해시가 바뀌면 달라진다', function () {
+    $a = App\Core\Auth::passwordVersion('$2y$10$aaaa');
+    assert_same(16, strlen($a));
+    assert_same($a, App\Core\Auth::passwordVersion('$2y$10$aaaa'));
+    assert_true($a !== App\Core\Auth::passwordVersion('$2y$10$bbbb'));
+    assert_true(App\Core\Auth::passwordVersion(null) !== $a);
+});

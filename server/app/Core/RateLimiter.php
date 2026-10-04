@@ -27,6 +27,16 @@ class RateLimiter
         }
     }
 
+    /** 지금 창에서 쌓인 횟수(늘리지 않고 확인만) */
+    public static function count(string $key): int
+    {
+        try {
+            return (int) db_value('SELECT hits FROM rate_limits WHERE k = ? AND reset_at >= NOW()', [substr($key, 0, 191)]);
+        } catch (\Throwable $e) {
+            return 0;
+        }
+    }
+
     public static function clear(string $key): void
     {
         db_exec('DELETE FROM rate_limits WHERE k = ?', [substr($key, 0, 191)]);

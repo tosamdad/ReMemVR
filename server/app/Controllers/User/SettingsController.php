@@ -141,7 +141,7 @@ class SettingsController
         db_exec('UPDATE users SET password_hash = ? WHERE id = ?', [password_hash($password, PASSWORD_DEFAULT), (int) $user['id']]);
         db_exec('DELETE FROM password_resets WHERE user_id = ?', [(int) $user['id']]);
         Session::regenerate();
-        Auth::refresh();
+        Auth::syncPassword();
         flash('success', $hasPassword ? '비밀번호를 바꿨어요.' : '비밀번호를 만들었어요. 이제 이메일로도 로그인할 수 있어요.');
         redirect('/settings');
     }

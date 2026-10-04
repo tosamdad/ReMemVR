@@ -21,7 +21,9 @@ class AdminAuth
             $id = self::id();
             if ($id) {
                 $row = db_one('SELECT * FROM admins WHERE id = ?', [$id]);
-                if ($row && (!isset($row['status']) || $row['status'] === 'active')) {
+                // 비밀번호가 바뀌면(본인 변경, 최고 관리자의 초기화) 다른 기기에 남은 로그인은 끊는다.
+                if ($row && (!isset($row['status']) || $row['status'] === 'active')
+                    && hash_equals((string) Session::get('apwv', ''), Auth::passwordVersion($row['password_hash']))) {
                     self::$admin = $row;
                 } else {
                     Session::forget('admin_id');
@@ -36,7 +38,18 @@ class AdminAuth
     {
         Session::regenerate();
         Session::set('admin_id', (int) $admin['id']);
+        Session::set('apwv', Auth::passwordVersion(db_value('SELECT password_hash FROM admins WHERE id = ?', [(int) $admin['id']])));
         db_exec('UPDATE admins SET last_login_at = NOW() WHERE id = ?', [(int) $admin['id']]);
+        self::$admin = false;
+    }
+
+    /** 이 기기에서 비밀번호를 바꾼 뒤 현재 로그인은 유지한다. */
+    public static function syncPassword(): void
+    {
+        $id = self::id();
+        if ($id) {
+            Session::set('apwv', Auth::passwordVersion(db_value('SELECT password_hash FROM admins WHERE id = ?', [$id])));
+        }
         self::$admin = false;
     }
 

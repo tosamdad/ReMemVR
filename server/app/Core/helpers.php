@@ -317,7 +317,8 @@ function redirect_back(string $fallback = '/'): void
 function safe_next(?string $next, string $fallback = '/home'): string
 {
     $next = (string) $next;
-    if ($next === '' || $next[0] !== '/' || strpos($next, '//') === 0 || strpos($next, '/\\') === 0) {
+    // 브라우저는 주소의 탭, 줄바꿈을 지우고 \ 를 / 로 읽으므로(/%09/evil.com → //evil.com) 제어 문자와 \ 가 있으면 받지 않는다.
+    if ($next === '' || $next[0] !== '/' || strpos($next, '//') === 0 || preg_match('#[\x00-\x1F\x7F\\\\]#', $next)) {
         return $fallback;
     }
 
@@ -417,12 +418,12 @@ function errors(?string $key = null)
     return isset($all[$key]) ? $all[$key] : null;
 }
 
-/** 오류와 입력값을 세션에 담고 직전 페이지로 돌아간다(비밀번호 항목은 담지 않는다). */
+/** 오류와 입력값을 세션에 담고 직전 페이지로 돌아간다(비밀번호와 토큰 항목은 담지 않는다). */
 function back_with_errors(array $errors, string $fallback = '/'): void
 {
     $input = $_POST;
     foreach (array_keys($input) as $k) {
-        if (stripos((string) $k, 'password') !== false || $k === '_token') {
+        if (stripos((string) $k, 'password') !== false || stripos((string) $k, 'token') !== false) {
             unset($input[$k]);
         }
     }
