@@ -692,6 +692,9 @@ class ElevenLabs
         if ($status === 404) {
             return 'ElevenLabs 에서 목소리를 찾을 수 없습니다.';
         }
+        if ($status === 413) {
+            return 'ElevenLabs 로 보낸 파일이 너무 큽니다. 샘플 길이나 개수를 줄여 주세요.';
+        }
         if ($status === 400 || $status === 422) {
             return 'ElevenLabs 요청이 거절되었습니다' . ($detail !== '' ? ': ' . $detail : '.');
         }

@@ -207,10 +207,6 @@ class PlayerController
                 'cover' => cover_url($next),
                 'url' => url('/player/' . (int) $next['id'], $voice !== 'device' ? ['voice' => $voice] : []),
             ] : null,
-            'api' => [
-                'start' => url('/api/play-sessions'),
-                'session' => url('/api/play-sessions/'),
-            ],
             'player_url' => url('/player/' . $storyId),
         ];
 
@@ -311,12 +307,14 @@ class PlayerController
         $before = Progress::levelFor($scope);
         $first = (int) $session['completed'] === 0;
         $seq = max(0, Request::int('sentence_seq'));
+        $pos = Request::int('position_ms', -1);
         db_exec(
             'UPDATE play_sessions SET completed = 1, completed_at = COALESCE(completed_at, NOW()), ended_at = NOW(),
-                    last_position_ms = ?, last_sentence_seq = COALESCE(?, last_sentence_seq), listened_ms = LEAST(listened_ms + ?, 2000000000)
+                    last_position_ms = COALESCE(?, last_position_ms), last_sentence_seq = COALESCE(?, last_sentence_seq),
+                    listened_ms = LEAST(listened_ms + ?, 2000000000)
              WHERE id = ? AND user_id = ?',
             [
-                min(2000000000, max(0, Request::int('position_ms'))),
+                $pos >= 0 ? min(2000000000, $pos) : null,
                 $seq > 0 ? $seq : null,
                 min(60000, max(0, Request::int('listened_delta_ms'))),
                 (int) $session['id'],

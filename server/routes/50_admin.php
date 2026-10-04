@@ -26,7 +26,7 @@ $router->get('/admin/api/dashboard', [DashboardController::class, 'api']);
 $router->post('/admin/voices/approve-all', [VoiceController::class, 'approveAll']);
 $router->get('/admin/voices', [VoiceController::class, 'index']);
 $router->get('/admin/voices/{id:\d+}', [VoiceController::class, 'show']);
-$router->post('/admin/voices/{id:\d+}/clone', [VoiceController::class, 'clone']);
+$router->post('/admin/voices/{id:\d+}/clone', [VoiceController::class, 'cloneVoice']);
 $router->post('/admin/voices/{id:\d+}/reject', [VoiceController::class, 'reject']);
 $router->post('/admin/voices/{id:\d+}/batch', [VoiceController::class, 'batch']);
 $router->post('/admin/voices/{id:\d+}/refresh', [VoiceController::class, 'refresh']);

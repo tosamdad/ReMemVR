@@ -1,7 +1,7 @@
 <?php
 /**
  * 안내된 녹음 화면: 1 준비(안내, 마이크 확인) → 2 녹음(대본 3개, 파일로 올리기) → 3 확인 & 제출(동의).
- * 변수: $voice, $scripts, $samples, $minSec, $recSec, $maxSec
+ * 변수: $voice, $scripts, $samples, $minSec, $recSec, $maxSec, $maxUpload(한 번에 올릴 수 있는 바이트)
  * 녹음, 저장, 삭제는 voice-lab.js 가 RMRecorder 와 /api/voice-lab/{id}/samples 로 처리한다.
  */
 $pid = (int) $voice['id'];
@@ -31,13 +31,14 @@ $data = [
     'recMs' => $recSec * 1000,
     'maxMs' => $maxSec * 1000,
     'maxTakeMs' => 90000,
-    'maxUpload' => 20971520,
+    'maxUpload' => $maxUpload,
     'uploadUrl' => '/api/voice-lab/' . $pid . '/samples',
     'scripts' => array_values(array_map(static function ($s) {
         return ['key' => $s['key'], 'no' => $s['no'], 'title' => $s['title']];
     }, $scripts)),
     'samples' => $samples,
 ];
+$uploadMb = rtrim(rtrim(number_format($maxUpload / 1048576, 1), '0'), '.');
 $stepTabs = [1 => ['준비', 'tune'], 2 => ['녹음', 'mic'], 3 => ['확인 & 제출', 'send']];
 ?>
 <div class="space-y-6" data-vl-record>
@@ -228,7 +229,7 @@ $stepTabs = [1 => ['준비', 'tune'], 2 => ['녹음', 'mic'], 3 => ['확인 & �
         <label class="flex cursor-pointer flex-col items-center gap-2 rounded-2xl border-2 border-dashed border-outline-variant px-4 py-6 text-center transition-colors hover:border-primary/50">
           <span class="material-symbols-outlined text-[32px] text-outline">audio_file</span>
           <span class="font-label-lg text-label-lg text-on-surface" data-file-name>음성 파일 고르기</span>
-          <span class="text-label-sm text-on-surface-variant">wav, mp3, m4a, aac, ogg, webm, flac · 20MB 이하</span>
+          <span class="text-label-sm text-on-surface-variant">wav, mp3, m4a, aac, ogg, webm, flac · <?= e($uploadMb) ?>MB 이하</span>
           <input type="file" accept="audio/*" class="sr-only" data-file-input>
         </label>
         <div class="space-y-3" data-file-result hidden>

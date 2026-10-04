@@ -57,6 +57,10 @@ class SettingsController
         $email = AuthController::normalizeEmail(Request::str('email'));
         $phone = Request::str('phone');
         $errors = [];
+        // 임시 주소(간편 로그인)를 쓰는 회원이 이메일 칸을 비워 두면 그대로 둔다.
+        if ($email === '' && SocialLogin::isPlaceholderEmail($user['email'])) {
+            $email = (string) $user['email'];
+        }
 
         if ($name === '') {
             $errors['name'] = '이름을 입력해 주세요.';

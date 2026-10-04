@@ -143,6 +143,7 @@ class VoiceLabController
             'minSec' => (int) setting('voice.min_sample_seconds', 60),
             'recSec' => (int) setting('voice.recommended_sample_seconds', 120),
             'maxSec' => (int) setting('voice.max_sample_seconds', 300),
+            'maxUpload' => self::uploadLimit(),
             'user' => $user,
         ]);
     }
@@ -664,6 +665,46 @@ class VoiceLabController
             'clip_count' => isset($m['clipCount']) && is_numeric($m['clipCount']) ? max(0, min(4294967295, (int) $m['clipCount'])) : null,
             'quality_grade' => $grade,
         ];
+    }
+
+    /**
+     * 한 번에 올릴 수 있는 파일 크기(바이트). 20MB 와 서버 PHP 한도(upload_max_filesize, post_max_size) 중 작은 값.
+     * 녹음 화면은 이보다 큰 녹음을 여러 조각(WAV)으로 나눠 올린다.
+     */
+    public static function uploadLimit(): int
+    {
+        $limit = self::MAX_UPLOAD_BYTES;
+        $upload = self::iniBytes((string) ini_get('upload_max_filesize'));
+        if ($upload > 0) {
+            $limit = min($limit, $upload);
+        }
+        $post = self::iniBytes((string) ini_get('post_max_size'));
+        if ($post > 0) {
+            // 폼 필드와 멀티파트 머리글 몫을 남긴다.
+            $limit = min($limit, $post - 65536);
+        }
+
+        return max(262144, $limit);
+    }
+
+    /** php.ini 크기 표기("2M", "512K", "1G")를 바이트로 */
+    public static function iniBytes(string $value): int
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return 0;
+        }
+        $n = (float) $value;
+        $unit = strtolower(substr($value, -1));
+        if ($unit === 'g') {
+            $n *= 1073741824;
+        } elseif ($unit === 'm') {
+            $n *= 1048576;
+        } elseif ($unit === 'k') {
+            $n *= 1024;
+        }
+
+        return (int) $n;
     }
 
     /** 90 → "1분 30초", 60 → "1분", 45 → "45초" */

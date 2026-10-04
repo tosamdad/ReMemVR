@@ -165,7 +165,13 @@ sentence_timings JSON 형식(story_audios)
 
     Usage::log(array $row): void   provider, purpose, model, user_id, ref_type, ref_id, unit_type, units, cost_usd, latency_ms, success (cost_krw 는 환율 설정으로 계산)
     Usage::todayCostKrw(): float
+    Usage::krw(float $usd): float,  Usage::elevenlabsCreditRatio(string $model): float,  Usage::summary(string $from, string $to): array
     Health::status(bool $fresh = false): array   ['gemini'=>[ok, ms, message], 'elevenlabs'=>[ok, ms, message, credits], 'storage'=>[...], 'db'=>[...], 'worker'=>[...]]
+        결과는 설정 health.cache 에 300초 보관한다(관리자 설정 화면에서 고치는 항목이 아니다). Health::allOk(): bool
+
+    ElevenLabs::addVoice(string $name, array $files, string $description = '', array $usage = [])   usage: user_id, ref_type, ref_id
+    ElevenLabs::synthesize(string $voiceId, string $text, array $opts = [])   opts 에 timeout(초, 기본 180), chunk_chars(긴 글 분할 길이)도 받는다
+    Alignment::joinText / build / estimate / sentenceAt(array $timings, int $ms): ?int
 
 9. 주소 약속
 

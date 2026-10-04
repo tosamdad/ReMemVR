@@ -457,7 +457,7 @@ class Gemini
             $pairs = [
                 [$title . '에서 다음엔 어떻게 돼요?', $call . ', 정말 궁금하구나! ' . $title . '의 뒷이야기는 같이 들어 보면 알 수 있어. 우리 계속 들어 볼까?'],
                 ['왜 그렇게 됐어요?', '좋은 질문이야, ' . $call . '. ' . $title . ' 속 친구도 그게 궁금했을 거야. 조금만 더 들어 보자!'],
-                [$title . '에 나오는 친구는 무서웠어요?', '아니야, ' . $call . '. 친구는 용기를 냈단다. 우리 같이 끝까지 들어 볼까?'],
+                [$title . '에 나오는 친구는 무서웠어요?', '아니야, ' . $call . '. ' . $title . ' 속 친구는 용기를 냈단다. 우리 같이 끝까지 들어 볼까?'],
             ];
             $pick = $pairs[(int) (sprintf('%u', crc32($audioBytes . $ctx['current_sentence'])) % count($pairs))];
             $q = $pick[0];
