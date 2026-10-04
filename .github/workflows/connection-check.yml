@@ -1,0 +1,109 @@
+# 실서버 배포 없이 GitHub Secrets 의 접속정보가 맞는지 확인한다.
+# 1) FTP 로그인과 웹 루트 폴더 확인
+# 2) 앱 폴더에 config.php 를, 웹 루트에 일회용 점검 스크립트를 올린다
+# 3) 점검 스크립트를 호출해 서버 내부에서 DB 접속, 권한, PHP 환경을 확인한다
+# 4) 점검 스크립트는 성공 여부와 관계없이 지운다(config.php 는 다음 배포에서 덮어쓴다)
+name: Connection Check
+
+on:
+  workflow_dispatch:
+  push:
+    branches-ignore: [main]
+    paths:
+      - '.github/workflows/connection-check.yml'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FTP_SERVER: ${{ secrets.FTP_SERVER }}
+      FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+      FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+      DB_NAME: ${{ secrets.DB_NAME }}
+      DB_USER: ${{ secrets.DB_USER }}
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      OPS_TOKEN: ${{ secrets.OPS_TOKEN }}
+      SITE_URL: ${{ secrets.SITE_URL }}
+      DB_HOST: ${{ vars.DB_HOST || 'localhost' }}
+      WEB_DIR: ${{ vars.FTP_WEB_DIR || '/www/' }}
+      APP_DIR: ${{ vars.FTP_APP_DIR || '/rememvr_app/' }}
+      FTP_PORT: ${{ vars.FTP_PORT || '21' }}
+    steps:
+      - name: Secrets 등록 여부
+        run: |
+          for name in FTP_SERVER FTP_USERNAME FTP_PASSWORD DB_NAME DB_USER DB_PASSWORD OPS_TOKEN SITE_URL; do
+            if [ -z "${!name}" ]; then echo "없음    $name"; missing=1; else echo "등록됨  $name"; fi
+          done
+          echo "OPS_TOKEN 길이: ${#OPS_TOKEN}"
+          case "$SITE_URL" in http://*|https://*) ;; *) echo "::error::SITE_URL 은 http:// 또는 https:// 로 시작해야 한다."; missing=1 ;; esac
+          [ -z "$missing" ]
+
+      - name: FTP 로그인과 폴더 목록
+        run: |
+          umask 077
+          printf 'user = "%s:%s"\n' "$FTP_USERNAME" "$FTP_PASSWORD" > "$RUNNER_TEMP/ftp.cfg"
+          echo "--- 홈 폴더"
+          curl -sS --max-time 30 -K "$RUNNER_TEMP/ftp.cfg" --list-only "ftp://$FTP_SERVER:$FTP_PORT/"
+          echo "--- 웹 루트 $WEB_DIR"
+          curl -sS --max-time 30 -K "$RUNNER_TEMP/ftp.cfg" --list-only "ftp://$FTP_SERVER:$FTP_PORT$WEB_DIR"
+
+      - name: 점검 파일 준비
+        run: |
+          # shellcheck disable=SC2016  # PHP 코드는 셸에서 확장하지 않는다.
+          php -r '
+            $c = ["env" => "check", "db" => ["host" => getenv("DB_HOST"), "port" => 3306, "name" => getenv("DB_NAME"),
+              "user" => getenv("DB_USER"), "pass" => getenv("DB_PASSWORD"), "charset" => "utf8mb4"],
+              "ops_token" => getenv("OPS_TOKEN")];
+            file_put_contents(getenv("RUNNER_TEMP") . "/config.php", "<?php\nreturn " . var_export($c, true) . ";\n");'
+          web="${WEB_DIR#/}"; web="${web%/}"; app="${APP_DIR#/}"; app="${app%/}"
+          up=""; IFS='/' read -ra parts <<< "$web"; for _ in "${parts[@]}"; do up="../$up"; done
+          name="conncheck-$(openssl rand -hex 8).php"
+          echo "CHECK_NAME=$name" >> "$GITHUB_ENV"
+          cat > "$RUNNER_TEMP/$name" <<PHP
+          <?php
+          header('Content-Type: application/json; charset=utf-8');
+          \$r = ['php' => PHP_VERSION, 'sapi' => PHP_SAPI, 'open_basedir' => ini_get('open_basedir'),
+            'pdo_mysql' => extension_loaded('pdo_mysql'), 'zlib' => extension_loaded('zlib')];
+          \$cfgFile = __DIR__ . '/${up}${app}/config.php';
+          \$r['app_dir_readable'] = @is_readable(\$cfgFile);
+          if (!\$r['app_dir_readable']) { echo json_encode(\$r); exit; }
+          \$c = require \$cfgFile;
+          if (!isset(\$_SERVER['HTTP_X_OPS_TOKEN']) || !hash_equals(\$c['ops_token'], \$_SERVER['HTTP_X_OPS_TOKEN'])) { http_response_code(404); exit; }
+          try {
+            \$pdo = new PDO('mysql:host=' . \$c['db']['host'] . ';dbname=' . \$c['db']['name'] . ';charset=utf8mb4', \$c['db']['user'], \$c['db']['pass'], [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+            \$r['db_connect'] = true;
+            \$r['db_version'] = \$pdo->query('SELECT VERSION()')->fetchColumn();
+            \$r['db_charset'] = \$pdo->query('SELECT @@character_set_database')->fetchColumn();
+            \$r['tables'] = \$pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN);
+            \$pdo->exec('CREATE TABLE IF NOT EXISTS _conncheck (id INT) ENGINE=InnoDB');
+            \$pdo->exec('DROP TABLE _conncheck');
+            \$r['db_can_create_table'] = true;
+          } catch (Throwable \$e) {
+            \$r['db_connect'] = \$r['db_connect'] ?? false;
+            \$r['db_error'] = \$e->getMessage();
+          }
+          echo json_encode(\$r, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+          PHP
+          php -l "$RUNNER_TEMP/$name"
+
+      - name: 점검 파일 업로드
+        run: |
+          curl -sS --max-time 60 -K "$RUNNER_TEMP/ftp.cfg" --ftp-create-dirs \
+            -T "$RUNNER_TEMP/config.php" "ftp://$FTP_SERVER:$FTP_PORT${APP_DIR%/}/config.php"
+          curl -sS --max-time 60 -K "$RUNNER_TEMP/ftp.cfg" \
+            -T "$RUNNER_TEMP/$CHECK_NAME" "ftp://$FTP_SERVER:$FTP_PORT${WEB_DIR%/}/$CHECK_NAME"
+          echo "업로드 완료"
+
+      - name: 서버 내부 DB 접속 확인
+        run: |
+          code=$(curl -sS --max-time 60 -o out.json -w '%{http_code}' -H "X-Ops-Token: $OPS_TOKEN" "${SITE_URL%/}/$CHECK_NAME" || echo 000)
+          echo "HTTP $code"
+          cat out.json; echo
+          [ "$code" = "200" ] && jq -e '.db_connect == true and .db_can_create_table == true' out.json > /dev/null
+
+      - name: 점검 파일 삭제
+        if: always() && env.CHECK_NAME != ''
+        run: |
+          curl -sS --max-time 30 -K "$RUNNER_TEMP/ftp.cfg" -o /dev/null "ftp://$FTP_SERVER:$FTP_PORT/" \
+            -Q "DELE ${WEB_DIR%/}/$CHECK_NAME" && echo "삭제 완료"
