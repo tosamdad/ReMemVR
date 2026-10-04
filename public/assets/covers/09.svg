@@ -24,7 +24,7 @@
 <g fill="#5a94a2" opacity=".5"><circle cx="-6" cy="-24" r="2"/><circle cx="6" cy="-28" r="2"/><circle cx="-16" cy="-18" r="2"/></g>
 </g>
 <g fill="#e6f6ff"><use href="#d" transform="translate(166 130) rotate(-20)"/><use href="#d" transform="translate(180 120) scale(1.2)"/><use href="#d" transform="translate(194 126) rotate(24)"/><use href="#d" transform="translate(178 140) scale(.8)"/></g>
-<path d="M170 156q4-8 10-14" fill="none" stroke="#e6f6ff" stroke-width="3" stroke-linecap="round"/>
+<path d="M168 160q4-10 12-18" fill="none" stroke="#e6f6ff" stroke-width="3" stroke-linecap="round"/>
 <g fill="#fff"><use href="#d" transform="translate(70 270) rotate(-30)"/><use href="#d" transform="translate(84 262) scale(.8)"/><use href="#d" transform="translate(58 284) rotate(-50) scale(.7)"/><use href="#d" transform="translate(98 268) rotate(30) scale(.7)"/></g>
 <path d="M40 300c10-12 24-14 34-6c8-10 26-10 34 2c6-6 16-4 20 2" fill="#fff" opacity=".9"/>
 <path d="M0 330q20-14 40 0t40 0 40 0 40 0 40 0 40 0 40 0 40 0V400H0Z" fill="#a2cfcb"/>

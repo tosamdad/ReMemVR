@@ -13,7 +13,7 @@
 <use href="#s" transform="translate(230 160) scale(.55)" fill="#eae4b1"/>
 <use href="#s" transform="translate(70 190) scale(.45)" fill="#f8bbd0"/>
 <g fill="#bbe8e4"><circle cx="208" cy="70" r="2.4"/><circle cx="84" cy="88" r="2"/><circle cx="244" cy="214" r="2"/></g>
-<path d="M52 236L52 312C92 302 128 304 150 320C172 304 208 302 248 312L248 236Z" fill="#805062" stroke="#805062" stroke-width="6" stroke-linejoin="round"/>
+<path d="M150 244C124 228 88 226 52 234V312C92 302 128 304 150 320C172 304 208 302 248 312V234C212 226 176 228 150 244Z" fill="#805062" stroke="#805062" stroke-width="6" stroke-linejoin="round"/>
 <path d="M150 240C126 224 92 222 62 230V302C92 294 126 296 150 310Z" fill="#fff"/>
 <path d="M150 240C174 224 208 222 238 230V302C208 294 174 296 150 310Z" fill="#f3faff"/>
 <g fill="none" stroke="#d5ecf8" stroke-width="3" stroke-linecap="round"><path d="M76 248q28-6 60 4M76 264q28-6 60 4M76 280q28-6 60 4M164 252q32-10 60-4M164 268q32-10 60-4M164 284q32-10 60-4"/></g>
