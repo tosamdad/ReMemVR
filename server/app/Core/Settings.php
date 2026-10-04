@@ -45,7 +45,8 @@ class Settings
         'gemini.usd_per_1m_output' => 2.50,
 
         // 질문(끼어들기)
-        'qa.enabled' => true,
+        // 아이 대상 사용을 허용하는 답변 AI 를 정할 때까지 꺼 둔다(qa_available 참고).
+        'qa.enabled' => false,
         'qa.max_questions' => 3,
         'qa.max_answer_chars' => 120,
         'qa.max_record_seconds' => 15,

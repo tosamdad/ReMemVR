@@ -650,6 +650,17 @@ function json_encode_u($value): string
 }
 
 /** 외부 API 키가 등록되어 있는지 */
+/**
+ * 아이 질문(끼어들기) 기능을 지금 쓸 수 있는지.
+ * 관리자 설정 qa.enabled 가 켜져 있고, 아이 대상 서비스에 쓸 수 있는 답변 AI 가 준비되어 있어야 한다.
+ * Gemini API 약관은 18세 미만이 쓰는 서비스에서의 사용을 금지하므로(2026-04 개정 기준) 실서버에서는 답변 AI 로 쓰지 않는다.
+ * 아이 대상 사용을 허용하는 답변 AI 를 붙이기 전까지는 로컬 개발(가짜 응답)에서만 켜진다.
+ */
+function qa_available(): bool
+{
+    return (bool) setting('qa.enabled', false) && (bool) config('providers_fake');
+}
+
 function provider_ready(string $provider): bool
 {
     if (config('providers_fake')) {

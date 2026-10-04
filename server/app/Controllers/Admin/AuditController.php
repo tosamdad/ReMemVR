@@ -136,7 +136,7 @@ class AuditController
         $rows = db_all(
             'SELECT l.*, a.name AS admin_name, a.login_id AS admin_login
              FROM admin_audit_logs l LEFT JOIN admins a ON a.id = l.admin_id
-             WHERE ' . $sqlWhere . ' ORDER BY l.id DESC LIMIT ? OFFSET ?',
+             WHERE ' . $sqlWhere . ' ORDER BY l.created_at DESC, l.id DESC LIMIT ? OFFSET ?',
             array_merge($params, [self::PER_PAGE, ($page - 1) * self::PER_PAGE])
         );
         $groups = db_all("SELECT SUBSTRING_INDEX(action, '.', 1) AS g, COUNT(*) AS n FROM admin_audit_logs GROUP BY g ORDER BY n DESC");

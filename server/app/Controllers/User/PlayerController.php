@@ -160,8 +160,8 @@ class PlayerController
         $childId = $child ? (int) $child['id'] : null;
         $reuse = self::reusableSession($userId, $childId, $storyId);
         $max = self::maxQuestions($story);
-        $qaEnabled = (bool) setting('qa.enabled', true) && (int) $story['barge_in_enabled'] === 1;
-        $qaReady = $qaEnabled && provider_ready('gemini');
+        $qaEnabled = qa_available() && (int) $story['barge_in_enabled'] === 1;
+        $qaReady = $qaEnabled;
         $aec = !empty($story['aec_level']) ? (string) $story['aec_level'] : (string) setting('qa.aec_level', 'strong');
 
         $next = self::nextStory($storyId, Progress::completedStoryIds(Progress::currentScope()));

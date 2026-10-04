@@ -96,7 +96,7 @@ class DashboardStats
             'blocked' => (int) $row['blocked'],
             'per_story' => null,
             'max_questions' => (int) setting('qa.max_questions', 3),
-            'qa_enabled' => (bool) setting('qa.enabled', true),
+            'qa_enabled' => qa_available(),
         ];
     }
 
@@ -495,7 +495,7 @@ class DashboardStats
         return [
             'max_questions' => (int) setting('qa.max_questions', 3),
             'daily_budget' => (float) setting('cost.daily_budget_krw', 27000),
-            'qa_enabled' => (bool) setting('qa.enabled', true),
+            'qa_enabled' => qa_available(),
             'blocked_words' => is_array($blocked) ? count($blocked) : 0,
             'max_answer_chars' => (int) setting('qa.max_answer_chars', 120),
         ];

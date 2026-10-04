@@ -127,7 +127,7 @@ $groupIcons = ['admin' => 'manage_accounts', 'voice' => 'mic', 'member' => 'grou
               <?php endif; ?>
             </td>
             <td class="px-4 py-3.5">
-              <span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-[18px] text-primary"><?= e($groupIcons[$group] ?? 'label') ?></span><?= e(AuditController::actionLabel((string) $r['action'])) ?></span>
+              <span class="flex items-center gap-1.5 whitespace-nowrap"><span class="material-symbols-outlined text-[18px] text-primary"><?= e($groupIcons[$group] ?? 'label') ?></span><?= e(AuditController::actionLabel((string) $r['action'])) ?></span>
               <span class="block font-mono text-[11px] leading-4 text-on-surface-variant"><?= e($r['action']) ?></span>
             </td>
             <td class="whitespace-nowrap px-4 py-3.5">

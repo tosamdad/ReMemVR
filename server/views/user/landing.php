@@ -13,6 +13,12 @@ $steps = [
     ['verified', '목소리 준비', '검토가 끝나면 동화 오디오를 미리 만들어 둬요.'],
     ['auto_stories', '함께 듣기', '아이가 듣다가 궁금한 건 바로 물어봐요.'],
 ];
+// 질문 기능이 꺼져 있으면(qa_available) 대화형 동화 소개 대신 읽기 기능을 소개한다.
+if ((int) $maxQuestions <= 0) {
+    $values[1] = ['menu_book', 'bg-secondary-container text-on-secondary-container', '한 글자씩 따라 읽는 동화', '읽어 주는 낱말이 화면에서 차례로 빛나서 아이가 글자와 소리를 함께 익혀요.'];
+    $values[2][3] = '어떤 동화를 좋아하고 얼마나 들었는지, 새로 만난 낱말까지 한눈에 볼 수 있어요.';
+    $steps[2] = ['auto_stories', '함께 듣기', '아이가 좋아하는 가족 목소리로 언제든 들어요.'];
+}
 ?>
 <section class="relative isolate text-center">
   <div class="pointer-events-none absolute -inset-x-margin-mobile -top-6 bottom-0 -z-10 overflow-hidden" aria-hidden="true">

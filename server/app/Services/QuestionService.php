@@ -84,7 +84,7 @@ class QuestionService
             }
 
             // 4) 질문 기능이 꺼져 있음(전체 설정 또는 동화별 설정)
-            if (!setting('qa.enabled', true) || (int) $story['barge_in_enabled'] === 0) {
+            if (!qa_available() || (int) $story['barge_in_enabled'] === 0) {
                 $line = self::pickLine(self::fallbackLines($story), $fallbackCount);
 
                 return self::finish($interactionId, 'disabled', null, $line, $profile, [], max(0, $max - $count), $started);

@@ -1,6 +1,7 @@
 <?php
 /**
  * 공지사항 목록. 변수: rows, total, page, pages, q, filter, counts(필터별), tabCounts
+ * 컨트롤러가 주는 칩 색(Tailwind 가 이 파일에서 찾도록 적어 둠): bg-surface-container-high text-on-surface-variant bg-secondary-fixed text-on-secondary-fixed bg-emerald-100 text-emerald-800
  */
 use App\Controllers\Admin\NoticeController;
 
@@ -31,7 +32,7 @@ $to = min($total, $page * NoticeController::PER_PAGE);
           <span class="material-symbols-outlined mr-2 text-[20px] text-on-surface-variant">search</span>
           <input type="search" name="q" value="<?= e($q) ?>" maxlength="100" placeholder="제목, 본문 검색" class="w-full border-0 bg-transparent p-0 font-body-md text-body-md text-on-surface placeholder:text-outline focus:ring-0">
         </label>
-        <button type="submit" class="a-btn-tonal">검색</button>
+        <button type="submit" class="a-btn-tonal shrink-0 whitespace-nowrap">검색</button>
       </form>
     </div>
 
@@ -66,7 +67,7 @@ $to = min($total, $page * NoticeController::PER_PAGE);
             <td class="px-4 py-4 text-center"><?php if ((int) $n['is_pinned']): ?><span class="material-symbols-outlined icon-fill text-[20px] text-secondary" title="상단 고정">push_pin</span><?php endif; ?></td>
             <td class="px-4 py-4">
               <a href="<?= e(url('/admin/notices/' . (int) $n['id'] . '/edit')) ?>" class="block font-semibold hover:text-primary"><?= e($n['title']) ?></a>
-              <span class="block max-w-xl truncate font-label-sm text-label-sm text-on-surface-variant"><?= e(str_limit(preg_replace('/\s+/u', ' ', (string) $n['body']), 90)) ?></span>
+              <span class="block max-w-[340px] truncate font-label-sm text-label-sm text-on-surface-variant"><?= e(str_limit(preg_replace('/\s+/u', ' ', (string) $n['body']), 90)) ?></span>
             </td>
             <td class="whitespace-nowrap px-4 py-4"><span class="a-chip <?= $state[1] ?>"><?= e($state[0]) ?></span></td>
             <td class="whitespace-nowrap px-4 py-4 text-on-surface-variant"><?= $n['published_at'] ? e(date('Y.m.d H:i', strtotime((string) $n['published_at']))) : '–' ?></td>

@@ -36,6 +36,8 @@ final class QsFixture
         $f->profileId = db_insert('voice_profiles', [
             'user_id' => $f->userId, 'label' => '엄마', 'status' => 'completed', 'provider_voice_id' => 'fake_' . $tag, 'stability' => 0.5,
         ]);
+        // 질문 기능은 기본값이 꺼짐이므로 테스트에서는 켜 둔다(가짜 API 모드에서만 실제로 켜진다).
+        $f->setSetting('qa.enabled', true);
 
         return $f;
     }

@@ -39,13 +39,13 @@ $last = count($rows) - 1;
           <h2 class="font-headline-md text-headline-md text-on-surface">질문 목록</h2>
           <p class="font-label-sm text-label-sm text-on-surface-variant">전체 <?= (int) $total ?>개 중 <?= (int) $active ?>개가 회원 고객 센터에 보입니다. 위에서부터 차례로 보입니다.</p>
         </div>
-        <form method="get" action="<?= e(url('/admin/faqs')) ?>" class="flex items-center gap-2">
+        <form method="get" action="<?= e(url('/admin/faqs')) ?>" class="flex shrink-0 items-center gap-2">
           <?php if ($filters['category'] !== ''): ?><input type="hidden" name="category" value="<?= e($filters['category']) ?>"><?php endif; ?>
-          <label class="flex w-60 items-center rounded-xl bg-surface-container-low px-3 py-2">
+          <label class="flex w-52 items-center rounded-xl bg-surface-container-low px-3 py-2">
             <span class="material-symbols-outlined mr-2 text-[20px] text-on-surface-variant">search</span>
             <input type="search" name="q" value="<?= e($filters['q']) ?>" maxlength="100" placeholder="질문, 답변 검색" class="w-full border-0 bg-transparent p-0 font-body-md text-body-md text-on-surface placeholder:text-outline focus:ring-0">
           </label>
-          <button type="submit" class="a-btn-tonal">검색</button>
+          <button type="submit" class="a-btn-tonal shrink-0 whitespace-nowrap">검색</button>
         </form>
       </div>
 

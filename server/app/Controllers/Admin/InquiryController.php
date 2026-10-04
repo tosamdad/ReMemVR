@@ -23,7 +23,7 @@ class InquiryController
     ];
     const TABS = ['open' => '대기', 'answered' => '답변 완료', 'closed' => '종료', 'all' => '전체'];
     const STATUS = [
-        'open' => ['답변 대기', 'bg-tertiary-container text-on-tertiary-container'],
+        'open' => ['답변 대기', 'bg-secondary-container text-on-secondary-container'],
         'answered' => ['답변 완료', 'bg-emerald-100 text-emerald-800'],
         'closed' => ['종료', 'bg-surface-container-high text-on-surface-variant'],
     ];

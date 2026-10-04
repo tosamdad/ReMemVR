@@ -1,6 +1,7 @@
 <?php
 /**
  * 1:1 문의 목록. 변수: rows, tab, counts, filters(q, category), page, pages, total, avgMinutes, oldestOpen
+ * 컨트롤러가 주는 칩 색(Tailwind 가 이 파일에서 찾도록 적어 둠): bg-secondary-container text-on-secondary-container bg-emerald-100 text-emerald-800 bg-surface-container-high text-on-surface-variant
  */
 use App\Controllers\Admin\InquiryController;
 use App\Services\MemberStats;
@@ -61,7 +62,7 @@ $tabIcons = ['open' => 'mark_email_unread', 'answered' => 'mark_email_read', 'cl
         <option value="<?= e($k) ?>"<?= $filters['category'] === $k ? ' selected' : '' ?>><?= e($label) ?></option>
         <?php endforeach; ?>
       </select>
-      <button type="submit" class="a-btn-tonal">검색</button>
+      <button type="submit" class="a-btn-tonal shrink-0 whitespace-nowrap">검색</button>
       <?php if ($filtered): ?><a href="<?= e(url('/admin/inquiries', $tab === 'open' ? [] : ['status' => $tab])) ?>" class="font-label-sm text-label-sm text-primary hover:underline">조건 지우기</a><?php endif; ?>
     </form>
 
@@ -69,19 +70,18 @@ $tabIcons = ['open' => 'mark_email_unread', 'answered' => 'mark_email_read', 'cl
       <table class="w-full border-collapse text-left">
         <thead>
           <tr class="bg-surface-container-low font-label-md text-label-md text-on-surface-variant">
-            <th class="whitespace-nowrap rounded-l-lg px-4 py-3">번호</th>
-            <th class="whitespace-nowrap px-4 py-3">분류</th>
-            <th class="px-4 py-3">제목</th>
-            <th class="whitespace-nowrap px-4 py-3">회원</th>
-            <th class="whitespace-nowrap px-4 py-3">접수</th>
-            <th class="whitespace-nowrap px-4 py-3">상태</th>
-            <th class="whitespace-nowrap px-4 py-3">답변</th>
-            <th class="whitespace-nowrap rounded-r-lg px-4 py-3 text-right"><span class="sr-only">열기</span></th>
+            <th class="whitespace-nowrap rounded-l-lg px-3 py-3">번호</th>
+            <th class="whitespace-nowrap px-3 py-3">분류</th>
+            <th class="px-3 py-3">제목</th>
+            <th class="whitespace-nowrap px-3 py-3">회원</th>
+            <th class="whitespace-nowrap px-3 py-3">접수</th>
+            <th class="whitespace-nowrap px-3 py-3">상태, 답변</th>
+            <th class="whitespace-nowrap rounded-r-lg px-3 py-3 text-right"><span class="sr-only">열기</span></th>
           </tr>
         </thead>
         <tbody class="divide-y divide-surface-container-high font-body-md text-body-md text-on-surface">
           <?php if (!$rows): ?>
-          <tr><td colspan="8" class="px-4 py-14 text-center">
+          <tr><td colspan="7" class="px-3 py-14 text-center">
             <span class="material-symbols-outlined text-[36px] text-outline"><?= $tab === 'open' && !$filtered ? 'task_alt' : 'inbox' ?></span>
             <?php if ($filtered): ?>
             <p class="mt-2 font-label-md text-label-md text-on-surface">조건에 맞는 문의가 없습니다.</p>
@@ -99,30 +99,29 @@ $tabIcons = ['open' => 'mark_email_unread', 'answered' => 'mark_email_read', 'cl
               $link = url('/admin/inquiries/' . (int) $r['id']);
           ?>
           <tr class="transition-colors hover:bg-surface-container-low/70">
-            <td class="whitespace-nowrap px-4 py-4 font-label-md text-label-md text-on-surface-variant">#<?= (int) $r['id'] ?></td>
-            <td class="whitespace-nowrap px-4 py-4"><span class="a-chip bg-secondary-fixed text-on-secondary-fixed"><?= e(InquiryController::categoryLabel($r['category'])) ?></span></td>
-            <td class="px-4 py-4">
+            <td class="whitespace-nowrap px-3 py-4 font-label-md text-label-md text-on-surface-variant">#<?= (int) $r['id'] ?></td>
+            <td class="whitespace-nowrap px-3 py-4"><span class="a-chip bg-secondary-fixed text-on-secondary-fixed"><?= e(InquiryController::categoryLabel($r['category'])) ?></span></td>
+            <td class="px-3 py-4">
               <a href="<?= e($link) ?>" class="block font-semibold hover:text-primary"><?= e($r['title']) ?></a>
-              <span class="block max-w-md truncate font-label-sm text-label-sm text-on-surface-variant"><?= e(str_limit(preg_replace('/\s+/u', ' ', (string) $r['body']), 80)) ?></span>
+              <span class="block max-w-[260px] truncate font-label-sm text-label-sm text-on-surface-variant"><?= e(str_limit(preg_replace('/\s+/u', ' ', (string) $r['body']), 80)) ?></span>
             </td>
-            <td class="px-4 py-4">
+            <td class="px-3 py-4">
               <a href="<?= e(url('/admin/members/' . (int) $r['user_id'])) ?>" class="block whitespace-nowrap hover:text-primary"><?= e($r['user_name']) ?></a>
               <span class="block whitespace-nowrap font-label-sm text-label-sm text-on-surface-variant"><?= e(MemberStats::memberCode((int) $r['user_id'])) ?><?= $r['user_status'] === 'withdrawn' || $r['user_deleted'] ? ' · 탈퇴' : '' ?></span>
             </td>
-            <td class="whitespace-nowrap px-4 py-4">
+            <td class="whitespace-nowrap px-3 py-4">
               <span class="block"><?= e(date('Y.m.d H:i', strtotime((string) $r['created_at']))) ?></span>
               <?php if ($r['status'] === 'open'): ?>
               <span class="block font-label-sm text-label-sm <?= $wait >= 1440 ? 'text-error' : 'text-on-surface-variant' ?>"><?= e(InquiryController::waitText($wait)) ?> 대기</span>
               <?php endif; ?>
             </td>
-            <td class="whitespace-nowrap px-4 py-4"><span class="a-chip <?= $st[1] ?>"><?= e($st[0]) ?></span></td>
-            <td class="whitespace-nowrap px-4 py-4 font-label-sm text-label-sm text-on-surface-variant">
+            <td class="whitespace-nowrap px-3 py-4">
+              <span class="a-chip <?= $st[1] ?>"><?= e($st[0]) ?></span>
               <?php if ($r['answered_at']): ?>
-              <span class="block text-on-surface"><?= e($r['answerer'] !== null ? $r['answerer'] : '삭제된 관리자') ?></span>
-              <span class="block"><?= e(date('m.d H:i', strtotime((string) $r['answered_at']))) ?></span>
-              <?php else: ?>–<?php endif; ?>
+              <span class="mt-1 block font-label-sm text-label-sm text-on-surface-variant"><?= e($r['answerer'] !== null ? $r['answerer'] : '삭제된 관리자') ?> · <?= e(date('m.d H:i', strtotime((string) $r['answered_at']))) ?></span>
+              <?php endif; ?>
             </td>
-            <td class="whitespace-nowrap px-4 py-4 text-right">
+            <td class="whitespace-nowrap px-3 py-4 text-right">
               <a href="<?= e($link) ?>" class="<?= $r['status'] === 'open' ? 'a-btn-primary' : 'a-btn-tonal' ?> !px-3 !py-1.5"><?= $r['status'] === 'open' ? '답변하기' : '보기' ?></a>
             </td>
           </tr>

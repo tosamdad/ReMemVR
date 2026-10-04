@@ -53,7 +53,7 @@ $few = $range === 7;
 <section class="card flex flex-col items-center gap-3 p-8 text-center">
   <img src="<?= e(asset('img/empty-report.svg')) ?>" alt="" class="h-32 w-auto">
   <h2 class="text-headline-md font-headline-md text-on-surface">아직 학습 기록이 없어요</h2>
-  <p class="text-body-md text-on-surface-variant">동화를 들으면 읽은 책, 새로 만난 단어,<br>궁금해한 것들이 여기에 차곡차곡 쌓여요.</p>
+  <p class="text-body-md text-on-surface-variant">동화를 들으면 읽은 책, 새로 만난 단어<?= qa_available() ? ',<br>궁금해한 것들이' : '가<br>' ?> 여기에 차곡차곡 쌓여요.</p>
   <a href="<?= e(url('/stories')) ?>" class="btn-primary mt-2 w-full"><span class="material-symbols-outlined icon-fill">auto_stories</span>동화 들으러 가기</a>
 </section>
 <?php else: ?>
@@ -170,7 +170,8 @@ $few = $range === 7;
   <?php endif; ?>
 </section>
 
-<!-- 아이가 궁금해한 것 -->
+<!-- 아이가 궁금해한 것: 질문 기능이 꺼져 있고 기록도 없으면 싣지 않는다 -->
+<?php if ($p['questions'] || qa_available()): ?>
 <section class="space-y-4 pb-6">
   <h2 class="text-headline-md font-headline-md text-on-surface">아이가 궁금해한 것</h2>
   <?php if ($p['questions']): ?>
@@ -200,4 +201,5 @@ $few = $range === 7;
   <p class="rounded-xl bg-surface-container-low px-4 py-4 text-body-md text-on-surface-variant">동화를 듣다가 마이크 버튼을 눌러 궁금한 것을 물어보면 여기에 남아요.</p>
   <?php endif; ?>
 </section>
+<?php endif; ?>
 <?php endif; ?>

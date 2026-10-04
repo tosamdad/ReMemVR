@@ -298,8 +298,8 @@ $to = min($list['total'], $list['page'] * $list['per_page']);
         </div>
         <p class="mt-0.5 font-body-md text-body-md text-on-surface-variant">자녀의 질문 반응 기록과 가족 목소리 등록 상태 모니터링</p>
       </div>
-      <form method="get" action="<?= e(url('/admin/members')) ?>" class="flex flex-wrap items-center gap-3" data-member-filter>
-        <label class="flex w-64 items-center rounded-xl bg-surface-container-low px-3 py-2">
+      <form method="get" action="<?= e(url('/admin/members')) ?>" class="flex flex-wrap items-center gap-3 xl:shrink-0 xl:flex-nowrap" data-member-filter>
+        <label class="flex w-56 items-center rounded-xl bg-surface-container-low px-3 py-2">
           <span class="material-symbols-outlined mr-2 text-[20px] text-on-surface-variant">search</span>
           <input type="search" name="q" value="<?= e($filters['q']) ?>" placeholder="부모/자녀 이름, 이메일, #RM-ID" class="w-full border-0 bg-transparent p-0 font-body-md text-body-md text-on-surface placeholder:text-outline focus:ring-0">
         </label>
@@ -310,7 +310,7 @@ $to = min($list['total'], $list['page'] * $list['per_page']);
           <?php endforeach; ?>
         </select>
         <a href="<?= e(url('/admin/members/export.csv', $query)) ?>" class="flex items-center gap-1.5 rounded-xl bg-surface-container-high px-4 py-2.5 font-label-md text-label-md text-on-surface shadow-sm transition-colors hover:bg-surface-variant">
-          <span class="material-symbols-outlined text-[18px]">download</span><span>로그 내보내기</span>
+          <span class="material-symbols-outlined text-[18px]">download</span><span class="whitespace-nowrap">로그 내보내기</span>
         </a>
       </form>
     </div>
@@ -319,20 +319,19 @@ $to = min($list['total'], $list['page'] * $list['per_page']);
       <table class="w-full border-collapse text-left">
         <thead>
           <tr class="bg-surface-container-low font-label-md text-label-md text-on-surface-variant">
-            <th class="whitespace-nowrap rounded-l-lg px-3 py-3">회원 ID</th>
-            <th class="whitespace-nowrap px-3 py-3">부모 이름</th>
-            <th class="whitespace-nowrap px-3 py-3">자녀 정보</th>
-            <th class="whitespace-nowrap px-3 py-3">등록된 목소리</th>
-            <th class="whitespace-nowrap px-3 py-3">주 이용 시간대</th>
-            <th class="whitespace-nowrap px-3 py-3">총 청취 시간</th>
-            <th class="whitespace-nowrap px-3 py-3">끼어들기 빈도</th>
-            <th class="whitespace-nowrap px-3 py-3">상태</th>
-            <th class="whitespace-nowrap rounded-r-lg px-3 py-3 text-center">상세 로그</th>
+            <th class="whitespace-nowrap rounded-l-lg px-2.5 py-3">회원 (ID, 부모 이름)</th>
+            <th class="whitespace-nowrap px-2.5 py-3">자녀 정보</th>
+            <th class="whitespace-nowrap px-2.5 py-3">등록된 목소리</th>
+            <th class="whitespace-nowrap px-2.5 py-3">주 이용 시간대</th>
+            <th class="whitespace-nowrap px-2.5 py-3">총 청취 시간</th>
+            <th class="whitespace-nowrap px-2.5 py-3">끼어들기 빈도</th>
+            <th class="whitespace-nowrap px-2.5 py-3">상태</th>
+            <th class="whitespace-nowrap rounded-r-lg px-2.5 py-3 text-center">상세 로그</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-surface-container-high font-body-md text-body-md text-on-surface">
           <?php if (!$rows): ?>
-          <tr><td colspan="9" class="px-4 py-12 text-center">
+          <tr><td colspan="8" class="px-4 py-12 text-center">
             <span class="material-symbols-outlined text-[36px] text-outline">person_search</span>
             <p class="mt-2 font-label-md text-label-md text-on-surface"><?= $query ? '조건에 맞는 회원이 없습니다.' : '아직 가입한 회원이 없습니다.' ?></p>
             <?php if ($query): ?><a href="<?= e(url('/admin/members')) ?>" class="font-label-sm text-label-sm text-primary hover:underline">검색 조건 지우기</a><?php endif; ?>
@@ -343,24 +342,23 @@ $to = min($list['total'], $list['page'] * $list['per_page']);
               $child = $r['children'] ? $r['children'][0] : null;
           ?>
           <tr class="group transition-colors hover:bg-surface-container-low/70">
-            <td class="whitespace-nowrap px-3 py-4"><a class="font-label-md text-label-md font-bold text-primary hover:underline" href="<?= e(url('/admin/members/' . (int) $u['id'])) ?>"><?= e($r['code']) ?></a></td>
-            <td class="px-3 py-4">
-              <a href="<?= e(url('/admin/members/' . (int) $u['id'])) ?>" class="block whitespace-nowrap font-semibold hover:text-primary"><?= e($u['name']) ?></a>
-              <span class="block max-w-[140px] truncate font-label-sm text-label-sm text-on-surface-variant" title="<?= e($u['email']) ?>"><?= e($u['email']) ?></span>
+            <td class="px-2.5 py-4">
+              <a href="<?= e(url('/admin/members/' . (int) $u['id'])) ?>" class="flex items-baseline gap-2 whitespace-nowrap hover:text-primary"><span class="font-label-md text-label-md font-bold text-primary"><?= e($r['code']) ?></span><span class="font-semibold"><?= e($u['name']) ?></span></a>
+              <span class="block max-w-[150px] truncate font-label-sm text-label-sm text-on-surface-variant" title="<?= e($u['email']) ?>"><?= e($u['email']) ?></span>
             </td>
-            <td class="px-3 py-4">
+            <td class="px-2.5 py-4">
               <?php if ($child): ?>
               <div class="flex items-center gap-1.5">
                 <span class="h-2 w-2 shrink-0 rounded-full bg-secondary"></span>
-                <span class="min-w-[96px]"><?= e(MemberStats::childText($child)) ?></span>
+                <span><?= e(MemberStats::childText($child)) ?></span>
                 <?php if (count($r['children']) > 1): ?><span class="rounded-full bg-surface-container-high px-1.5 font-label-sm text-label-sm text-on-surface-variant">+<?= count($r['children']) - 1 ?></span><?php endif; ?>
               </div>
               <?php else: ?>
               <span class="font-label-sm text-label-sm text-on-surface-variant">등록 자녀 없음</span>
               <?php endif; ?>
             </td>
-            <td class="px-3 py-4">
-              <div class="flex max-w-[150px] flex-wrap items-center gap-1">
+            <td class="px-2.5 py-4">
+              <div class="flex max-w-[124px] flex-wrap items-center gap-1">
                 <?php $shown = 0; foreach ($r['voices'] as $v):
                     $ready = in_array($v['status'], MemberStats::VOICE_READY, true);
                     if (!$ready && !in_array($v['status'], MemberStats::VOICE_WAITING, true)) {
@@ -380,21 +378,20 @@ $to = min($list['total'], $list['page'] * $list['per_page']);
                 <?php endif; ?>
               </div>
             </td>
-            <td class="px-3 py-4 text-on-surface-variant"><?php if ($r['hour'] === null): ?><span class="font-label-sm text-label-sm">재생 기록 없음</span><?php else: ?><span class="block whitespace-nowrap"><?= e(sprintf('%02d:00 ~ %02d:00', $r['hour'], ($r['hour'] + 1) % 24)) ?></span><span class="block">(<?= e(MemberStats::hourLabel($r['hour'])) ?>)</span><?php endif; ?></td>
-            <td class="whitespace-nowrap px-3 py-4 font-semibold"><?= e(number_format($r['listened_hours'], 1)) ?> 시간</td>
-            <td class="whitespace-nowrap px-3 py-4">
+            <td class="px-2.5 py-4 text-on-surface-variant"><?php if ($r['hour'] === null): ?><span class="font-label-sm text-label-sm">재생 기록 없음</span><?php else: ?><span class="block whitespace-nowrap"><?= e(sprintf('%02d:00 ~ %02d:00', $r['hour'], ($r['hour'] + 1) % 24)) ?></span><span class="block">(<?= e(MemberStats::hourLabel($r['hour'])) ?>)</span><?php endif; ?></td>
+            <td class="whitespace-nowrap px-2.5 py-4 font-semibold"><?= e(number_format($r['listened_hours'], 1)) ?> 시간</td>
+            <td class="whitespace-nowrap px-2.5 py-4">
               <?php if ($r['per_story'] === null): ?>
               <span class="font-label-sm text-label-sm text-on-surface-variant">–</span>
               <?php else: ?>
               <div class="flex items-center gap-2">
-                <span class="font-bold <?= $r['per_story'] >= 2 ? 'text-secondary' : 'text-on-surface' ?>"><?= e(number_format($r['per_story'], 1)) ?>회</span>
-                <span class="font-label-sm text-label-sm text-on-surface-variant">/ 편</span>
+                <span class="font-bold <?= $r['per_story'] >= 2 ? 'text-secondary' : 'text-on-surface' ?>"><?= e(number_format($r['per_story'], 1)) ?>회</span><span class="font-label-sm text-label-sm text-on-surface-variant">/편</span>
               </div>
               <?php endif; ?>
             </td>
-            <td class="whitespace-nowrap px-3 py-4"><span class="rounded-full px-2.5 py-1 font-label-sm text-label-sm <?= $statusChip[$r['status']['key']] ?>"><?= e($r['status']['label']) ?></span></td>
-            <td class="px-3 py-4 text-center">
-              <button type="button" class="relative whitespace-nowrap rounded-lg bg-surface-container-high px-3 py-1.5 font-label-sm text-label-sm text-primary shadow-sm transition-all hover:bg-primary hover:text-on-primary disabled:cursor-not-allowed disabled:opacity-50" data-open-log="<?= (int) $u['id'] ?>"<?= $r['questions'] === 0 && $r['sessions'] === 0 ? ' disabled title="재생 기록이 없습니다"' : '' ?>>
+            <td class="whitespace-nowrap px-2.5 py-4"><span class="rounded-full px-2.5 py-1 font-label-sm text-label-sm <?= $statusChip[$r['status']['key']] ?>"><?= e($r['status']['label']) ?></span></td>
+            <td class="px-2.5 py-4 text-center">
+              <button type="button" class="relative whitespace-nowrap rounded-lg bg-surface-container-high px-2.5 py-1.5 font-label-sm text-label-sm text-primary shadow-sm transition-all hover:bg-primary hover:text-on-primary disabled:cursor-not-allowed disabled:opacity-50" data-open-log="<?= (int) $u['id'] ?>"<?= $r['questions'] === 0 && $r['sessions'] === 0 ? ' disabled title="재생 기록이 없습니다"' : '' ?>>
                 대화 로그<?php if ($r['unreviewed'] > 0): ?><span class="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-secondary-container ring-2 ring-surface-container-lowest" title="미검토 <?= (int) $r['unreviewed'] ?>건"></span><?php endif; ?>
               </button>
             </td>

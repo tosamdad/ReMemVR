@@ -137,8 +137,8 @@ $askSub = !$qa['enabled'] ? $qa['message'] : ($remaining > 0 ? '질문 ' . $rema
     </button>
   </section>
 
-  <!-- 질문하기 -->
-  <button type="button" id="pl-ask" class="flex w-full items-center gap-4 rounded-3xl bg-secondary-container px-4 py-3 text-left text-on-secondary-container shadow-sm transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"<?= $qa['enabled'] ? '' : ' disabled' ?>>
+  <!-- 질문하기: 질문 기능을 쓸 수 없으면 버튼을 숨긴다(qa_available) -->
+  <button type="button" id="pl-ask" class="<?= $qa['enabled'] ? 'flex' : 'hidden' ?> w-full items-center gap-4 rounded-3xl bg-secondary-container px-4 py-3 text-left text-on-secondary-container shadow-sm transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"<?= $qa['enabled'] ? '' : ' disabled' ?>>
     <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-secondary text-on-secondary shadow-sm">
       <span class="material-symbols-outlined icon-fill text-3xl">mic</span>
     </span>

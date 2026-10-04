@@ -70,12 +70,5 @@ $switchRow = function ($name, $icon, $title, $desc, $on, $badge = '') {
     </div>
   </section>
 
-  <section>
-    <h3 class="<?= $heading ?>">대화</h3>
-    <div class="<?= $card ?>">
-      <?= $switchRow('hands_free', 'record_voice_over', '말하면 바로 물어보기', '버튼을 누르지 않아도 아이가 말을 시작하면 동화를 멈추고 질문을 들어요. 주변이 시끄럽거나 스피커 소리가 크면 잘못 멈출 수 있어서 이어폰이나 조용한 곳을 추천해요.', !empty($prefs['hands_free']), '실험 기능') ?>
-    </div>
-  </section>
-
   <button type="submit" class="btn-primary w-full rounded-full">저장하기</button>
 </form>

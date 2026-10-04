@@ -115,7 +115,7 @@ class StoryController
                 'vad_ms' => (int) setting('qa.vad_min_speech_ms', 1000),
                 'aec' => (string) setting('qa.aec_level', 'strong'),
                 'fallback_lines' => array_values(array_filter((array) setting('qa.fallback_lines', []), 'is_string')),
-                'enabled' => (bool) setting('qa.enabled', true),
+                'enabled' => qa_available(),
             ],
             'ttsReady' => provider_ready('elevenlabs'),
         ]);

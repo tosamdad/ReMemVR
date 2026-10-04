@@ -51,12 +51,10 @@ $oldRole = (string) old('role', 'admin');
         <table class="w-full border-collapse text-left">
           <thead>
             <tr class="bg-surface-container-low font-label-md text-label-md text-on-surface-variant">
-              <th class="whitespace-nowrap rounded-l-lg px-4 py-3">관리자</th>
-              <th class="whitespace-nowrap px-4 py-3">권한</th>
-              <th class="whitespace-nowrap px-4 py-3">상태</th>
-              <th class="whitespace-nowrap px-4 py-3">마지막 로그인</th>
-              <th class="whitespace-nowrap px-4 py-3">최근 30일 작업</th>
-              <th class="whitespace-nowrap rounded-r-lg px-4 py-3 text-right"><?= $isSuper ? '관리' : '' ?></th>
+              <th class="whitespace-nowrap rounded-l-lg px-3 py-3">관리자</th>
+              <th class="whitespace-nowrap px-3 py-3">권한, 상태</th>
+              <th class="whitespace-nowrap px-3 py-3">30일 작업</th>
+              <th class="whitespace-nowrap rounded-r-lg px-3 py-3 text-right"><?= $isSuper ? '관리' : '' ?></th>
             </tr>
           </thead>
           <tbody class="divide-y divide-surface-container-high font-body-md text-body-md text-on-surface">
@@ -65,22 +63,22 @@ $oldRole = (string) old('role', 'admin');
                 $on = $r['status'] === 'active';
             ?>
             <tr class="transition-colors hover:bg-surface-container-low/70<?= $on ? '' : ' opacity-60' ?>">
-              <td class="px-4 py-4">
+              <td class="px-3 py-4">
                 <div class="flex items-center gap-3">
                   <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full <?= $r['role'] === 'super' ? 'bg-primary text-on-primary' : 'bg-primary-fixed text-primary' ?>"><span class="material-symbols-outlined text-[18px]"><?= $r['role'] === 'super' ? 'shield_person' : 'person' ?></span></span>
                   <div class="min-w-0">
-                    <p class="flex items-center gap-1.5 font-semibold"><?= e($r['name']) ?><?php if ($self): ?><span class="a-chip bg-primary-fixed text-primary">나</span><?php endif; ?></p>
-                    <p class="font-label-sm text-label-sm text-on-surface-variant"><?= e($r['login_id']) ?><?= $r['email'] ? ' · ' . e($r['email']) : '' ?></p>
+                    <p class="flex items-center gap-1.5 whitespace-nowrap font-semibold"><?= e($r['name']) ?><?php if ($self): ?><span class="a-chip bg-primary-fixed text-primary">나</span><?php endif; ?></p>
+                    <p class="max-w-[180px] truncate font-label-sm text-label-sm text-on-surface-variant" title="<?= e((string) $r['email']) ?>"><?= e($r['login_id']) ?><?= $r['email'] ? ' · ' . e($r['email']) : '' ?></p>
+                    <p class="font-label-sm text-label-sm text-outline"><?= $r['last_login_at'] ? '마지막 로그인 <span title="' . e($r['last_login_at']) . '">' . e(time_ago((string) $r['last_login_at'])) . '</span>' : '로그인 기록 없음' ?></p>
                   </div>
                 </div>
               </td>
-              <td class="whitespace-nowrap px-4 py-4"><span class="a-chip <?= $r['role'] === 'super' ? 'bg-primary-container text-on-primary-container' : 'bg-surface-container-high text-on-surface' ?>"><?= e(AdminAccountController::ROLES[$r['role']] ?? $r['role']) ?></span></td>
-              <td class="whitespace-nowrap px-4 py-4"><span class="a-chip <?= $on ? 'bg-emerald-100 text-emerald-800' : 'bg-error-container text-on-error-container' ?>"><?= $on ? '사용 중' : '사용 중지' ?></span></td>
-              <td class="whitespace-nowrap px-4 py-4 text-on-surface-variant"><?= $r['last_login_at'] ? '<span title="' . e($r['last_login_at']) . '">' . e(time_ago((string) $r['last_login_at'])) . '</span>' : '로그인 기록 없음' ?></td>
-              <td class="whitespace-nowrap px-4 py-4"><a href="<?= e(url('/admin/audit', ['admin' => (int) $r['id']])) ?>" class="font-label-md text-label-md text-primary hover:underline"><?= e(fmt_number((int) $r['actions_30d'])) ?>건</a></td>
-              <td class="whitespace-nowrap px-4 py-4">
+              <td class="whitespace-nowrap px-3 py-4"><span class="a-chip <?= $r['role'] === 'super' ? 'bg-primary-container text-on-primary-container' : 'bg-surface-container-high text-on-surface' ?>"><?= e(AdminAccountController::ROLES[$r['role']] ?? $r['role']) ?></span>
+                <span class="a-chip <?= $on ? 'bg-emerald-100 text-emerald-800' : 'bg-error-container text-on-error-container' ?>"><?= $on ? '사용 중' : '사용 중지' ?></span></td>
+              <td class="whitespace-nowrap px-3 py-4"><a href="<?= e(url('/admin/audit', ['admin' => (int) $r['id']])) ?>" class="font-label-md text-label-md text-primary hover:underline"><?= e(fmt_number((int) $r['actions_30d'])) ?>건</a></td>
+              <td class="whitespace-nowrap px-3 py-4">
                 <?php if ($isSuper && !$self): ?>
-                <div class="flex items-center justify-end gap-1">
+                <div class="flex flex-col items-end gap-0.5">
                   <form method="post" action="<?= e(url('/admin/admins/' . (int) $r['id'] . '/password')) ?>" data-confirm="<?= e($r['name']) ?>의 비밀번호를 임시 비밀번호로 바꿀까요? 지금 비밀번호는 더 쓸 수 없습니다.">
                     <?= csrf_field() ?>
                     <button type="submit" class="flex items-center gap-1 rounded-lg px-2.5 py-1.5 font-label-sm text-label-sm text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-primary"><span class="material-symbols-outlined text-[18px]">key</span>비밀번호 초기화</button>
