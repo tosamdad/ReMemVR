@@ -1,5 +1,6 @@
 # 기본 문서는 index.php 를 먼저 찾는다(cafe24 기본 index.html 보다 우선).
 DirectoryIndex index.php index.html
+Options -Indexes
 
 # 배포 도구가 남기는 상태 파일과 앱 경로 파일은 외부에서 열지 못하게 한다.
 <FilesMatch "^(\.ftp-deploy-sync-state\.json|_app_path\.php)$">
@@ -11,3 +12,24 @@ DirectoryIndex index.php index.html
         Deny from all
     </IfModule>
 </FilesMatch>
+
+# 실제 파일과 폴더가 아니면 index.php 가 처리한다(화면 주소 라우팅).
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^ index.php [L,QSA]
+</IfModule>
+
+# 정적 파일 캐시(파일 주소에 수정 시각이 붙으므로 길게 둔다)
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType text/css "access plus 30 days"
+    ExpiresByType application/javascript "access plus 30 days"
+    ExpiresByType image/svg+xml "access plus 30 days"
+    ExpiresByType image/png "access plus 30 days"
+</IfModule>
+
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/css application/javascript application/json image/svg+xml
+</IfModule>

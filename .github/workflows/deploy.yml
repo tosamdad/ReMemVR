@@ -13,6 +13,10 @@ on:
       - 'server/**'
       - '.github/workflows/deploy.yml'
       - '.github/workflows/_deploy.yml'
+      - 'src/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tailwind.*.config.js'
   workflow_dispatch:
     inputs:
       target:
@@ -51,6 +55,12 @@ jobs:
       DB_PASSWORD: ${{ secrets.TEST_DB_PASSWORD }}
       OPS_TOKEN: ${{ secrets.TEST_OPS_TOKEN }}
       SITE_URL: ${{ secrets.TEST_SITE_URL }}
+      ELEVENLABS_API_KEY: ${{ secrets.TEST_ELEVENLABS_API_KEY || secrets.ELEVENLABS_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.TEST_GEMINI_API_KEY || secrets.GEMINI_API_KEY }}
+      KAKAO_REST_API_KEY: ${{ secrets.TEST_KAKAO_REST_API_KEY }}
+      KAKAO_CLIENT_SECRET: ${{ secrets.TEST_KAKAO_CLIENT_SECRET }}
+      GOOGLE_CLIENT_ID: ${{ secrets.TEST_GOOGLE_CLIENT_ID }}
+      GOOGLE_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_CLIENT_SECRET }}
 
   production:
     if: github.event_name == 'push' || inputs.target == 'production'
@@ -72,6 +82,12 @@ jobs:
       DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
       OPS_TOKEN: ${{ secrets.OPS_TOKEN }}
       SITE_URL: ${{ secrets.SITE_URL }}
+      ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
+      KAKAO_CLIENT_SECRET: ${{ secrets.KAKAO_CLIENT_SECRET }}
+      GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+      GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
 
   tag:
     needs: production
