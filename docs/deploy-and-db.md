@@ -5,7 +5,7 @@
 cafe24 호스팅 MariaDB 는 서버 내부(localhost)에서만 접속된다. 그래서 테이블 생성과 필드 추가는 외부에서 직접 하지 않고, 서버에 올라간 PHP 스크립트가 대신 실행한다.
 
 - 스키마 변경은 server/migrations/ 에 번호 붙은 SQL 파일로 저장소에 남긴다.
-- main 에 푸시하거나 실서버 배포를 실행하면 GitHub Actions 가 FTP 로 파일을 올린 뒤, 비밀 토큰을 붙여 https://사이트/_ops/migrate.php 를 호출한다.
+- PR 이 main 에 머지되면 GitHub Actions 가 FTP 로 파일을 올린 뒤, 비밀 토큰을 붙여 https://사이트/_ops/migrate.php 를 호출한다.
 - 이 스크립트가 서버 안에서 localhost 로 DB 에 접속해 아직 적용하지 않은 SQL 파일만 순서대로 실행하고, schema_migrations 테이블에 이력을 남긴다.
 - 매일 새벽 3시 GitHub Actions 가 _ops/backup.php 를 호출해 DB 덤프를 받아 Actions 아티팩트로 보관한다.
 
@@ -50,16 +50,16 @@ cafe24 정보 위치: cafe24 호스팅 관리 → 나의 서비스 관리 → �
 
 2-3. 테스트 서버(선택)
 
-테스트용 cafe24 호스팅이 따로 있으면 같은 항목 이름 앞에 TEST_ 를 붙여 등록한다(TEST_FTP_SERVER, TEST_DB_NAME, TEST_OPS_TOKEN 등). 등록하면 main 푸시 때마다 테스트 서버에 자동 배포된다. 등록하지 않으면 테스트 배포 단계는 알림만 남기고 건너뛴다.
+테스트용 cafe24 호스팅이 따로 있으면 같은 항목 이름 앞에 TEST_ 를 붙여 등록한다(TEST_FTP_SERVER, TEST_DB_NAME, TEST_OPS_TOKEN 등). 등록하면 Run workflow 에서 target 을 test 로 골라 테스트 서버에 배포할 수 있다.
 
 2-4. 실서버 배포 승인자(선택)
 
-Settings → Environments → production → Required reviewers 에 본인을 지정하면 실서버 배포 전에 승인 버튼을 한 번 더 누르게 된다. 비공개 저장소는 GitHub 유료 요금제에서만 이 기능이 보인다. 없어도 실서버 배포는 수동 실행으로만 일어난다.
+Settings → Environments → production → Required reviewers 에 본인을 지정하면 실서버 배포 전에 승인 버튼을 한 번 더 누르게 된다. 비공개 저장소는 GitHub 유료 요금제에서만 이 기능이 보인다. 설정하면 main 머지 후 자동 배포도 승인 뒤에 진행된다.
 
 3. 배포
 
-- 테스트 서버: main 에 푸시하면 자동 배포된다(public/, server/ 변경 시).
-- 실서버: Actions → Deploy → Run workflow → target 을 production, ref 를 main 으로 두고 실행한다.
+- 실서버: PR 이 main 에 머지되면 자동 배포된다(public/, server/ 또는 배포 워크플로 변경 시).
+- 수동 배포: Actions → Deploy → Run workflow → target(production 또는 test)과 ref(브랜치나 태그)를 골라 실행한다.
 - 실서버 배포가 성공하면 prod-20261004-153000 같은 태그가 생긴다.
 - 롤백: Run workflow 에서 ref 에 이전 prod- 태그를 넣고 실행한다. 단, DB 마이그레이션은 되돌리지 않는다. 스키마를 되돌려야 하면 되돌리는 SQL 을 새 번호 파일로 추가한다.
 
