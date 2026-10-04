@@ -72,6 +72,20 @@ jobs:
       - name: PHP 테스트
         run: php server/tests/run.php
 
+      - name: 화면 점검(smoke)
+        run: |
+          # 관리자 1명과 데모 회원을 만들고 내장 서버로 주요 화면을 실제로 열어 본다(외부 API 는 가짜 응답).
+          php server/bin/create-admin.php ciadmin ci-admin-pass-1234 "CI 관리자" super
+          php server/bin/demo-seed.php --users=3
+          email=$(mysql -h 127.0.0.1 -urememvr -pci-password rememvr -N -e \
+            "SELECT email FROM users WHERE email LIKE '%@demo.rememvr.local' ORDER BY id LIMIT 1")
+          php -S 127.0.0.1:8000 -t public public/index.php > php-server.log 2>&1 &
+          for _ in $(seq 1 30); do curl -sf http://127.0.0.1:8000/healthz > /dev/null && break; sleep 1; done
+          php server/bin/smoke.php http://127.0.0.1:8000 "$email:demo1234" "ciadmin:ci-admin-pass-1234"
+          if grep -E 'PHP (Fatal error|Warning|Notice|Deprecated|Parse error)' php-server.log; then
+            echo "내장 서버 로그에 PHP 오류가 있다"; exit 1
+          fi
+
       - name: 백업 후 새 DB 에 복원
         run: |
           php server/bin/backup.php backup.sql.gz

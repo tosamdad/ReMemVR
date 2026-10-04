@@ -86,7 +86,7 @@ class Alignment
             }
         }
 
-        $map = self::match($S, $A);
+        $map = self::matchChars($S, $A);
 
         // 글자별 시각. 맞지 않은 글자는 비워 두었다가 앞뒤 사이로 채운다.
         $n = count($S);
@@ -200,7 +200,7 @@ class Alignment
      * 우리 글자 S 와 정렬 글자 A 를 앞에서부터 맞춘다. 결과: S 위치 → A 위치(없으면 null)
      * 같은 글자면 그대로 짝, 다르면 가까운 앞쪽에서 다시 맞는 곳을 찾는다(빠진 글자, 덧붙은 글자, 바뀐 글자 처리).
      */
-    private static function match(array $S, array $A): array
+    private static function matchChars(array $S, array $A): array
     {
         $n = count($S);
         $m = count($A);

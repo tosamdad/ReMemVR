@@ -194,7 +194,11 @@ class Worker
 
             $name = '르멤버 ' . $profile['label'] . ' #' . $pid;
             $description = '르멤버 가족 목소리 프로필 #' . $pid . ' (' . $profile['label'] . ')';
-            $res = ElevenLabs::addVoice($name, $files, $description);
+            $res = ElevenLabs::addVoice($name, $files, $description, [
+                'user_id' => (int) $profile['user_id'],
+                'ref_type' => 'voice_profile',
+                'ref_id' => $pid,
+            ]);
             if (empty($res['ok']) || empty($res['voice_id'])) {
                 throw new \RuntimeException('ElevenLabs 목소리 생성 실패: ' . self::errorText($res));
             }
@@ -213,7 +217,7 @@ class Worker
                 [$voiceId, 'processing', $pid]
             );
             $created = true;
-            self::plog($job, $pid, 'info', 'ElevenLabs 목소리 생성 완료: ' . self::shortId($voiceId) . ' (' . number_format(isset($res['ms']) ? (int) $res['ms'] : 0) . 'ms)');
+            self::plog($job, $pid, 'info', 'ElevenLabs 목소리 생성 완료: ' . self::shortId($voiceId) . self::tookText(isset($res['ms']) ? (int) $res['ms'] : 0));
 
             // 새 목소리이므로 이전 목소리로 만든 짧은 음성은 지운다.
             foreach (db_all('SELECT id, file_path FROM voice_clips WHERE voice_profile_id = ?', [$pid]) as $clip) {
@@ -347,7 +351,7 @@ class Worker
         if ($old !== '' && $old !== $rel) {
             Storage::delete($old);
         }
-        self::plog($job, $pid, 'info', "'" . $story['title'] . "' 오디오 생성 완료 (" . fmt_duration($duration) . ', ' . number_format(mb_strlen($text)) . '자, ' . number_format(isset($res['ms']) ? (int) $res['ms'] / 1000 : 0, 1) . '초 소요)');
+        self::plog($job, $pid, 'info', "'" . $story['title'] . "' 오디오 생성 완료 (길이 " . fmt_duration($duration) . ', ' . number_format(mb_strlen($text)) . '자)' . self::tookText(isset($res['ms']) ? (int) $res['ms'] : 0));
         VoiceService::refresh($pid);
     }
 
@@ -459,7 +463,8 @@ class Worker
                     $files++;
                 }
             }
-            foreach (['story-audio/' . $pid, 'clips/' . $pid] as $dir) {
+            // 빈 폴더 정리(목소리 연구실은 voice-samples/{회원}/{목소리}/ 에 샘플을 둔다)
+            foreach (['story-audio/' . $pid, 'clips/' . $pid, 'voice-samples/' . (int) $profile['user_id'] . '/' . $pid, 'voice-samples/' . $pid] as $dir) {
                 $full = storage_path($dir);
                 if (is_dir($full)) {
                     @rmdir($full);
@@ -711,8 +716,9 @@ class Worker
     public static function clipLines(): array
     {
         $lines = [];
+        // 질문 처리(QuestionService::clipUrl)가 앞뒤 공백만 뗀 문장의 해시로 찾으므로 같은 방식으로 정리한다.
         $add = static function ($text, string $kind) use (&$lines) {
-            $text = trim(preg_replace('/\s+/u', ' ', (string) $text));
+            $text = is_string($text) ? trim($text) : '';
             if ($text === '' || mb_strlen($text) > 500) {
                 return;
             }
@@ -721,11 +727,17 @@ class Worker
                 $lines[$hash] = ['kind' => $kind, 'text' => $text];
             }
         };
-        foreach ((array) setting('qa.fallback_lines', []) as $t) {
-            $add($t, 'fallback');
-        }
-        foreach ((array) setting('qa.error_lines', []) as $t) {
-            $add($t, 'error');
+        // 설정을 비워 두면 질문 처리도 기본 문장을 쓰므로 기본 문장을 만든다.
+        foreach (['qa.fallback_lines' => 'fallback', 'qa.error_lines' => 'error'] as $key => $kind) {
+            $list = array_filter((array) setting($key, []), static function ($t) {
+                return is_string($t) && trim($t) !== '';
+            });
+            if (!$list) {
+                $list = (array) \App\Core\Settings::DEFAULTS[$key];
+            }
+            foreach ($list as $t) {
+                $add($t, $kind);
+            }
         }
         $rows = db_all(
             'SELECT fallback_lines FROM stories WHERE status = ? AND deleted_at IS NULL AND fallback_lines IS NOT NULL',
@@ -787,6 +799,12 @@ class Worker
         }
 
         return (int) round($size * 8 / 128);
+    }
+
+    /** 걸린 시간 표시(" · 12.3초 소요"). 1초 미만이면 생략한다. */
+    private static function tookText(int $ms): string
+    {
+        return $ms >= 1000 ? ' · ' . number_format($ms / 1000, 1) . '초 소요' : '';
     }
 
     /** ElevenLabs 목소리 id 를 콘솔에 짧게 보여 준다. */

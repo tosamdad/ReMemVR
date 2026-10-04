@@ -25,6 +25,14 @@ class ElevenLabs
         return (bool) config('providers_fake');
     }
 
+    /** API 주소. config 의 elevenlabs.base_url 로 바꿀 수 있다(로컬 모의 서버 점검용, 보통은 비워 둔다). */
+    private static function base(): string
+    {
+        $url = (string) config('elevenlabs.base_url', '');
+
+        return $url !== '' ? rtrim($url, '/') : self::BASE;
+    }
+
     private static function headers(array $extra = []): array
     {
         return array_merge(['xi-api-key' => (string) config('elevenlabs.api_key', '')], $extra);
@@ -89,7 +97,7 @@ class ElevenLabs
         }
         $parts[] = ['name' => 'remove_background_noise', 'contents' => setting('elevenlabs.remove_background_noise', true) ? 'true' : 'false'];
 
-        $res = HttpClient::request('POST', self::BASE . '/voices/add', [
+        $res = HttpClient::request('POST', self::base() . '/voices/add', [
             'headers' => self::headers(['Accept' => 'application/json']),
             'multipart' => $parts,
             'timeout' => 120,
@@ -142,7 +150,7 @@ class ElevenLabs
         if (!self::validVoiceId($voiceId)) {
             return ['ok' => false, 'error' => '목소리 ID 형식이 올바르지 않습니다.'];
         }
-        $res = HttpClient::request('DELETE', self::BASE . '/voices/' . rawurlencode($voiceId), [
+        $res = HttpClient::request('DELETE', self::base() . '/voices/' . rawurlencode($voiceId), [
             'headers' => self::headers(['Accept' => 'application/json']),
             'timeout' => 30,
         ]);
@@ -162,7 +170,8 @@ class ElevenLabs
     /**
      * 문장을 목소리로 읽는다.
      * $opts: model_id, voice_settings[stability, similarity_boost, style, use_speaker_boost], with_timestamps(bool),
-     *        output_format, usage[purpose, user_id, ref_type, ref_id](주면 사용량 기록), chunk_chars(나눔 기준, 기본 4500)
+     *        output_format, usage[purpose, user_id, ref_type, ref_id](주면 사용량 기록), chunk_chars(나눔 기준, 기본 4500),
+     *        timeout(조각 하나의 제한 시간 초, 기본 180. 실시간 답변은 짧게)
      * @return array ['ok', 'audio', 'ext', 'mime', 'alignment' => ?['chars', 'starts', 'ends'](초), 'duration_ms', 'chars', 'error', 'ms']
      */
     public static function synthesize(string $voiceId, string $text, array $opts = []): array
@@ -196,6 +205,7 @@ class ElevenLabs
 
         $settings = self::voiceSettings(isset($opts['voice_settings']) && is_array($opts['voice_settings']) ? $opts['voice_settings'] : []);
         $max = isset($opts['chunk_chars']) ? max(50, (int) $opts['chunk_chars']) : self::MAX_CHUNK_CHARS;
+        $timeout = isset($opts['timeout']) ? max(5, (int) $opts['timeout']) : 180;
         $chunks = self::splitText($text, $max);
 
         $audios = [];
@@ -211,7 +221,7 @@ class ElevenLabs
                     'previous' => $ci > 0 ? mb_substr($chunks[$ci - 1], -300) : '',
                     'next' => isset($chunks[$ci + 1]) ? mb_substr($chunks[$ci + 1], 0, 300) : '',
                 ];
-                $part = self::requestChunk($voiceId, $chunk, $modelId, $format, $settings, $withTs, $ctx);
+                $part = self::requestChunk($voiceId, $chunk, $modelId, $format, $settings, $withTs, $ctx, $timeout);
             }
             if (!$part['ok']) {
                 $error = $part['error'];
@@ -289,7 +299,7 @@ class ElevenLabs
     }
 
     /** API 한 번 호출(최대 MAX_CHUNK_CHARS 글자) */
-    private static function requestChunk(string $voiceId, string $text, string $modelId, string $format, array $settings, bool $withTs, array $ctx): array
+    private static function requestChunk(string $voiceId, string $text, string $modelId, string $format, array $settings, bool $withTs, array $ctx, int $timeout = 180): array
     {
         $out = ['ok' => false, 'audio' => '', 'ext' => 'mp3', 'alignment' => null, 'duration_ms' => null, 'error' => null];
         $body = ['text' => $text, 'model_id' => $modelId, 'voice_settings' => $settings];
@@ -306,11 +316,11 @@ class ElevenLabs
                 $body['next_text'] = $ctx['next'];
             }
         }
-        $url = self::BASE . '/text-to-speech/' . rawurlencode($voiceId) . ($withTs ? '/with-timestamps' : '') . '?output_format=' . rawurlencode($format);
+        $url = self::base() . '/text-to-speech/' . rawurlencode($voiceId) . ($withTs ? '/with-timestamps' : '') . '?output_format=' . rawurlencode($format);
         $res = HttpClient::request('POST', $url, [
             'headers' => self::headers(['Accept' => $withTs ? 'application/json' : '*/*']),
             'json' => $body,
-            'timeout' => 180,
+            'timeout' => $timeout,
         ]);
         if ($res['status'] < 200 || $res['status'] >= 300) {
             $out['error'] = self::errorMessage($res);
@@ -459,7 +469,7 @@ class ElevenLabs
 
             return $out;
         }
-        $res = HttpClient::request('GET', self::BASE . '/user/subscription', [
+        $res = HttpClient::request('GET', self::base() . '/user/subscription', [
             'headers' => self::headers(['Accept' => 'application/json']),
             'timeout' => 20,
         ]);
@@ -585,16 +595,47 @@ class ElevenLabs
         return 0;
     }
 
-    /** MP3 조각을 잇는다. 두 번째 조각부터 앞의 ID3 태그는 뗀다. */
+    /** MP3 조각을 잇는다. 두 번째 조각부터 앞의 ID3 태그와 Xing/Info 프레임은 뗀다(중간에 소리 없는 프레임이 끼지 않게). */
     public static function concatMp3(array $parts): string
     {
         $out = '';
         foreach (array_values($parts) as $i => $p) {
             $p = (string) $p;
-            $out .= $i === 0 ? $p : substr($p, self::id3Size($p));
+            if ($i > 0) {
+                $p = substr($p, self::id3Size($p));
+                $p = substr($p, self::infoFrameLength($p));
+            }
+            $out .= $p;
         }
 
         return $out;
+    }
+
+    /** 맨 앞 프레임이 Xing/Info 프레임이면 그 길이, 아니면 0 */
+    private static function infoFrameLength(string $bytes): int
+    {
+        if (strlen($bytes) < 48 || ord($bytes[0]) !== 0xFF || (ord($bytes[1]) & 0xE0) !== 0xE0) {
+            return 0;
+        }
+        $head = substr($bytes, 4, 40);
+        if (strpos($head, 'Xing') === false && strpos($head, 'Info') === false) {
+            return 0;
+        }
+        $b1 = ord($bytes[1]);
+        $b2 = ord($bytes[2]);
+        $ver = ($b1 >> 3) & 3;
+        $brIdx = ($b2 >> 4) & 15;
+        $srIdx = ($b2 >> 2) & 3;
+        if ($ver === 1 || (($b1 >> 1) & 3) !== 1 || $brIdx === 0 || $brIdx === 15 || $srIdx === 3) {
+            return 0;
+        }
+        $brV1 = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320];
+        $brV2 = [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160];
+        $rates = [3 => [44100, 48000, 32000], 2 => [22050, 24000, 16000], 0 => [11025, 12000, 8000]];
+        $spf = $ver === 3 ? 1152 : 576;
+        $len = (int) floor($spf / 8 * ($ver === 3 ? $brV1[$brIdx] : $brV2[$brIdx]) * 1000 / $rates[$ver][$srIdx]) + (($b2 >> 1) & 1);
+
+        return $len <= strlen($bytes) ? $len : 0;
     }
 
     // ───────────────────────── 오류 ─────────────────────────

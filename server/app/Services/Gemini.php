@@ -18,6 +18,14 @@ class Gemini
         return provider_ready('gemini');
     }
 
+    /** API 주소. config 의 gemini.base_url 로 바꿀 수 있다(로컬 모의 서버 점검용, 보통은 비워 둔다). */
+    private static function base(): string
+    {
+        $url = (string) config('gemini.base_url', '');
+
+        return $url !== '' ? rtrim($url, '/') : self::BASE;
+    }
+
     /** 설정의 모델 이름(경로에 넣으므로 안전한 글자만 남긴다) */
     public static function model(): string
     {
@@ -97,7 +105,7 @@ class Gemini
             $payload['generationConfig']['thinkingConfig'] = ['thinkingBudget' => 0];
         }
 
-        $res = HttpClient::request('POST', self::BASE . '/models/' . rawurlencode($model) . ':generateContent', [
+        $res = HttpClient::request('POST', self::base() . '/models/' . rawurlencode($model) . ':generateContent', [
             'headers' => ['x-goog-api-key' => (string) config('gemini.api_key', '')],
             'json' => $payload,
             'timeout' => 30,
@@ -138,14 +146,12 @@ class Gemini
         }
         $parsed = self::parseJson($text);
         if ($parsed === null) {
-            $plain = trim($text);
-            if ($plain === '') {
-                $out['error'] = 'Gemini 응답이 비어 있습니다' . ($finish !== '' ? '(' . $finish . ')' : '') . '.';
+            $parsed = self::salvage($text);
+            if ($parsed === null) {
+                $out['error'] = 'Gemini 응답을 읽지 못했습니다' . ($finish !== '' ? '(' . $finish . ')' : '') . '.';
 
                 return $out;
             }
-            // JSON 이 깨졌으면 글 전체를 답으로 쓴다.
-            $parsed = ['question' => '', 'answer' => $plain];
         }
         $out['ok'] = true;
         $out['question'] = trim((string) (isset($parsed['question']) ? $parsed['question'] : ''));
@@ -176,7 +182,7 @@ class Gemini
             return ['ok' => true, 'ms' => (int) round((microtime(true) - $started) * 1000), 'error' => null];
         }
         $model = self::model();
-        $res = HttpClient::request('GET', self::BASE . '/models/' . rawurlencode($model), [
+        $res = HttpClient::request('GET', self::base() . '/models/' . rawurlencode($model), [
             'headers' => ['x-goog-api-key' => (string) config('gemini.api_key', '')],
             'timeout' => 15,
         ]);
@@ -366,6 +372,39 @@ class Gemini
         }
 
         return is_array($data) && isset($data['answer']) ? $data : null;
+    }
+
+    /**
+     * 출력 한도에 걸려 JSON 이 중간에 끊긴 경우: 읽을 수 있는 question, answer 만 건진다.
+     * JSON 모양이 아닌 글이면 글 전체를 답으로 쓴다. 건질 답이 없으면 null
+     */
+    public static function salvage(string $text): ?array
+    {
+        $text = trim($text);
+        if ($text === '') {
+            return null;
+        }
+        if (strpos($text, '{') === false && strpos($text, '"answer"') === false) {
+            return ['question' => '', 'answer' => $text];
+        }
+        $field = static function (string $name) use ($text): string {
+            if (!preg_match('/"' . $name . '"\s*:\s*"((?:[^"\\\\]|\\\\.)*)/su', $text, $m)) {
+                return '';
+            }
+            $decoded = json_decode('"' . $m[1] . '"');
+            if (!is_string($decoded)) {
+                // 끝이 이스케이프 중간에서 끊겼으면 마지막 역슬래시를 떼고 다시 읽는다.
+                $decoded = json_decode('"' . rtrim($m[1], '\\') . '"');
+            }
+
+            return is_string($decoded) ? trim($decoded) : '';
+        };
+        $answer = $field('answer');
+        if ($answer === '') {
+            return null;
+        }
+
+        return ['question' => $field('question'), 'answer' => $answer];
     }
 
     private static function errorMessage(array $res, string $model): string

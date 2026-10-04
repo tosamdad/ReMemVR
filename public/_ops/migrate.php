@@ -7,7 +7,6 @@
 require __DIR__ . '/bootstrap.php';
 
 ops_require_token();
-@set_time_limit(300);
 
 /** 서버 환경 점검(비밀 값은 담지 않는다) */
 function ops_env_report(): array
@@ -37,6 +36,10 @@ function ops_env_report(): array
     ];
 }
 
+// 실행 시간 한도를 늘리기 전에 서버 본래 값을 읽는다.
+$env = ops_env_report();
+@set_time_limit(300);
+
 try {
     $config = app_config();
     $migrator = new Migrator(Db::connect($config['db']), APP_ROOT . '/migrations');
@@ -49,8 +52,8 @@ try {
         'action' => $action === 'status' ? 'status' : 'migrate',
         'applied' => $result ? $result['applied'] : [],
         'status' => $migrator->status(),
-        'env' => ops_env_report(),
+        'env' => $env,
     ]);
 } catch (Throwable $e) {
-    json_response(['ok' => false, 'error' => $e->getMessage(), 'env' => ops_env_report()], 500);
+    json_response(['ok' => false, 'error' => $e->getMessage(), 'env' => $env], 500);
 }

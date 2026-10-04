@@ -20,7 +20,7 @@ $drain = in_array('--drain', $args, true);
 $statsOnly = in_array('--stats', $args, true);
 $seconds = 20;
 foreach ($args as $a) {
-    if (ctype_digit($a)) {
+    if (preg_match('/^\d+$/', $a)) {
         $seconds = max(1, (int) $a);
     }
 }

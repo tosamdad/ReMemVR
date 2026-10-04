@@ -39,7 +39,8 @@ class MediaController
                AND sa.status = ? AND sa.file_path IS NOT NULL',
             [(int) $id, $uid, 'completed']
         );
-        $this->send($row ? $row['file_path'] : null, null, 604800);
+        // 관리자가 같은 동화를 다시 만들면 주소는 같고 파일만 바뀌므로 캐시는 짧게 두고 ETag 로 다시 확인한다.
+        $this->send($row ? $row['file_path'] : null, null, 3600);
     }
 
     /** 내 목소리의 짧은 음성(대체 문장, 오류 안내, 미리듣기) */
@@ -52,7 +53,7 @@ class MediaController
              WHERE c.id = ? AND vp.user_id = ? AND vp.deleted_at IS NULL AND c.status = ? AND c.file_path IS NOT NULL',
             [(int) $id, $uid, 'completed']
         );
-        $this->send($row ? $row['file_path'] : null, null, 604800);
+        $this->send($row ? $row['file_path'] : null, null, 3600);
     }
 
     /** 아이 질문 녹음(내 재생 기록의 것만) */

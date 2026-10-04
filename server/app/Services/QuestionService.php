@@ -37,17 +37,7 @@ class QuestionService
         ];
 
         try {
-            // 1) 짧은 시간에 너무 많은 질문(오작동, 장난)을 막는다.
-            if (!RateLimiter::hit('qa:' . $userId, 20, 600)) {
-                @unlink($audioTmpPath);
-                $line = self::pickLine(self::errorLines(), $count);
-                $interactionId = self::insert($row + ['answer_text' => $line, 'error_message' => '질문 요청 한도 초과(10분 20회)']);
-
-                return self::result('error', null, $line, null, max(0, $max - $count), $interactionId, $started);
-            }
-
-            // 2) 동화, 목소리, 최신 질문 횟수
-            $story = db_one('SELECT id, title, barge_in_enabled, max_questions, fallback_lines FROM stories WHERE id = ?', [(int) $session['story_id']]);
+            // 목소리(없으면 기기 음성). 안내 문장의 미리 만든 음성을 찾을 때도 쓴다.
             if (!empty($session['voice_profile_id'])) {
                 $profile = db_one(
                     'SELECT id, label, provider_voice_id, stability, similarity_boost, style, speaker_boost
@@ -55,11 +45,24 @@ class QuestionService
                     [(int) $session['voice_profile_id'], $userId]
                 );
             }
+
+            // 1) 짧은 시간에 너무 많은 질문(오작동, 장난)을 막는다.
+            if (!RateLimiter::hit('qa:' . $userId, 20, 600)) {
+                @unlink($audioTmpPath);
+                $line = self::pickLine(self::errorLines(), $count);
+                $interactionId = self::insert($row + ['answer_text' => $line, 'error_message' => '질문 요청 한도 초과(10분 20회)']);
+
+                return self::result('error', null, $line, $profile ? self::clipUrl((int) $profile['id'], $line) : null, max(0, $max - $count), $interactionId, $started);
+            }
+
+            // 2) 동화(끼어들기 설정)와 최신 질문 횟수
+            $story = db_one('SELECT id, title, barge_in_enabled, max_questions, fallback_lines FROM stories WHERE id = ?', [(int) $session['story_id']]);
             $fresh = db_one('SELECT question_count, fallback_count, child_id FROM play_sessions WHERE id = ? AND user_id = ?', [$sessionId, $userId]);
             if ($fresh) {
                 $session = array_merge($session, $fresh);
                 $count = (int) $fresh['question_count'];
             }
+            $fallbackCount = (int) (isset($session['fallback_count']) ? $session['fallback_count'] : 0);
             if ($story && $story['max_questions'] !== null && $story['max_questions'] !== '') {
                 $max = (int) $story['max_questions'];
             }
@@ -82,7 +85,7 @@ class QuestionService
 
             // 4) 질문 기능이 꺼져 있음(전체 설정 또는 동화별 설정)
             if (!setting('qa.enabled', true) || (int) $story['barge_in_enabled'] === 0) {
-                $line = self::pickLine(self::fallbackLines($story), (int) $session['fallback_count']);
+                $line = self::pickLine(self::fallbackLines($story), $fallbackCount);
 
                 return self::finish($interactionId, 'disabled', null, $line, $profile, [], max(0, $max - $count), $started);
             }
@@ -93,7 +96,6 @@ class QuestionService
                 [$sessionId, $userId, $max]
             ) === 1;
             if (!$reserved) {
-                $fallbackCount = (int) $session['fallback_count'];
                 $line = self::pickLine(self::fallbackLines($story), $fallbackCount);
                 db_exec('UPDATE play_sessions SET fallback_count = LEAST(fallback_count + 1, 255) WHERE id = ? AND user_id = ?', [$sessionId, $userId]);
 
@@ -186,6 +188,8 @@ class QuestionService
                         'use_speaker_boost' => $profile['speaker_boost'],
                     ],
                     'usage' => ['purpose' => 'answer_tts', 'user_id' => $userId, 'ref_type' => 'interaction', 'ref_id' => $interactionId],
+                    // 아이가 기다리는 중이라 오래 걸리면 기기 음성으로 넘긴다.
+                    'timeout' => 30,
                 ]);
                 $extra['tts_ms'] = $tts['ms'];
                 if ($tts['ok']) {
@@ -262,12 +266,17 @@ class QuestionService
         return $lines ?: ['음, 잘 못 들었어. 이야기를 계속 들어 볼까?'];
     }
 
+    /** 빈 줄을 빼고 공백을 한 칸으로 정리한다(미리 만든 목소리 음성의 text_hash 와 같은 기준). */
     private static function cleanLines(array $lines): array
     {
         $out = [];
         foreach ($lines as $l) {
-            if (is_string($l) && trim($l) !== '') {
-                $out[] = trim($l);
+            if (!is_string($l)) {
+                continue;
+            }
+            $l = trim((string) preg_replace('/\s+/u', ' ', $l));
+            if ($l !== '') {
+                $out[] = $l;
             }
         }
 
@@ -347,7 +356,11 @@ class QuestionService
 
             return $out;
         }
-        $ext = Storage::extForMime($mime, 'wav');
+        // 브라우저가 알려 준 MIME 보다 파일 머리의 실제 형식을 믿는다(sendBeacon, Safari 녹음 대비).
+        $ext = self::sniffAudioExt($tmpPath);
+        if ($ext === null) {
+            $ext = Storage::extForMime($mime, 'bin');
+        }
         if (!in_array($ext, self::AUDIO_EXTS, true)) {
             @unlink($tmpPath);
             $out['error'] = '지원하지 않는 음성 형식(' . str_limit($mime, 40) . ')';
@@ -361,6 +374,43 @@ class QuestionService
         $out['mime'] = Storage::mimeFor($rel);
 
         return $out;
+    }
+
+    /** 파일 머리 바이트로 음성 형식을 알아낸다. 모르면 null */
+    public static function sniffAudioExt(string $path): ?string
+    {
+        $fp = @fopen($path, 'rb');
+        if (!$fp) {
+            return null;
+        }
+        $head = (string) fread($fp, 16);
+        fclose($fp);
+        if (strlen($head) < 12) {
+            return null;
+        }
+        if (substr($head, 0, 4) === 'RIFF' && substr($head, 8, 4) === 'WAVE') {
+            return 'wav';
+        }
+        if (substr($head, 0, 4) === "\x1A\x45\xDF\xA3") {
+            return 'webm';
+        }
+        if (substr($head, 0, 4) === 'OggS') {
+            return 'ogg';
+        }
+        if (substr($head, 0, 4) === 'fLaC') {
+            return 'flac';
+        }
+        if (substr($head, 4, 4) === 'ftyp') {
+            return 'm4a';
+        }
+        if (substr($head, 0, 3) === 'ID3' || (ord($head[0]) === 0xFF && (ord($head[1]) & 0xE6) === 0xE2)) {
+            return 'mp3';
+        }
+        if (ord($head[0]) === 0xFF && (ord($head[1]) & 0xF6) === 0xF0) {
+            return 'aac';
+        }
+
+        return null;
     }
 
     /** Gemini 에 넘길 동화 맥락 */

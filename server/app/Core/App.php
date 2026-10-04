@@ -48,6 +48,12 @@ class App
     {
         try {
             if (class_exists('App\\Services\\Worker')) {
+                // FastCGI/LiteSpeed 환경이면 응답을 먼저 끝내 방문자가 깨우기 호출을 기다리지 않게 한다.
+                if (function_exists('fastcgi_finish_request')) {
+                    fastcgi_finish_request();
+                } elseif (function_exists('litespeed_finish_request')) {
+                    litespeed_finish_request();
+                }
                 \App\Services\Worker::maybeKick();
             }
         } catch (\Throwable $e) {

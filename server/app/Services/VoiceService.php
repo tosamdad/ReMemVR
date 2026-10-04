@@ -113,7 +113,8 @@ class VoiceService
                 sample_total_ms = ?, quality_grade = COALESCE(?, quality_grade) WHERE id = ?',
             ['cloning', $adminId, $summary['total_ms'], $summary['grade'], $profileId]
         );
-        Jobs::cancelPending('voice_profile', $profileId, ['voice_clone']);
+        // 목소리 생성이 끝나면 동화, 안내 음성 작업을 다시 등록하므로 남은 대기 작업은 지운다.
+        Jobs::cancelPending('voice_profile', $profileId, ['voice_clone', 'story_tts', 'voice_clips']);
         Jobs::enqueue('voice_clone', ['profile_id' => $profileId], [
             'priority' => 1, 'ref_type' => 'voice_profile', 'ref_id' => $profileId,
         ]);

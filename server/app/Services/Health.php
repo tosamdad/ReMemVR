@@ -26,9 +26,11 @@ class Health
      */
     public static function status(bool $fresh = false): array
     {
+        $sig = self::signature();
         if (!$fresh) {
             $cached = setting(self::CACHE_KEY);
-            if (is_array($cached) && isset($cached['ts'], $cached['data']) && is_array($cached['data']) && time() - (int) $cached['ts'] < self::CACHE_SECONDS) {
+            if (is_array($cached) && isset($cached['ts'], $cached['data']) && is_array($cached['data'])
+                && time() - (int) $cached['ts'] < self::CACHE_SECONDS && (isset($cached['sig']) ? $cached['sig'] : '') === $sig) {
                 $data = $cached['data'];
                 $data['cached'] = true;
                 // 작업 대기열은 DB 만 읽으므로 항상 새로 센다.
@@ -49,12 +51,21 @@ class Health
             'cached' => false,
         ];
         try {
-            Settings::set(self::CACHE_KEY, ['ts' => time(), 'data' => $data]);
+            Settings::set(self::CACHE_KEY, ['ts' => time(), 'sig' => $sig, 'data' => $data]);
         } catch (\Throwable $e) {
             app_log('error', '상태 점검 결과 저장 실패: ' . $e->getMessage());
         }
 
         return $data;
+    }
+
+    /** 점검 결과를 바꾸는 설정(키 등록 여부, 개발 모드, 모델)이 달라지면 보관한 결과를 쓰지 않는다. 키 값 자체는 넣지 않는다. */
+    private static function signature(): string
+    {
+        return md5(json_encode([
+            (bool) config('providers_fake'), Gemini::ready(), ElevenLabs::ready(), Gemini::model(),
+            (string) config('gemini.base_url', ''), (string) config('elevenlabs.base_url', ''),
+        ]));
     }
 
     /** 전체가 정상인지(대시보드 상단 표시용) */
