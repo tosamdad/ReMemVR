@@ -13,8 +13,8 @@ $percent = $working && !empty($v['progress']) ? (int) $v['progress']['percent'] 
 // 상태별 모양: [아바타 배경, 아이콘 색, 점 색, 상태 글자 색, 상태 문구]
 $looks = [
     'completed' => ['bg-primary-container/30', 'text-primary', 'bg-secondary', 'text-on-secondary-container', '준비됨'],
-    'cloning' => ['bg-tertiary-container/30', 'text-tertiary', 'bg-primary animate-pulse', 'text-primary tracking-tighter', '생성 중... ' . $percent . '%'],
-    'processing' => ['bg-tertiary-container/30', 'text-tertiary', 'bg-primary animate-pulse', 'text-primary tracking-tighter', '생성 중... ' . $percent . '%'],
+    'cloning' => ['bg-tertiary-container/30', 'text-tertiary', 'bg-primary animate-pulse', 'text-primary tracking-tighter', '목소리 만드는 중...'],
+    'processing' => ['bg-tertiary-container/30', 'text-tertiary', 'bg-primary animate-pulse', 'text-primary tracking-tighter', '동화 만드는 중... ' . $percent . '%'],
     'pending' => ['bg-secondary-container/40', 'text-secondary', 'bg-tertiary', 'text-on-tertiary-container', '검토 대기 중'],
     'rejected' => ['bg-error-container/50', 'text-error', 'bg-error', 'text-error', '재녹음 필요'],
     'failed' => ['bg-error-container/50', 'text-error', 'bg-error', 'text-error', '생성 실패, 문의해 주세요'],

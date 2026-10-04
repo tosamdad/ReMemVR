@@ -120,22 +120,22 @@ class Request
         if (!isset($_FILES[$key])) {
             $len = isset($_SERVER['CONTENT_LENGTH']) ? (int) $_SERVER['CONTENT_LENGTH'] : 0;
             if ($len > 0 && empty($_POST) && empty($_FILES)) {
-                return '파일이 너무 큽니다. 서버 허용 크기(' . ini_get('post_max_size') . ')를 넘었습니다.';
+                return '파일이 너무 커요. 서버가 받을 수 있는 크기(' . ini_get('post_max_size') . ')를 넘었어요.';
             }
 
-            return '파일이 전송되지 않았습니다.';
+            return '파일이 전송되지 않았어요. 다시 시도해 주세요.';
         }
         $code = (int) $_FILES[$key]['error'];
         $map = [
-            UPLOAD_ERR_INI_SIZE => '파일이 너무 큽니다. 서버 허용 크기(' . ini_get('upload_max_filesize') . ')를 넘었습니다.',
-            UPLOAD_ERR_FORM_SIZE => '파일이 너무 큽니다.',
-            UPLOAD_ERR_PARTIAL => '파일이 일부만 전송되었습니다. 다시 시도해 주세요.',
+            UPLOAD_ERR_INI_SIZE => '파일이 너무 커요. 서버가 받을 수 있는 크기(' . ini_get('upload_max_filesize') . ')를 넘었어요.',
+            UPLOAD_ERR_FORM_SIZE => '파일이 너무 커요.',
+            UPLOAD_ERR_PARTIAL => '파일이 일부만 전송되었어요. 다시 시도해 주세요.',
             UPLOAD_ERR_NO_FILE => '파일을 선택해 주세요.',
-            UPLOAD_ERR_NO_TMP_DIR => '서버 임시 폴더 오류입니다.',
-            UPLOAD_ERR_CANT_WRITE => '서버에 파일을 저장하지 못했습니다.',
+            UPLOAD_ERR_NO_TMP_DIR => '서버 임시 폴더 문제로 저장하지 못했어요.',
+            UPLOAD_ERR_CANT_WRITE => '서버에 파일을 저장하지 못했어요.',
         ];
 
-        return $code === UPLOAD_ERR_OK ? null : (isset($map[$code]) ? $map[$code] : '업로드 오류(' . $code . ')');
+        return $code === UPLOAD_ERR_OK ? null : (isset($map[$code]) ? $map[$code] : '업로드하지 못했어요(오류 ' . $code . ').');
     }
 
     public static function header(string $name): ?string

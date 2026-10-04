@@ -137,7 +137,7 @@ $slider = static function ($key, $label, $value, $help, $accent) {
       <?php endif; ?>
     </div>
     <?php if ($canClone): ?>
-    <button type="submit" formaction="<?= e(url('/admin/voices/' . $id . '/clone')) ?>" class="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 font-label-md text-label-md text-on-primary shadow-md transition-all hover:bg-on-primary-fixed-variant disabled:cursor-not-allowed disabled:opacity-50" data-confirm="<?= e($name . '으로 ElevenLabs Voice ID 를 생성할까요? 위 파라미터도 함께 저장됩니다.') ?>"<?= $elReady ? '' : ' disabled title="' . e($elTip) . '"' ?>>
+    <button type="submit" formaction="<?= e(url('/admin/voices/' . $id . '/clone')) ?>" class="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 font-label-md text-label-md text-on-primary shadow-md transition-all hover:bg-on-primary-fixed-variant disabled:cursor-not-allowed disabled:opacity-50" data-confirm="<?= e($name . '의 ElevenLabs Voice ID 를 생성할까요? 위 파라미터도 함께 저장됩니다.') ?>"<?= $elReady ? '' : ' disabled title="' . e($elTip) . '"' ?>>
       <span class="material-symbols-outlined text-[20px]">smart_toy</span>[수동 호출] ElevenLabs Voice ID 생성
     </button>
     <?php elseif ($hasVoice): ?>

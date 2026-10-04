@@ -66,7 +66,7 @@ class Validator
                 }
                 if ($rule === 'required') {
                     if ($empty) {
-                        $this->errors[$field] = $label . '을(를) 입력해 주세요.';
+                        $this->errors[$field] = self::josa($label, '을', '를') . ' 입력해 주세요.';
                         break;
                     }
                     continue;
@@ -90,26 +90,38 @@ class Validator
             case 'email':
                 return filter_var($str, FILTER_VALIDATE_EMAIL) ? null : '올바른 이메일 주소를 입력해 주세요.';
             case 'min':
-                return mb_strlen($str) >= (int) $param ? null : $label . '은(는) ' . (int) $param . '자 이상이어야 합니다.';
+                return mb_strlen($str) >= (int) $param ? null : self::josa($label, '은', '는') . ' ' . (int) $param . '자 이상 입력해 주세요.';
             case 'max':
-                return mb_strlen($str) <= (int) $param ? null : $label . '은(는) ' . (int) $param . '자 이하로 입력해 주세요.';
+                return mb_strlen($str) <= (int) $param ? null : self::josa($label, '은', '는') . ' ' . (int) $param . '자 이하로 입력해 주세요.';
             case 'numeric':
-                return is_numeric($str) ? null : $label . '은(는) 숫자여야 합니다.';
+                return is_numeric($str) ? null : self::josa($label, '은', '는') . ' 숫자로 입력해 주세요.';
             case 'integer':
-                return preg_match('/^-?\d+$/', $str) ? null : $label . '은(는) 정수여야 합니다.';
+                return preg_match('/^-?\d+$/', $str) ? null : self::josa($label, '은', '는') . ' 정수로 입력해 주세요.';
             case 'between':
                 list($a, $b) = array_map('floatval', explode(',', (string) $param));
-                return is_numeric($str) && (float) $str >= $a && (float) $str <= $b ? null : $label . '은(는) ' . $a . ' ~ ' . $b . ' 사이여야 합니다.';
+                return is_numeric($str) && (float) $str >= $a && (float) $str <= $b ? null : self::josa($label, '은', '는') . ' ' . $a . '에서 ' . $b . ' 사이로 입력해 주세요.';
             case 'in':
-                return in_array($str, explode(',', (string) $param), true) ? null : $label . ' 값이 올바르지 않습니다.';
+                return in_array($str, explode(',', (string) $param), true) ? null : $label . ' 값을 다시 골라 주세요.';
             case 'confirmed':
                 $other = isset($this->data[$field . '_confirmation']) ? (string) $this->data[$field . '_confirmation'] : '';
-                return hash_equals($str, $other) ? null : $label . ' 확인이 일치하지 않습니다.';
+                return hash_equals($str, $other) ? null : $label . ' 확인이 일치하지 않아요.';
             case 'date':
                 $d = \DateTime::createFromFormat('Y-m-d', $str);
                 return $d && $d->format('Y-m-d') === $str ? null : '올바른 날짜를 입력해 주세요.';
         }
 
         return null;
+    }
+
+    /** 마지막 글자의 받침에 맞춰 조사를 붙인다. 한글이 아니면 '을(를)'처럼 함께 적는다. */
+    public static function josa(string $word, string $withFinal, string $withoutFinal): string
+    {
+        $last = mb_substr($word, -1);
+        $code = $last === '' ? 0 : (int) mb_ord($last, 'UTF-8');
+        if ($code < 0xAC00 || $code > 0xD7A3) {
+            return $word . $withFinal . '(' . $withoutFinal . ')';
+        }
+
+        return $word . ((($code - 0xAC00) % 28) !== 0 ? $withFinal : $withoutFinal);
     }
 }

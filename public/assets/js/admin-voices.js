@@ -363,6 +363,7 @@
       var st = document.querySelector('[data-live-status]');
       var c = chipCls[data.status];
       if (st && c) st.innerHTML = '<span class="whitespace-nowrap rounded-full px-2 py-0.5 font-label-sm text-label-sm ' + c[1] + '">' + c[0] + '</span>';
+      con.setAttribute('data-active', data.active ? '1' : '0');
       var dot = document.querySelector('[data-console-dot]');
       if (dot) {
         dot.classList.toggle('animate-pulse', !!data.active);

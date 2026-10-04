@@ -16,7 +16,7 @@ class MemberController
     {
         require_admin();
         $filters = $this->filters();
-        $page = max(1, (int) Request::query('page', 1));
+        $page = max(1, Request::int('page', 1));
 
         return view('admin/members/index', [
             'kpi' => MemberStats::kpis(30),
@@ -195,10 +195,10 @@ class MemberController
 
     private function filters(): array
     {
-        $voice = (string) Request::query('voice', '');
+        $voice = Request::str('voice');
 
         return [
-            'q' => str_limit(trim((string) Request::query('q', '')), 100),
+            'q' => mb_substr(Request::str('q'), 0, 100),
             'voice' => isset(MemberStats::VOICE_FILTERS[$voice]) ? $voice : '',
         ];
     }

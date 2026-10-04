@@ -60,23 +60,28 @@ final class DemoSeed
             return 1;
         }
 
-        $existing = (int) db_value('SELECT COUNT(*) FROM users WHERE email LIKE ?', ['%@' . self::DOMAIN]);
-        if ($opts['clean'] || $opts['reset']) {
+        if ($opts['clean']) {
             $removed = self::reset();
-            echo sprintf("이전 데모 데이터를 지웠다: 회원 %d명, 파일 %d개\n", $removed['users'], $removed['files']);
-            if ($opts['clean']) {
-                return 0;
-            }
-        } elseif ($existing > 0) {
-            fwrite(STDERR, "데모 회원 {$existing}명이 이미 있다. 다시 만들려면 --reset 을 붙인다.\n");
+            echo sprintf("데모 데이터를 지웠다: 회원 %d명, 파일 %d개\n", $removed['users'], $removed['files']);
 
-            return 1;
+            return 0;
         }
 
+        // 지우기 전에 먼저 확인한다(동화가 없으면 아무것도 바꾸지 않는다).
         $stories = self::loadStories();
         if (count($stories) < self::STORY_CODES) {
             fwrite(STDERR, '오류: 기본 동화 12편(Fairytale-001 ~ 012, 게시 상태)이 필요한데 ' . count($stories) . "편만 있다.\n");
             fwrite(STDERR, "먼저 php server/bin/migrate.php 로 0003_seed_content.sql 을 적용한다(동화를 숨겼다면 관리자 화면에서 다시 게시한다).\n");
+
+            return 1;
+        }
+
+        $existing = (int) db_value('SELECT COUNT(*) FROM users WHERE email LIKE ?', ['%@' . self::DOMAIN]);
+        if ($opts['reset']) {
+            $removed = self::reset();
+            echo sprintf("이전 데모 데이터를 지웠다: 회원 %d명, 파일 %d개\n", $removed['users'], $removed['files']);
+        } elseif ($existing > 0) {
+            fwrite(STDERR, "데모 회원 {$existing}명이 이미 있다. 다시 만들려면 --reset 을 붙인다.\n");
 
             return 1;
         }
@@ -167,11 +172,17 @@ final class DemoSeed
                 $paths[] = $r['question_audio_path'];
                 $paths[] = $r['answer_audio_path'];
             }
+            $dirs = [];
             foreach ($paths as $p) {
                 if (is_string($p) && $p !== '' && Storage::exists($p)) {
                     Storage::delete($p);
                     $files++;
+                    $dirs[dirname(Storage::path($p))] = true;
                 }
+            }
+            // 파일을 지워 비게 된 폴더만 정리한다(다른 파일이 있으면 rmdir 이 실패하고 그대로 둔다).
+            foreach (array_keys($dirs) as $dir) {
+                @rmdir($dir);
             }
             // 비어 있는 데모 폴더 정리
             foreach ($uids as $uid) {

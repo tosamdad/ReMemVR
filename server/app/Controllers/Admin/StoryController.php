@@ -100,7 +100,7 @@ class StoryController
             'empty' => $empty,
             'sentences' => $sentences,
             'library' => $library,
-            'filters' => ['q' => (string) Request::query('q', ''), 'status' => (string) Request::query('status', '')],
+            'filters' => ['q' => Request::str('q'), 'status' => Request::str('status')],
             'publishedCount' => (int) db_value("SELECT COUNT(*) FROM stories WHERE deleted_at IS NULL AND status = 'published'"),
             'totalCount' => (int) db_value('SELECT COUNT(*) FROM stories WHERE deleted_at IS NULL'),
             'audios' => $audios,
@@ -126,12 +126,12 @@ class StoryController
     {
         $where = ['s.deleted_at IS NULL'];
         $params = [];
-        $status = (string) Request::query('status', '');
+        $status = Request::str('status');
         if (isset(self::STATUSES[$status])) {
             $where[] = 's.status = ?';
             $params[] = $status;
         }
-        $q = trim((string) Request::query('q', ''));
+        $q = Request::str('q');
         if ($q !== '') {
             $like = '%' . addcslashes($q, '%_\\') . '%';
             $where[] = '(s.title LIKE ? OR s.code LIKE ? OR s.category LIKE ?)';

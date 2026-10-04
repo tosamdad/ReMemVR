@@ -281,9 +281,10 @@ class SettingsController
         }
 
         // 2) 회원 정보는 알아볼 수 없게 바꾸고, 자녀, 간편 로그인 연결, 재설정 토큰은 지운다.
+        //    아이 질문과 답변 글도 지워 재생 기록은 누구의 것인지 알 수 없는 통계로만 남긴다(개인정보 처리방침과 같게).
         db_tx(static function () use ($uid) {
             db_exec(
-                'UPDATE interactions i JOIN play_sessions ps ON ps.id = i.play_session_id SET i.question_audio_path = NULL, i.answer_audio_path = NULL WHERE ps.user_id = ?',
+                'UPDATE interactions i JOIN play_sessions ps ON ps.id = i.play_session_id SET i.question_audio_path = NULL, i.answer_audio_path = NULL, i.question_text = NULL, i.answer_text = NULL WHERE ps.user_id = ?',
                 [$uid]
             );
             db_update('users', [

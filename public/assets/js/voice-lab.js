@@ -97,7 +97,8 @@
         if (!v || v.status !== card.getAttribute('data-status')) { changed = true; return; }
         if (!WORKING.test(v.status)) return;
         var st = card.querySelector('[data-voice-status]');
-        if (st) st.textContent = '생성 중... ' + v.percent + '%';
+        // 목소리 복제 단계(cloning)에는 동화 진행률이 없으므로 퍼센트 대신 단계 이름을 보여 준다.
+        if (st) st.textContent = v.status === 'cloning' ? '목소리 만드는 중...' : '동화 만드는 중... ' + v.percent + '%';
         var pct = card.querySelector('[data-progress-percent]');
         if (pct) pct.textContent = v.percent;
         var bar = card.querySelector('[data-progress-bar]');

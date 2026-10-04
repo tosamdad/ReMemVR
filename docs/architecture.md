@@ -188,6 +188,10 @@ sentence_timings JSON 형식(story_audios)
     /voice-lab /voice-lab/new /voice-lab/{id} /voice-lab/{id}/record
     /settings /settings/profile /settings/password /settings/children ... /settings/playback /settings/notices /settings/support /settings/terms /settings/privacy /settings/withdraw
     /api/...                화면에서 fetch 로 부르는 JSON
+        POST /api/settings/prefs                      Auth::PREF_DEFAULTS 키만 받아 저장, {ok, prefs}
+        POST /settings/children/{id}/select           Accept: application/json 이면 {ok, child_id, message}
+        POST /api/play-sessions, /api/play-sessions/{id}/progress|complete|question
+        GET /api/voice-lab/status, POST /api/voice-lab/{id}/samples, /api/voice-lab/{id}/samples/{sampleId}/delete
     /media/sample/{id} /media/story-audio/{id} /media/clip/{id} /media/question/{interactionId} /media/answer/{interactionId} /media/cover/{storyId}
                             본인 것만 내려준다(표지는 공개). Range 지원
 
