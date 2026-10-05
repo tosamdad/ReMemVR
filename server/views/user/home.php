@@ -45,7 +45,7 @@ layout('user/layout', ['title' => '홈', 'nav' => 'home', 'mainClass' => 'px-mar
   <?php if ($recommended): ?>
   <div class="flex overflow-x-auto gap-4 pb-4 no-scrollbar -mx-margin-mobile px-margin-mobile">
     <?php foreach ($recommended as $s): ?>
-    <a href="<?= e(url('/player/' . (int) $s['id'])) ?>" class="w-[200px] min-w-[200px] bento-card bg-surface-container-lowest rounded-xl overflow-hidden shadow-sm border border-surface-variant/30">
+    <a href="<?= e(url('/stories/' . (int) $s['id'])) ?>" class="w-[200px] min-w-[200px] bento-card bg-surface-container-lowest rounded-xl overflow-hidden shadow-sm border border-surface-variant/30">
       <div class="h-48 w-full relative bg-surface-container">
         <img class="w-full h-full object-cover" src="<?= e(cover_url($s)) ?>" alt="" loading="lazy">
         <?php if (!empty($s['category'])): ?>

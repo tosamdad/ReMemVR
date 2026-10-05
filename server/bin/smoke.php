@@ -84,11 +84,17 @@ foreach ([['/', [200]], ['/login', [200]], ['/signup', [200]], ['/password/forgo
 if ($userCred !== '') {
     echo "회원 화면\n";
     if (login($base, '/login', 'email', $userCred, $jar)) {
-        foreach (['/home', '/stories', '/player', '/report', '/report?range=30', '/voice-lab', '/voice-lab/new', '/settings',
+        foreach (['/home', '/stories', '/player', '/library', '/library?tab=making', '/library?tab=done', '/library?tab=rejected', '/playlists',
+                  '/report', '/report?range=30', '/voice-lab', '/voice-lab/new', '/settings',
                   '/settings/profile', '/settings/password', '/settings/children', '/settings/playback', '/settings/notices',
                   '/settings/support', '/settings/terms', '/settings/privacy', '/settings/withdraw'] as $p) {
             list($status, $body) = http('GET', $base . $p, null, $jar);
             check('GET ' . $p, $status, $body, [200]);
+        }
+        list($status, $body) = http('GET', $base . '/stories', null, $jar);
+        if (preg_match('#href="[^"]*/stories/(\d+)"#', $body, $m)) {
+            list($status, $body) = http('GET', $base . '/stories/' . $m[1], null, $jar);
+            check('GET /stories/' . $m[1], $status, $body, [200]);
         }
         list($status, $body) = http('GET', $base . '/api/voice-lab/status', null, $jar, ['Accept: application/json']);
         check('GET /api/voice-lab/status', $status, $body, [200]);
@@ -100,7 +106,7 @@ if ($userCred !== '') {
 if ($adminCred !== '') {
     echo "관리자 화면\n";
     if (login($base, '/admin/login', 'login_id', $adminCred, $jar)) {
-        foreach (['/admin/dashboard', '/admin/voices', '/admin/voices?status=pending', '/admin/stories', '/admin/stories/new',
+        foreach (['/admin/dashboard', '/admin/requests', '/admin/requests?status=all', '/admin/requests?status=done', '/admin/voices', '/admin/voices?status=pending', '/admin/stories', '/admin/stories/new',
                   '/admin/members', '/admin/settings', '/admin/notices', '/admin/faqs', '/admin/inquiries', '/admin/admins',
                   '/admin/audit'] as $p) {
             list($status, $body) = http('GET', $base . $p, null, $jar);

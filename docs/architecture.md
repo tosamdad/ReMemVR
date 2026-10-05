@@ -108,21 +108,28 @@
     RMAdmin.tickWorker()           admin.js. 관리자 화면이 열려 있는 동안 45초마다 작업 처리기를 한 번 돌린다
     <form data-confirm="...">, <form data-ajax>   확인 창, fetch 제출(응답의 message 를 토스트, redirect 로 이동)
 
-7. 데이터 구조 요약(0001, 0002)
+7. 데이터 구조 요약(0001, 0002, 0004)
 
 - users(회원), children(자녀: birth_date, gender, avatar), user_social_accounts, password_resets
 - voice_profiles(가족 목소리). status 흐름:
-    draft(녹음 중) → pending(검토 대기, 사용자가 동의하고 제출) → cloning(ElevenLabs 목소리 생성 중)
-      → processing(동화 오디오 사전 생성 중, 이미 만든 동화는 들을 수 있음) → completed(준비됨)
+    draft(녹음 중) → pending(검토 대기, 사용자가 동의하고 제출) → cloning(ElevenLabs 목소리 생성 중) → completed(준비됨)
+    목소리가 준비되어도 동화를 한꺼번에 만들지 않는다. 동화는 회원이 골라 요청하고 관리자가 생성을 시작한 것만 만든다(story_requests).
+    processing 은 예전 일괄 생성 방식의 상태로, 0004 에서 completed 로 옮겼고 지금은 쓰지 않는다.
     rejected(반려, 재녹음 필요), failed(생성 실패). 삭제는 deleted_at(소프트 삭제) + ElevenLabs 목소리 삭제 작업
     stability, similarity_boost, style, speaker_boost: 관리자가 조율하는 합성 파라미터(NULL 이면 설정 기본값)
-    batch_status: none | queued | running | done | partial | failed
+    batch_status: none | queued | running | done | partial | failed (이 목소리로 생성을 시작한 요청 동화의 진행)
 - voice_samples(목소리 샘플: 길이, snr_db, peak_db, noise_db, clip_count, quality_grade 는 브라우저에서 측정해 보낸다)
 - stories(동화: code, category, est_duration_sec, barge_in_enabled, max_questions, vad_min_ms, aec_level, fallback_lines, content_hash)
   story_sentences(문장: seq, content, keywords, ref_start_ms, ref_end_ms)
   cover_image_path 는 'assets:covers/01.svg'(정적 파일) 또는 'storage:covers/파일'(업로드)
 - story_audios(목소리별 동화 오디오: status pending | processing | completed | failed, file_path, duration_ms, sentence_timings, content_hash)
   content_hash 가 stories.content_hash 와 다르면 옛 본문으로 만든 오디오이다(다시 생성 필요).
+- story_requests(동화 생성 요청: user_id, story_id, voice_profile_id, status requested | approved | rejected | canceled,
+  reject_reason, processed_by, processed_at, completed_at, notified_at)
+  화면의 진행 단계는 status 와 같은 동화, 같은 목소리의 story_audios 상태로 계산한다(StoryRequests::state):
+  requested(확인 대기) → approved 이면 making(만드는 중) | done(완성) | failed(생성 실패, 회원에게는 확인 중), 그 밖에 rejected, canceled
+- playlists(회원 플레이리스트: name, repeat_mode off | all | one, shuffle 0 | 1),
+  playlist_items(story_id + voice_profile_id, sort_order, 같은 플레이리스트에 같은 동화, 목소리는 한 번만)
 - voice_clips(목소리별 짧은 음성: 질문 한도 초과 대체 문장, 오류 안내, 미리듣기)
 - play_sessions(동화 1회 재생: voice_profile_id NULL 이면 기기 음성, audio_source voice | device, question_count, fallback_count, listened_ms, completed)
 - interactions(질문과 답변: mode answer | quota | fallback | error | disabled | budget, question_text, answer_text, answer_audio_path, emotion, latency_ms, llm_ms, tts_ms)
@@ -153,8 +160,24 @@ sentence_timings JSON 형식(story_audios)
     VoiceService::reject(int $profileId, ?int $adminId, string $reason): void
     VoiceService::saveParams(int $profileId, array $params): void    stability, similarity_boost, style, speaker_boost
     VoiceService::queueStories(int $profileId, ?array $storyIds = null, bool $force = false): int   동화 오디오 생성 작업 등록 개수
-    VoiceService::progress(int $profileId): array   ['total'=>12, 'completed'=>9, 'failed'=>0, 'pending'=>3, 'percent'=>75]
-    VoiceService::refresh(int $profileId): array    작업과 오디오 상태로 status, batch_status 를 다시 계산
+        $storyIds 가 null 이면 이 목소리로 생성을 시작한(approved) 요청의 동화만 대상이다.
+    VoiceService::progress(int $profileId): array   생성을 시작한 요청 기준 ['total'=>5, 'completed'=>3, 'failed'=>0, 'pending'=>2, 'percent'=>60]
+    VoiceService::refresh(int $profileId): array    작업과 오디오 상태로 batch_status 를 다시 계산(목소리 status 는 바꾸지 않는다)
+
+    StoryRequests::create(int $userId, int $storyId, array $voiceIds): array   ['created'=>[id], 'skipped'=>[['voice','reason']]]
+        준비되지 않은 목소리, 이미 요청했거나 만든 목소리는 건너뛴다. 동시 요청 한도(request.max_open), 관리자 알림 메일,
+        request.auto_approve 가 켜져 있으면 바로 생성 시작
+    StoryRequests::cancel(int $userId, int $id), reject(int $id, ?int $adminId, string $reason)
+    StoryRequests::approve(array $ids, ?int $adminId): array   ['approved'=>n, 'errors'=>[...]] 확인 대기, 반려, 실패 요청을 생성 시작
+    StoryRequests::syncAudio(int $storyId, int $voiceId): void   story_tts 가 끝나면 Worker 가 부른다. 완성 시각을 남기고,
+        회원의 만드는 중 요청이 모두 끝나면 완성 메일을 한 통으로 묶어 보낸다
+    StoryRequests::voiceStates(int $userId, int $storyId), forUser(int $userId, string $filter), userCounts(int $userId)
+
+    Playlists::create / rename / delete / setMode / addItem(완성 오디오만) / removeItem / moveItem / items / addable / forUser
+    Playlists::order(array $playlist, int $seed): array   들을 수 있는 항목. 랜덤이면 seed 로 섞는다(같은 seed 면 같은 순서)
+    Playlists::context(array $playlist, int $storyId, string $voice, int $pos, int $seed): ?array
+        ['playlist'=>[id, name, pos, total, repeat, shuffle, seed, url], 'next'=>[pos, seed, item, url]|null]
+        한 편 반복이면 같은 편, 전체 반복이면 끝에서 처음(랜덤이면 seed + 1 로 새로 섞음), 한 번만이면 끝에서 null
     VoiceService::delete(int $profileId): void      소프트 삭제 + voice_delete 작업
     VoiceService::testSpeak(int $profileId, string $text): array   ['ok'=>bool, 'audio_url'=>?, 'error'=>?] 관리자 테스트 재생(동기 합성)
 
@@ -182,8 +205,14 @@ sentence_timings JSON 형식(story_audios)
     /onboarding             첫 자녀 등록
     /home                   홈
     /stories                동화 전체 목록(분류 필터, 검색)
+    /stories/{id}           동화 상세: 가족 목소리별 상태, 완성된 목소리로 듣기, 목소리를 골라 생성 요청(POST /stories/{id}/request)
+    /library?tab=all|making|done|rejected   내 동화: 생성 요청 목록, 완성 동화 듣기와 플레이리스트 담기, 요청 취소
+                            (POST /library/requests/{id}/cancel)
+    /playlists /playlists/{id} /playlists/{id}/play(?item=)   플레이리스트(반복, 랜덤, 순서 바꾸기, 담기)
     /player                 마지막으로 듣던 동화(없으면 첫 동화)
-    /player/{storyId}?voice={voiceProfileId|device}
+    /player/{storyId}?voice={voiceProfileId|device}&pl={플레이리스트}&pos={순번}&seed={랜덤 순서}&auto=1
+                            pl 이 있으면 한 편이 끝날 때 플레이리스트의 다음 편으로 넘어가고, auto=1 이면 열리자마자 재생한다.
+                            잠자기 타이머 마감 시각은 sl 로 다음 편에 넘긴다
     /report?range=7|30      학습 리포트
     /voice-lab /voice-lab/new /voice-lab/{id} /voice-lab/{id}/record
     /settings /settings/profile /settings/password /settings/children ... /settings/playback /settings/notices /settings/support /settings/terms /settings/privacy /settings/withdraw
@@ -198,7 +227,7 @@ sentence_timings JSON 형식(story_audios)
 관리자(세션 RMADMIN, 경로 /admin)
 
     /admin/login /admin/logout /admin/setup(관리자가 한 명도 없을 때만, OPS_TOKEN 입력 필요)
-    /admin/dashboard /admin/voices /admin/voices/{id} /admin/stories /admin/stories/new /admin/stories/{id}
+    /admin/dashboard /admin/requests(?status, q, voice) /admin/voices /admin/voices/{id} /admin/stories /admin/stories/new /admin/stories/{id}
     /admin/members /admin/members/export.csv /admin/settings /admin/notices /admin/faqs /admin/inquiries /admin/admins /admin/audit
     /admin/media/...        관리자용 미디어(회원 소유 확인 없이 내려줌)
     /admin/api/worker/tick  작업 처리기 한 단계 실행(관리자 화면이 45초마다 호출)

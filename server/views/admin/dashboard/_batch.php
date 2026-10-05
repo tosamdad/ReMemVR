@@ -1,11 +1,12 @@
 <?php
-/** 대시보드: 동화 사전 생성 큐. 변수: d */
+/** 대시보드: 동화 생성 큐(회원 요청을 관리자가 생성 시작한 동화). 변수: d */
 use App\Services\DashboardStats;
+use App\Services\StoryRequests;
 
 $batch = $d['batch'];
-$stories = (int) $batch['stories'];
+$pending = StoryRequests::pendingCount();
 if ($batch['running'] > 0) {
-    $badge = ['배치 가동', 'bg-secondary-fixed text-on-secondary-fixed'];
+    $badge = ['생성 중', 'bg-secondary-fixed text-on-secondary-fixed'];
 } elseif ($batch['total'] > 0) {
     $badge = ['대기 중', 'bg-surface-container-high text-on-surface-variant'];
 } else {
@@ -15,16 +16,22 @@ if ($batch['running'] > 0) {
 <div class="flex items-center justify-between gap-2">
   <div class="flex items-center gap-2">
     <span class="material-symbols-outlined text-[22px] text-secondary">cloud_sync</span>
-    <h3 class="font-headline-md text-[18px] font-bold text-on-surface">동화 사전 생성 큐</h3>
+    <h3 class="font-headline-md text-[18px] font-bold text-on-surface">동화 생성 큐</h3>
   </div>
   <span class="shrink-0 rounded-full px-2 py-0.5 font-label-sm text-label-sm font-bold <?= $badge[1] ?>"><?= e($badge[0]) ?></span>
 </div>
-<p class="font-body-md text-sm text-on-surface-variant">승인된 목소리로 게시된 동화 <?= (int) $stories ?>편을 한 번만 미리 만들어 우리 서버에 저장합니다. 아이가 들을 때는 저장된 파일을 그대로 재생하므로 추가 비용이 없습니다.</p>
+<p class="font-body-md text-sm text-on-surface-variant">회원이 요청하고 관리자가 생성을 시작한 동화를 한 번만 만들어 우리 서버에 저장합니다. 아이가 들을 때는 저장된 파일을 그대로 재생하므로 추가 비용이 없습니다.</p>
+<?php if ($pending > 0): ?>
+<a href="<?= e(url('/admin/requests')) ?>" class="flex items-center justify-between gap-2 rounded-2xl bg-secondary-container/60 px-4 py-3 font-label-md text-label-md text-on-secondary-container">
+  <span class="flex items-center gap-2"><span class="material-symbols-outlined text-[20px]">library_add</span>확인을 기다리는 생성 요청 <strong><?= (int) $pending ?></strong>건</span>
+  <span class="material-symbols-outlined text-[20px]">chevron_right</span>
+</a>
+<?php endif; ?>
 <?php if (!$batch['items']): ?>
 <div class="flex flex-col items-center gap-2 rounded-2xl bg-surface-container-low px-4 py-7 text-center">
   <span class="material-symbols-outlined text-[28px] text-on-surface-variant">library_music</span>
   <p class="font-label-md text-label-md text-on-surface">지금 만들고 있는 동화 오디오가 없습니다</p>
-  <p class="font-label-sm text-label-sm font-semibold text-on-surface-variant">목소리 복제가 끝나면 자동으로 이 큐에 들어옵니다.</p>
+  <p class="font-label-sm text-label-sm font-semibold text-on-surface-variant">동화 생성 요청에서 생성을 시작하면 이 큐에 들어옵니다.</p>
 </div>
 <?php else: ?>
 <?php foreach ($batch['items'] as $it): $p = $it['progress']; ?>
@@ -58,4 +65,4 @@ if ($batch['running'] > 0) {
 </a>
 <?php endforeach; ?>
 <?php endif; ?>
-<a href="<?= e(url('/admin/voices', ['status' => 'processing'])) ?>" class="w-full rounded-xl bg-surface-container-high py-2.5 text-center font-label-md text-label-md text-on-surface transition-colors hover:bg-surface-variant">배치 작업 큐 상세 보기 (전체 <?= (int) $batch['total'] ?>건)</a>
+<a href="<?= e(url('/admin/requests', ['status' => 'making'])) ?>" class="w-full rounded-xl bg-surface-container-high py-2.5 text-center font-label-md text-label-md text-on-surface transition-colors hover:bg-surface-variant">생성 중인 요청 보기 (목소리 <?= (int) $batch['total'] ?>개)</a>

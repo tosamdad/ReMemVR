@@ -1,6 +1,7 @@
 <?php
 /**
- * 동화 전체 목록. 분류 칩, 검색, 2열 표지 카드(다 들은 표시, 이어 듣기 진행률).
+ * 동화 전체 목록. 분류 칩, 검색, 2열 표지 카드(다 들은 표시, 이어 듣기 진행률, 내 요청 현황).
+ * 카드를 누르면 동화 상세에서 가족 목소리를 골라 생성 요청을 하거나 완성된 목소리로 듣는다.
  * @var array $stories
  * @var array $categories
  * @var string $category
@@ -16,7 +17,7 @@ $chip = static function (bool $active): string {
 ?>
 <section class="space-y-1">
   <h1 class="text-headline-xl-mobile font-headline-xl-mobile text-on-surface">동화 책장</h1>
-  <p class="text-body-md text-on-surface-variant"><?= $total > 0 ? e($total . '편의 동화가 기다리고 있어요') : '곧 새로운 동화가 찾아올 거예요' ?></p>
+  <p class="text-body-md text-on-surface-variant"><?= $total > 0 ? e($total . '편의 동화가 기다리고 있어요. 골라서 가족 목소리로 만들어 달라고 요청해 보세요.') : '곧 새로운 동화가 찾아올 거예요' ?></p>
 </section>
 
 <form method="get" action="<?= e(url('/stories')) ?>" class="relative" role="search">
@@ -76,6 +77,11 @@ $chip = static function (bool $active): string {
         <span class="ml-auto text-secondary">다 들었어요</span>
         <?php endif; ?>
       </p>
+      <?php if ($s['mine']['done'] > 0): ?>
+      <p class="inline-flex items-center gap-1 rounded-full bg-secondary-container px-2 py-0.5 text-[11px] font-bold text-on-secondary-container"><span class="material-symbols-outlined text-[13px]">graphic_eq</span>가족 목소리 <?= (int) $s['mine']['done'] ?>개 완성</p>
+      <?php elseif ($s['mine']['making'] > 0): ?>
+      <p class="inline-flex items-center gap-1 rounded-full bg-primary-fixed px-2 py-0.5 text-[11px] font-bold text-on-primary-fixed"><span class="material-symbols-outlined text-[13px]">schedule</span>요청 중</p>
+      <?php endif; ?>
     </div>
   </a>
   <?php endforeach; ?>

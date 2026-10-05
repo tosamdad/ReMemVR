@@ -159,7 +159,7 @@ class Worker
         }
         $hasVoice = (string) $profile['provider_voice_id'] !== '';
         // 반려되었거나 다른 상태로 바뀐 요청은 처리하지 않는다(재시도 중 이미 목소리를 만든 경우는 이어서 진행).
-        if ($profile['status'] !== 'cloning' && !($hasVoice && $profile['status'] === 'processing')) {
+        if ($profile['status'] !== 'cloning' && !($hasVoice && in_array($profile['status'], ['processing', 'completed'], true))) {
             self::plog($job, $pid, 'warn', '목소리 상태가 "' . voice_status_label((string) $profile['status']) . '"(으)로 바뀌어 생성을 건너뜁니다.');
 
             return;
@@ -214,7 +214,7 @@ class Worker
             }
             db_exec(
                 'UPDATE voice_profiles SET provider_voice_id = ?, cloned_at = NOW(), status = ? WHERE id = ?',
-                [$voiceId, 'processing', $pid]
+                [$voiceId, 'completed', $pid]
             );
             $created = true;
             self::plog($job, $pid, 'info', 'ElevenLabs 목소리 생성 완료: ' . self::shortId($voiceId) . self::tookText(isset($res['ms']) ? (int) $res['ms'] : 0));
@@ -225,16 +225,17 @@ class Worker
             }
             db_exec('DELETE FROM voice_clips WHERE voice_profile_id = ?', [$pid]);
         } else {
-            db_exec('UPDATE voice_profiles SET status = ? WHERE id = ?', ['processing', $pid]);
+            db_exec('UPDATE voice_profiles SET status = ? WHERE id = ?', ['completed', $pid]);
             self::plog($job, $pid, 'info', '기존 ElevenLabs 목소리를 사용합니다: ' . self::shortId((string) $profile['provider_voice_id']));
         }
 
-        if (setting('voice.auto_batch_after_clone', true)) {
-            // 새로 만든 목소리면 예전 오디오가 남아 있어도 모두 다시 만든다.
-            $count = VoiceService::queueStories($pid, null, $created && self::hasCompletedAudio($pid));
-            self::plog($job, $pid, 'info', $count > 0 ? '동화 ' . $count . '편 생성 작업 등록' : '새로 만들 동화 오디오가 없습니다.');
-        } else {
-            self::plog($job, $pid, 'info', '자동 동화 생성이 꺼져 있어 목소리만 만들었습니다.');
+        // 동화는 한꺼번에 만들지 않는다. 회원이 이미 요청해 생성을 시작한 동화만 이어서(새 목소리면 다시) 만든다.
+        $count = VoiceService::queueStories($pid, null, $created && self::hasCompletedAudio($pid));
+        self::plog($job, $pid, 'info', $count > 0
+            ? '생성을 시작한 요청 동화 ' . $count . '편 작업 등록'
+            : '목소리 준비 완료. 회원이 동화를 골라 생성을 요청하면 만듭니다.');
+        if ($created && $profile['cloned_at'] === null) {
+            VoiceService::notifyReady($pid);
         }
         Jobs::enqueue('voice_clips', ['profile_id' => $pid], [
             'priority' => 4, 'ref_type' => 'voice_profile', 'ref_id' => $pid, 'unique' => true,
@@ -280,6 +281,7 @@ class Worker
         // 이미 최신 본문으로 만든 오디오가 있으면 다시 만들지 않는다(중복 등록 대비).
         if (!$force && $audio && $audio['status'] === 'completed' && $audio['content_hash'] === $hash && Storage::exists($audio['file_path'])) {
             VoiceService::refresh($pid);
+            StoryRequests::syncAudio($sid, $pid);
 
             return;
         }
@@ -353,6 +355,7 @@ class Worker
         }
         self::plog($job, $pid, 'info', "'" . $story['title'] . "' 오디오 생성 완료 (길이 " . fmt_duration($duration) . ', ' . number_format(mb_strlen($text)) . '자)' . self::tookText(isset($res['ms']) ? (int) $res['ms'] : 0));
         VoiceService::refresh($pid);
+        StoryRequests::syncAudio($sid, $pid);
     }
 
     /** voice_clips {profile_id}: 질문 한도 초과 대체 문장, 오류 안내, 미리듣기 문장을 목소리로 만들어 둔다. */

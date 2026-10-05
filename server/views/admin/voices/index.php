@@ -40,7 +40,6 @@ $tabs = [
     '' => ['전체', 'all', 'bg-primary-container text-on-primary-container'],
     'pending' => ['대기 중', 'pending', 'bg-secondary-container text-on-secondary-container'],
     'cloning' => ['모델 생성 중', 'cloning', 'bg-primary-fixed text-on-primary-fixed-variant'],
-    'processing' => ['사전 오디오 생성 중', 'processing', 'bg-surface-container-highest text-on-surface'],
     'completed' => ['완료', 'completed', 'bg-surface-container-low text-on-surface-variant'],
     'rejected' => ['반려', 'rejected', 'bg-error-container text-on-error-container'],
     'failed' => ['실패', 'failed', 'bg-error-container text-on-error-container'],
@@ -92,7 +91,7 @@ $to = min($total, $page * 20);
         <span class="shrink-0 rounded-full bg-surface-container-lowest px-2 py-0.5 font-label-sm text-label-sm text-secondary">활성됨</span>
       </div>
       <div class="mt-2 flex flex-col">
-        <span class="font-label-sm text-label-sm text-on-surface-variant">사전 1회 일괄 생성 원칙 준수</span>
+        <span class="font-label-sm text-label-sm text-on-surface-variant">요청 동화 1회 생성 후 저장</span>
         <div class="mt-2 h-2 w-full overflow-hidden rounded-full bg-surface-container-highest"><div class="h-full w-full rounded-full bg-secondary"></div></div>
         <span class="mt-1 font-label-sm text-label-sm font-semibold text-secondary">재생 시 실시간 합성 호출 0건</span>
       </div>
@@ -154,7 +153,7 @@ $to = min($total, $page * 20);
                 <th class="px-2.5 py-3 font-label-sm">신청 ID / 대상</th>
                 <th class="px-2.5 py-3 font-label-sm">음성 샘플 및 품질</th>
                 <th class="px-2.5 py-3 font-label-sm">ElevenLabs 모델</th>
-                <th class="px-2.5 py-3 font-label-sm"><?= $storyCount ?>편 사전 캐싱</th>
+                <th class="px-2.5 py-3 font-label-sm">요청 동화 생성</th>
                 <th class="px-2.5 py-3 text-right font-label-sm">수동 액션</th>
               </tr>
             </thead>
@@ -172,7 +171,7 @@ $to = min($total, $page * 20);
                 $detailUrl = $pageUrl('/admin/voices/' . $id, ['page' => $page > 1 ? $page : null]);
                 $contact = (string) $r['user_phone'] !== '' ? mask_phone($r['user_phone']) : mask_email($r['user_email']);
                 $batchText = [
-                    'none' => '미생성 상태',
+                    'none' => $p['total'] > 0 ? '생성 대기' : '생성 시작한 요청 없음',
                     'queued' => '대기열 등록됨',
                     'running' => '자체 서버에 저장 중',
                     'done' => '저장 완료',
@@ -219,16 +218,13 @@ $to = min($total, $page * 20);
                     <span class="mt-1.5 font-label-sm text-label-sm text-on-surface-variant">ElevenLabs 응답 대기</span>
                     <?php else: ?>
                     <span class="flex w-fit items-center gap-1 rounded-md bg-surface-container-highest px-2.5 py-1 font-label-sm text-label-sm text-on-surface-variant"><span class="h-2 w-2 rounded-full bg-outline"></span> 미생성</span>
-                    <?php if (in_array($r['status'], ['pending', 'failed', 'rejected'], true) && $storyCount > 0): ?>
-                    <span class="mt-2 max-w-[104px] font-label-sm text-label-sm text-on-surface-variant" title="게시된 동화 <?= $storyCount ?>편 본문 글자 수 기준 예상치">예상 소모 약 <?= fmt_number($estimate['credits']) ?> 크레딧</span>
-                    <?php endif; ?>
                     <?php endif; ?>
                   </div>
                 </td>
                 <td class="px-2.5 py-4 align-top">
                   <div class="flex flex-col gap-1.5">
                     <?php if ($p['total'] > 0 && $p['completed'] >= $p['total'] && $p['stale'] === 0): ?>
-                    <span class="flex items-center gap-1 font-label-sm text-label-sm font-bold text-primary"><span class="material-symbols-outlined text-[16px]">verified</span><?= (int) $p['total'] ?>편 전체 완료</span>
+                    <span class="flex items-center gap-1 font-label-sm text-label-sm font-bold text-primary"><span class="material-symbols-outlined text-[16px]">verified</span><?= (int) $p['total'] ?>편 모두 완성</span>
                     <div class="h-2 w-24 rounded-full bg-primary"></div>
                     <?php else: ?>
                     <div class="flex w-24 items-center justify-between font-label-sm text-label-sm">
@@ -252,13 +248,9 @@ $to = min($total, $page * 20);
                     <?php endif; ?>
 
                     <?php if ($r['status'] === 'processing' || $r['batch_status'] === 'running' || $r['batch_status'] === 'queued'): ?>
-                    <button type="button" class="flex w-full cursor-default items-center justify-center gap-1 rounded-lg bg-secondary px-2 py-1.5 text-center font-label-sm text-label-sm leading-tight text-on-secondary shadow-sm" disabled><span class="material-symbols-outlined shrink-0 animate-spin text-[16px]">sync</span>캐싱 진행중</button>
-                    <?php elseif ($r['status'] !== 'rejected'): ?>
-                    <form method="post" action="<?= e(url('/admin/voices/' . $id . '/batch')) ?>" class="w-full" data-confirm="<?= e('게시된 동화 ' . $storyCount . '편 중 아직 없는 오디오를 ' . $name . ' 목소리로 만들까요? ElevenLabs 크레딧이 소모됩니다.') ?>">
-                      <?= csrf_field() ?>
-                      <?php $canBatch = $hasVoice && $elReady && $storyCount > 0; ?>
-                      <button type="submit" class="flex w-full items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-center font-label-sm text-label-sm leading-tight transition-colors <?= $canBatch ? 'bg-surface-container-high text-on-surface hover:bg-surface-container-highest' : 'cursor-not-allowed bg-surface-container-high text-on-surface-variant/40' ?>"<?= $canBatch ? '' : ' disabled title="' . e(!$elReady ? $elTip : (!$hasVoice ? 'ElevenLabs 목소리를 먼저 생성하세요' : '게시된 동화가 없습니다')) . '"' ?>><span class="material-symbols-outlined shrink-0 text-[16px]">queue_music</span><?= $storyCount ?>편 일괄 생성</button>
-                    </form>
+                    <button type="button" class="flex w-full cursor-default items-center justify-center gap-1 rounded-lg bg-secondary px-2 py-1.5 text-center font-label-sm text-label-sm leading-tight text-on-secondary shadow-sm" disabled><span class="material-symbols-outlined shrink-0 animate-spin text-[16px]">sync</span>동화 생성 중</button>
+                    <?php elseif (in_array($r['status'], ['completed', 'processing'], true)): ?>
+                    <a href="<?= e(url('/admin/requests', ['voice' => $id, 'status' => 'all'])) ?>" class="flex w-full items-center justify-center gap-1 rounded-lg bg-surface-container-high px-2 py-1.5 text-center font-label-sm text-label-sm leading-tight text-on-surface transition-colors hover:bg-surface-container-highest"><span class="material-symbols-outlined shrink-0 text-[16px]">library_add</span>동화 요청 보기</a>
                     <?php endif; ?>
 
                     <?php if ($hasVoice || $p['completed'] > 0): ?>

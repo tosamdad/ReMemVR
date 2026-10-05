@@ -163,9 +163,7 @@ class VoiceLabController
              ORDER BY s.sort_order, s.id',
             [$pid, 'completed', 'published']
         );
-        $progress = in_array($voice['status'], ['cloning', 'processing', 'completed', 'failed'], true)
-            ? VoiceService::progress($pid)
-            : null;
+        $progress = null;
 
         return view('user/voice_lab/show', [
             'voice' => $voice,
@@ -528,15 +526,13 @@ class VoiceLabController
             ['key' => 'record', 'label' => '녹음 완료', 'icon' => 'mic'],
             ['key' => 'review', 'label' => '검토', 'icon' => 'fact_check'],
             ['key' => 'clone', 'label' => '목소리 생성', 'icon' => 'graphic_eq'],
-            ['key' => 'stories', 'label' => '동화 준비', 'icon' => 'auto_stories'],
-            ['key' => 'done', 'label' => '완료', 'icon' => 'celebration'],
+            ['key' => 'done', 'label' => '준비 완료', 'icon' => 'celebration'],
         ];
         $status = (string) $voice['status'];
-        $hasVoice = isset($voice['provider_voice_id']) && (string) $voice['provider_voice_id'] !== '';
-        $map = ['draft' => 0, 'pending' => 1, 'rejected' => 1, 'cloning' => 2, 'processing' => 3, 'completed' => 4, 'failed' => $hasVoice ? 3 : 2];
+        $map = ['draft' => 0, 'pending' => 1, 'rejected' => 1, 'cloning' => 2, 'processing' => 3, 'completed' => 3, 'failed' => 2];
         $current = isset($map[$status]) ? $map[$status] : 0;
         foreach ($steps as $i => $s) {
-            if ($i < $current || ($status === 'completed' && $i === $current)) {
+            if ($i < $current || (in_array($status, ['completed', 'processing'], true) && $i === $current)) {
                 $state = 'done';
             } elseif ($i === $current) {
                 $state = in_array($status, ['rejected', 'failed'], true) ? 'error' : 'current';

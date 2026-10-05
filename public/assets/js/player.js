@@ -5,6 +5,8 @@
  * - 재생 기록: 첫 재생 때 만들고 15초마다, 멈출 때, 페이지를 떠날 때(sendBeacon) 위치와 들은 시간을 보낸다.
  * - 질문(끼어들기): 동화를 멈추고 RMRecorder 로 녹음 → 서버(Gemini, ElevenLabs) → 답 듣기 → 그 문장 처음부터 다시 재생.
  * - 잠자기 타이머, 다음 이야기 자동 재생, 미디어 세션(잠금 화면 조작)을 지원한다.
+ * - 플레이리스트에서 열면(M.playlist) 한 편이 끝날 때 환경 설정과 관계없이 다음 편으로 넘어가고(반복, 랜덤은 서버가 정한 M.next),
+ *   다음 편은 열리자마자 재생한다(M.autostart). 잠자기 타이머 마감 시각은 주소(sl)로 다음 편에 넘긴다.
  * 환경 설정의 hands_free(말하면 자동 끼어들기)는 동화 소리와 아이 목소리를 안정적으로 구분하기 어려워 아직 쓰지 않는다.
  */
 (function () {
@@ -484,11 +486,13 @@
       audio.playbackRate = rate;
       setPlaying(true);
       var p = audio.play();
-      if (p && p.catch) {
-        p.catch(function (err) {
+      if (p && p.then) {
+        p.then(function () { state.autoTry = false; }, function (err) {
           if (err && err.name === 'AbortError') return;
           setPlaying(false);
-          RM.toast('재생을 시작하지 못했어요. 재생 버튼을 다시 눌러 주세요.', 'error');
+          if (state.autoTry) RM.toast('재생 버튼을 누르면 이어서 들려줘요.', 'info');
+          else RM.toast('재생을 시작하지 못했어요. 재생 버튼을 다시 눌러 주세요.', 'error');
+          state.autoTry = false;
         });
       }
       if (!raf) raf = requestAnimationFrame(loop);
@@ -566,7 +570,10 @@
       var pos = Math.round(positionMs());
       flushProgress(true);
       pause(true);
-      location.href = M.player_url + '?' + new URLSearchParams({ voice: v, s: String(S[state.index].seq), t: String(pos) }).toString();
+      var q = { voice: v, s: String(S[state.index].seq), t: String(pos) };
+      // 플레이리스트에 같은 동화가 이 목소리로도 담겨 있으면 플레이리스트 재생을 이어 간다.
+      if (M.playlist) { q.pl = String(M.playlist.id); q.seed = String(M.playlist.seed); }
+      location.href = M.player_url + '?' + new URLSearchParams(q).toString();
     });
   });
 
@@ -597,13 +604,14 @@
 
   function showEnd() {
     el.end.hidden = false;
-    if (prefs.autoplay_next && el.next && M.next) {
-      var left = 5;
+    // 플레이리스트는 이어 듣기가 목적이라 환경 설정의 다음 이야기 자동 재생과 관계없이 넘어간다.
+    if ((M.playlist || prefs.autoplay_next) && el.next && M.next) {
+      var left = M.playlist ? 3 : 5;
       el.nextCount.hidden = false;
       el.nextCancel.hidden = false;
       var tick = function () {
         el.nextCount.textContent = left + '초 뒤에 이어서 들려줄게요';
-        if (left <= 0) { clearInterval(countdown); countdown = null; location.href = M.next.url; }
+        if (left <= 0) { clearInterval(countdown); countdown = null; location.href = nextUrl(); }
         left--;
       };
       tick();
@@ -627,17 +635,33 @@
 
   var sleepMin = parseInt(prefs.sleep_timer_min, 10) || 0;
   var sleepAt = 0;
+  var sleepIv = null;
+  // 플레이리스트 다음 편으로 넘어온 경우 앞 편에서 시작한 잠자기 타이머를 이어 쓴다.
+  if (sleepMin > 0 && M.playlist) {
+    var carried = parseInt(new URLSearchParams(location.search).get('sl') || '0', 10);
+    if (carried > 0 && carried <= Date.now() + sleepMin * 60000) sleepAt = carried;
+  }
+  function sleepTick() {
+    var left = sleepAt - Date.now();
+    if (el.sleepText) el.sleepText.textContent = left > 0 ? '잠자기 ' + Math.max(1, Math.ceil(left / 60000)) + '분 남음' : '잠자기 타이머 끝';
+    if (left <= 0) {
+      if (sleepIv) { clearInterval(sleepIv); sleepIv = null; }
+      goodnight();
+    }
+  }
   function startSleepTimer() {
-    if (sleepMin <= 0 || sleepAt) return;
-    sleepAt = Date.now() + sleepMin * 60000;
-    var iv = setInterval(function () {
-      var left = sleepAt - Date.now();
-      if (el.sleepText) el.sleepText.textContent = left > 0 ? '잠자기 ' + Math.max(1, Math.ceil(left / 60000)) + '분 남음' : '잠자기 타이머 끝';
-      if (left <= 0) {
-        clearInterval(iv);
-        goodnight();
-      }
-    }, 5000);
+    if (sleepMin <= 0 || sleepIv) return;
+    if (!sleepAt) sleepAt = Date.now() + sleepMin * 60000;
+    sleepIv = setInterval(sleepTick, 5000);
+  }
+  function sleepExpired() { return sleepAt > 0 && sleepAt <= Date.now(); }
+  /** 다음 편 주소(플레이리스트면 잠자기 타이머 마감 시각을 함께 넘긴다) */
+  function nextUrl() {
+    if (!M.next) return '';
+    if (!M.playlist || !sleepAt) return M.next.url;
+    var u = new URL(M.next.url, location.href);
+    u.searchParams.set('sl', String(sleepAt));
+    return u.pathname + u.search;
   }
   function goodnight() {
     if (!state.playing) return;
@@ -883,7 +907,7 @@
         try { navigator.mediaSession.setActionHandler(k, handlers[k]); } catch (e) {}
       });
       if (M.next) {
-        try { navigator.mediaSession.setActionHandler('nexttrack', function () { location.href = M.next.url; }); } catch (e) {}
+        try { navigator.mediaSession.setActionHandler('nexttrack', function () { location.href = nextUrl(); }); } catch (e) {}
       }
     } catch (e) {}
   }
@@ -895,6 +919,17 @@
   if (mode === 'audio') initAudio(); else updateProgress(sentenceStartMs(state.index));
   updateAskLabel();
   if (!M.qa.enabled && el.askSub) el.askSub.textContent = M.qa.message;
+  if (sleepAt) sleepTick();
+
+  // 플레이리스트 다음 편: 열리자마자 재생한다. 브라우저가 막으면 재생 버튼을 누르도록 알린다.
+  if (M.autostart && mode === 'audio') {
+    if (sleepExpired()) {
+      RM.toast('잠자기 타이머가 끝나 다음 편은 멈춰 두었어요. 🌙', 'info');
+    } else {
+      state.autoTry = true;
+      play();
+    }
+  }
 
   // 테스트, 디버그용 읽기 전용 상태
   window.RMPlayer = {

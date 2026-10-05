@@ -23,8 +23,11 @@ class Settings
         'voice.min_sample_seconds' => 60,
         'voice.recommended_sample_seconds' => 120,
         'voice.max_sample_seconds' => 300,
-        'voice.auto_batch_after_clone' => true,
         'voice.auto_clone_on_submit' => false,
+
+        // 동화 생성 요청(회원이 동화와 목소리를 골라 요청하고 관리자가 생성을 시작한다)
+        'request.max_open' => 30,
+        'request.auto_approve' => false,
 
         // ElevenLabs
         'elevenlabs.model_story' => 'eleven_multilingual_v2',

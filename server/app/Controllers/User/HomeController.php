@@ -3,7 +3,6 @@ namespace App\Controllers\User;
 
 use App\Core\Auth;
 use App\Services\Progress;
-use App\Services\VoiceService;
 
 /** 홈: 인사, 학습 현황, 오늘의 추천 동화, 우리 가족 목소리 */
 class HomeController
@@ -62,13 +61,8 @@ class HomeController
     private static function voiceStatusLine(array $v): array
     {
         $status = (string) $v['status'];
-        if ($status === 'completed') {
-            return ['text' => '연결됨', 'class' => 'text-secondary', 'dot' => true];
-        }
-        if ($status === 'processing') {
-            $p = VoiceService::progress((int) $v['id']);
-
-            return ['text' => '동화 준비 중 ' . (int) $p['percent'] . '%', 'class' => 'text-primary', 'dot' => false];
+        if ($status === 'completed' || $status === 'processing') {
+            return ['text' => '준비됨', 'class' => 'text-secondary', 'dot' => true];
         }
         $map = [
             'cloning' => ['목소리 만드는 중', 'text-primary'],

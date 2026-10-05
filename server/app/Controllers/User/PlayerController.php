@@ -6,12 +6,14 @@ use App\Core\Request;
 use App\Core\Storage;
 use App\Core\Text;
 use App\Services\Alignment;
+use App\Services\Playlists;
 use App\Services\Progress;
 use App\Services\QuestionService;
 
 /**
  * 동화 플레이어(시안 _6)와 재생 기록 API.
  * 화면에는 재생 정보(문장, 오디오 주소, 타이밍, 목소리, 질문 한도, 환경 설정)를 JSON 으로 넣고 player.js 가 재생한다.
+ * 플레이리스트에서 열면(pl, pos, seed) 한 편이 끝날 때 플레이리스트의 다음 편(반복, 랜덤 반영)으로 넘어간다.
  * 재생 기록은 첫 재생 때 만든다. 같은 아이가 같은 동화를 12시간 안에 다시 열면 끝나지 않은 기록을 이어 쓴다
  * (새로고침, 목소리 바꾸기로 질문 한도가 다시 채워지지 않게).
  */
@@ -46,23 +48,34 @@ class PlayerController
         return $this->render($user, (int) $first, null, 0, 0);
     }
 
-    /** /player/{storyId}?voice={id|device}&t={ms}&s={문장} */
+    /** /player/{storyId}?voice={id|device}&t={ms}&s={문장}&pl={플레이리스트}&pos={순번}&seed={랜덤 순서}&auto=1 */
     public function show(string $id): string
     {
         $user = require_user();
         $this->requireChild();
         $voice = Request::query('voice');
+        $playlist = null;
+        $plId = (int) Request::query('pl', 0);
+        if ($plId > 0) {
+            $playlist = [
+                'id' => $plId,
+                'pos' => max(0, (int) Request::query('pos', 0)),
+                'seed' => max(0, (int) Request::query('seed', 0)),
+                'auto' => (string) Request::query('auto', '') === '1',
+            ];
+        }
 
         return $this->render(
             $user,
             (int) $id,
             is_string($voice) && $voice !== '' ? $voice : null,
             max(0, (int) Request::query('t', 0)),
-            max(0, (int) Request::query('s', 0))
+            max(0, (int) Request::query('s', 0)),
+            $playlist
         );
     }
 
-    private function render(array $user, int $storyId, ?string $requestedVoice, int $startMs, int $startSeq): string
+    private function render(array $user, int $storyId, ?string $requestedVoice, int $startMs, int $startSeq, ?array $playlistReq = null): string
     {
         $userId = (int) $user['id'];
         $child = Auth::child();
@@ -82,7 +95,7 @@ class PlayerController
             }
         }
 
-        // 목소리 칩: 이 동화 오디오가 준비된 목소리는 고를 수 있고, 만드는 중인 목소리는 '준비 중'
+        // 목소리 칩: 이 동화 오디오가 준비된 목소리는 고를 수 있고, 생성 요청으로 만드는 중인 목소리는 '준비 중'
         $rows = db_all(
             'SELECT vp.id, vp.label, vp.icon, vp.status, sa.id AS audio_id, sa.status AS audio_status, sa.file_path,
                     sa.duration_ms, sa.sentence_timings, sa.content_hash, sa.generated_at
@@ -96,7 +109,7 @@ class PlayerController
         $audioByVoice = [];
         foreach ($rows as $r) {
             $ready = $r['audio_status'] === 'completed' && !empty($r['file_path']);
-            $making = !$ready && in_array($r['status'], ['cloning', 'processing', 'completed'], true) && $r['audio_status'] !== 'failed';
+            $making = !$ready && in_array($r['audio_status'], ['pending', 'processing'], true);
             if (!$ready && !$making) {
                 continue;
             }
@@ -164,7 +177,27 @@ class PlayerController
         $qaReady = $qaEnabled;
         $aec = !empty($story['aec_level']) ? (string) $story['aec_level'] : (string) setting('qa.aec_level', 'strong');
 
-        $next = self::nextStory($storyId, Progress::completedStoryIds(Progress::currentScope()));
+        // 플레이리스트에서 열었으면 다음 편은 플레이리스트 순서(반복, 랜덤)를 따른다.
+        $plCtx = null;
+        if ($playlistReq !== null && $voice !== 'device') {
+            $pl = Playlists::find($userId, (int) $playlistReq['id']);
+            if ($pl) {
+                $plCtx = Playlists::context($pl, $storyId, $voice, (int) $playlistReq['pos'], (int) $playlistReq['seed']);
+            }
+        }
+        if ($plCtx !== null) {
+            $n = $plCtx['next'];
+            $next = $n ? [
+                'id' => (int) $n['item']['story_id'],
+                'title' => (string) $n['item']['title'],
+                'cover_image_path' => $n['item']['cover_image_path'],
+                'updated_at' => $n['item']['updated_at'],
+                'voice_label' => (string) $n['item']['voice_label'],
+                'url' => $n['url'],
+            ] : null;
+        } else {
+            $next = self::nextStory($storyId, Progress::completedStoryIds(Progress::currentScope()), $userId, $voice);
+        }
         $prefs = Auth::prefs();
         $estSec = Progress::durationSec($story, $audio ? $audio['duration_ms'] : null);
 
@@ -202,9 +235,12 @@ class PlayerController
                 'id' => (int) $next['id'],
                 'title' => (string) $next['title'],
                 'cover' => cover_url($next),
-                'url' => url('/player/' . (int) $next['id'], $voice !== 'device' ? ['voice' => $voice] : []),
+                'url' => isset($next['url']) ? $next['url'] : url('/player/' . (int) $next['id'], $voice !== 'device' ? ['voice' => $voice] : []),
+                'voice_label' => isset($next['voice_label']) ? $next['voice_label'] : '',
             ] : null,
             'player_url' => url('/player/' . $storyId),
+            'playlist' => $plCtx ? $plCtx['playlist'] : null,
+            'autostart' => $plCtx !== null && !empty($playlistReq['auto']),
         ];
 
         return view('user/player/show', [
@@ -219,6 +255,7 @@ class PlayerController
             'remaining' => max(0, $max - $manifest['quota']['used']),
             'qa' => $manifest['qa'],
             'estMs' => $estSec * 1000,
+            'hasVoices' => count($rows) > 0,
         ]);
     }
 
@@ -402,9 +439,20 @@ class PlayerController
     }
 
     /** 다음 이야기: 목록 순서에서 뒤에 있는 동화 중 아직 다 듣지 않은 것, 모두 들었으면 바로 다음 동화 */
-    private static function nextStory(int $storyId, array $completedIds): ?array
+    private static function nextStory(int $storyId, array $completedIds, int $userId = 0, string $voice = 'device'): ?array
     {
-        $list = db_all("SELECT id, title, cover_image_path, updated_at FROM stories WHERE status = 'published' AND deleted_at IS NULL ORDER BY sort_order, id");
+        if ($voice !== 'device' && $userId > 0) {
+            // 가족 목소리로 듣는 중이면 같은 목소리로 완성된 동화 중에서 고른다.
+            $list = db_all(
+                "SELECT s.id, s.title, s.cover_image_path, s.updated_at FROM stories s
+                   JOIN story_audios sa ON sa.story_id = s.id AND sa.voice_profile_id = ? AND sa.status = 'completed' AND sa.file_path IS NOT NULL
+                   JOIN voice_profiles vp ON vp.id = sa.voice_profile_id AND vp.user_id = ? AND vp.deleted_at IS NULL
+                  WHERE s.status = 'published' AND s.deleted_at IS NULL ORDER BY s.sort_order, s.id",
+                [(int) $voice, $userId]
+            );
+        } else {
+            $list = db_all("SELECT id, title, cover_image_path, updated_at FROM stories WHERE status = 'published' AND deleted_at IS NULL ORDER BY sort_order, id");
+        }
         $n = count($list);
         if ($n < 2) {
             return null;

@@ -62,8 +62,10 @@ class SettingsController
         'voice.min_sample_seconds' => ['type' => 'int', 'min' => 10, 'max' => 600],
         'voice.recommended_sample_seconds' => ['type' => 'int', 'min' => 10, 'max' => 900],
         'voice.max_sample_seconds' => ['type' => 'int', 'min' => 30, 'max' => 1800],
-        'voice.auto_batch_after_clone' => ['type' => 'bool'],
         'voice.auto_clone_on_submit' => ['type' => 'bool'],
+        // 동화 생성 요청
+        'request.max_open' => ['type' => 'int', 'min' => 1, 'max' => 500],
+        'request.auto_approve' => ['type' => 'bool'],
         // 서비스 정보
         'app.brand' => ['type' => 'string', 'len' => 30, 'required' => true],
         'app.version' => ['type' => 'string', 'len' => 20, 'required' => true],

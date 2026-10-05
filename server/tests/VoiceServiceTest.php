@@ -3,6 +3,7 @@ use App\Core\Settings;
 use App\Core\Storage;
 use App\Core\Text;
 use App\Services\Jobs;
+use App\Services\StoryRequests;
 use App\Services\VoiceService;
 use App\Services\Worker;
 
@@ -203,12 +204,22 @@ test('승인은 상태와 샘플을 확인하고 voice_clone 작업을 등록한
     });
 });
 
-test('동화 오디오 등록, 진행률, 상태 재계산', function () {
+test('동화 오디오 등록, 진행률, 상태 재계산(생성을 시작한 요청만)', function () {
     voice_test_tx(function () {
-        $t = voice_test_profile(['status' => 'processing', 'provider_voice_id' => 'fake_test_voice', 'cloned_at' => now()]);
+        $t = voice_test_profile(['status' => 'completed', 'provider_voice_id' => 'fake_test_voice', 'cloned_at' => now()]);
         $pid = $t['profile_id'];
         $sid = voice_test_story();
 
+        // 요청이 없으면 만들 동화도 없다(목소리가 준비돼도 동화를 한꺼번에 만들지 않는다).
+        assert_same(0, VoiceService::progress($pid)['total']);
+        assert_same(0, VoiceService::queueStories($pid));
+        assert_same(0, (int) db_value("SELECT COUNT(*) FROM jobs WHERE type = 'story_tts' AND ref_id = ?", [$pid]));
+
+        // 확인 대기 요청도 아직 대상이 아니다
+        $rid = db_insert('story_requests', ['user_id' => $t['user_id'], 'story_id' => $sid, 'voice_profile_id' => $pid, 'status' => 'requested']);
+        assert_same(0, VoiceService::queueStories($pid));
+
+        db_exec("UPDATE story_requests SET status = 'approved' WHERE id = ?", [$rid]);
         $p = VoiceService::progress($pid);
         assert_same(['total' => 1, 'completed' => 0, 'failed' => 0, 'pending' => 1, 'percent' => 0], array_intersect_key($p, array_flip(['total', 'completed', 'failed', 'pending', 'percent'])));
 
@@ -222,11 +233,11 @@ test('동화 오디오 등록, 진행률, 상태 재계산', function () {
         assert_same(5, (int) $job['priority']);
         assert_same(['profile_id' => $pid, 'story_id' => $sid, 'force' => false], json_decode($job['payload'], true));
 
-        // 다시 불러도 대기 작업을 중복으로 만들지 않는다
+        // 다시 불러도 대기 작업을 중복으로 만들지 않는다. 목소리 상태는 바꾸지 않는다.
         VoiceService::queueStories($pid);
         assert_same(1, (int) db_value("SELECT COUNT(*) FROM jobs WHERE type = 'story_tts' AND ref_id = ? AND status = 'pending'", [$pid]));
         $r = VoiceService::refresh($pid);
-        assert_same('processing', $r['status']);
+        assert_same('completed', $r['status']);
         assert_same('queued', $r['batch_status']);
 
         // 작업이 끝난 것처럼 만든다
@@ -238,23 +249,18 @@ test('동화 오디오 등록, 진행률, 상태 재계산', function () {
         assert_same('done', $r['batch_status']);
         assert_same(100, $r['progress']['percent']);
         assert_true(db_value('SELECT batch_done_at FROM voice_profiles WHERE id = ?', [$pid]) !== null, 'batch_done_at 이 없다');
-        assert_same(1, (int) db_value("SELECT COUNT(*) FROM jobs WHERE type = 'mail' AND ref_id = ?", [$pid]), '준비 완료 메일');
+        // 완성 알림은 목소리가 아니라 요청 단위로 보낸다(StoryRequests::syncAudio).
+        assert_same(0, (int) db_value("SELECT COUNT(*) FROM jobs WHERE type = 'mail' AND ref_type = 'voice_profile' AND ref_id = ?", [$pid]));
 
         // 최신 오디오는 건너뛰고, force 면 다시 만든다
         assert_same(0, VoiceService::queueStories($pid));
         assert_same(1, VoiceService::queueStories($pid, [$sid], true));
-        assert_same('processing', db_value('SELECT status FROM voice_profiles WHERE id = ?', [$pid]));
+        assert_same('completed', db_value('SELECT status FROM voice_profiles WHERE id = ?', [$pid]));
 
         // 본문이 바뀌면 옛 오디오(stale)로 센다
         db_exec("UPDATE story_audios SET status = 'completed' WHERE story_id = ? AND voice_profile_id = ?", [$sid, $pid]);
         db_exec("UPDATE stories SET content_hash = ? WHERE id = ?", [str_repeat('a', 64), $sid]);
         assert_same(1, VoiceService::progress($pid)['stale']);
-
-        // 두 번째 일괄 생성이 끝나도 준비 완료 메일은 다시 보내지 않는다
-        db_exec("UPDATE jobs SET status = 'done' WHERE type = 'story_tts' AND ref_id = ?", [$pid]);
-        db_exec("UPDATE story_audios SET content_hash = ? WHERE story_id = ? AND voice_profile_id = ?", [str_repeat('a', 64), $sid, $pid]);
-        VoiceService::refresh($pid);
-        assert_same(1, (int) db_value("SELECT COUNT(*) FROM jobs WHERE type = 'mail' AND ref_id = ?", [$pid]));
     });
 });
 
@@ -284,7 +290,7 @@ test('삭제하면 대기 작업을 취소하고 voice_delete 작업을 등록�
     });
 });
 
-test('가짜 API 로 승인부터 동화 오디오 완성까지 처리한다', function () {
+test('가짜 API 로 목소리 승인, 동화 생성 요청, 생성 시작, 완성 알림까지 처리한다', function () {
     if (!class_exists('App\\Services\\ElevenLabs') || !class_exists('App\\Services\\Alignment') || !class_exists('App\\Services\\FakeAudio')) {
         skip_test('ElevenLabs, Alignment 클래스가 아직 없다');
     }
@@ -292,32 +298,62 @@ test('가짜 API 로 승인부터 동화 오디오 완성까지 처리한다', f
         skip_test('providers_fake 설정이 꺼져 있다');
     }
     voice_test_tx(function () {
-        Settings::set('voice.auto_batch_after_clone', true);
         $t = voice_test_profile(['status' => 'pending']);
         $pid = $t['profile_id'];
+        $uid = $t['user_id'];
         voice_test_sample($pid, 75000);
         voice_test_sample($pid, 60000);
         $sid = voice_test_story();
-
-        VoiceService::approve($pid, null);
-        $rounds = 0;
-        while ($rounds < 40 && Jobs::activeCount('voice_profile', $pid) > 0) {
-            $r = Worker::run(60);
-            if (!empty($r['locked'])) {
-                // 웹 서버의 처리기가 잠금을 잡고 있으면 잠시 기다린다(트랜잭션 밖이라 이 작업은 보지 못한다).
-                usleep(300000);
+        $drain = function () use ($pid) {
+            $rounds = 0;
+            while ($rounds < 40 && Jobs::activeCount('voice_profile', $pid) > 0) {
+                $r = Worker::run(60);
+                if (!empty($r['locked'])) {
+                    // 웹 서버의 처리기가 잠금을 잡고 있으면 잠시 기다린다(트랜잭션 밖이라 이 작업은 보지 못한다).
+                    usleep(300000);
+                }
+                $rounds++;
             }
-            $rounds++;
-        }
-        assert_same(0, Jobs::activeCount('voice_profile', $pid), '작업이 남아 있다');
-        $failed = db_all("SELECT type, last_error FROM jobs WHERE ref_id = ? AND ref_type = 'voice_profile' AND status = 'failed'", [$pid]);
-        assert_same([], $failed, '실패한 작업');
+            assert_same(0, Jobs::activeCount('voice_profile', $pid), '작업이 남아 있다');
+            $failed = db_all("SELECT type, last_error FROM jobs WHERE ref_id = ? AND ref_type = 'voice_profile' AND status = 'failed'", [$pid]);
+            assert_same([], $failed, '실패한 작업');
+        };
+
+        // 1) 목소리 승인 → 복제. 동화는 만들지 않고 목소리 준비 완료 메일만 보낸다.
+        VoiceService::approve($pid, null);
+        $drain();
+        $profile = db_one('SELECT * FROM voice_profiles WHERE id = ?', [$pid]);
+        assert_same('completed', $profile['status']);
+        assert_true(strpos((string) $profile['provider_voice_id'], 'fake_') === 0, 'voice id: ' . $profile['provider_voice_id']);
+        assert_true($profile['cloned_at'] !== null, 'cloned_at 이 없다');
+        assert_same(0, (int) db_value('SELECT COUNT(*) FROM story_audios WHERE voice_profile_id = ?', [$pid]), '요청 없이 동화를 만들었다');
+        $mail = db_one("SELECT status, payload FROM jobs WHERE type = 'mail' AND ref_type = 'voice_profile' AND ref_id = ?", [$pid]);
+        assert_true($mail !== null, '준비 완료 메일 작업이 없다');
+        assert_same('done', $mail['status']);
+        assert_contains('목소리가 준비되었어요', json_decode($mail['payload'], true)['subject']);
+
+        // 2) 회원이 동화와 목소리를 골라 요청 → 관리자가 생성 시작
+        $res = StoryRequests::create($uid, $sid, [$pid]);
+        assert_same(1, count($res['created']));
+        $rid = $res['created'][0];
+        assert_same('requested', StoryRequests::state(StoryRequests::latestFor($uid, $sid, $pid)));
+        assert_same(0, (int) db_value('SELECT COUNT(*) FROM story_audios WHERE voice_profile_id = ?', [$pid]), '확인 전에 동화를 만들었다');
+        $ok = StoryRequests::approve([$rid], null);
+        assert_same(1, $ok['approved']);
+        assert_same('making', StoryRequests::state(StoryRequests::latestFor($uid, $sid, $pid)));
+        $drain();
 
         $profile = db_one('SELECT * FROM voice_profiles WHERE id = ?', [$pid]);
         assert_same('completed', $profile['status']);
         assert_same('done', $profile['batch_status']);
-        assert_true(strpos((string) $profile['provider_voice_id'], 'fake_') === 0, 'voice id: ' . $profile['provider_voice_id']);
-        assert_true($profile['cloned_at'] !== null, 'cloned_at 이 없다');
+        $req = db_one('SELECT * FROM story_requests WHERE id = ?', [$rid]);
+        assert_same('approved', $req['status']);
+        assert_true($req['completed_at'] !== null, 'completed_at 이 없다');
+        assert_true($req['notified_at'] !== null, 'notified_at 이 없다');
+        assert_same('done', StoryRequests::state(StoryRequests::latestFor($uid, $sid, $pid)));
+        $doneMail = db_one("SELECT payload FROM jobs WHERE type = 'mail' AND ref_type = 'user' AND ref_id = ?", [$uid]);
+        assert_true($doneMail !== null, '동화 완성 메일 작업이 없다');
+        assert_contains("'테스트 달님 토끼' 동화가 완성되었어요", json_decode($doneMail['payload'], true)['subject']);
 
         $audio = db_one('SELECT * FROM story_audios WHERE story_id = ? AND voice_profile_id = ?', [$sid, $pid]);
         assert_same('completed', $audio['status']);
@@ -345,12 +381,10 @@ test('가짜 API 로 승인부터 동화 오디오 완성까지 처리한다', f
         $log = implode("\n", array_column(Jobs::latestLogs('voice_profile', $pid), 'message'));
         assert_contains('샘플 2개(총 2분 15초) 업로드', $log);
         assert_contains('ElevenLabs 목소리 생성 완료: fake_', $log);
-        assert_contains('동화 1편 생성 작업 등록', $log);
+        assert_contains("회원이 '테스트 달님 토끼' 생성을 요청했습니다 (1건)", $log);
+        assert_contains(StoryRequests::reqId($rid) . " '테스트 달님 토끼' 생성 시작", $log);
         assert_contains("'테스트 달님 토끼' 오디오 생성 완료", $log);
 
-        $mail = db_one("SELECT status, payload FROM jobs WHERE type = 'mail' AND ref_id = ?", [$pid]);
-        assert_true($mail !== null, '준비 완료 메일 작업이 없다');
-        assert_same('done', $mail['status']);
         assert_true((int) db_value("SELECT COUNT(*) FROM api_usage_logs WHERE ref_type = 'story_audio' AND ref_id = ?", [(int) $audio['id']]) >= 1, '사용량 기록');
 
         // 목소리 삭제 작업은 로컬 파일을 모두 지운다

@@ -1,6 +1,7 @@
 <?php
 /**
  * 동화 플레이어(시안 _6). 표지와 가운데 제목, 읽기 카드(낱말 강조), 목소리 칩, 진행 막대, 재생 버튼, 질문하기 버튼.
+ * 플레이리스트에서 열면 제목 위에 플레이리스트 이름, 순번, 반복, 랜덤 표시를 보여 준다.
  * 재생과 질문 흐름은 public/assets/js/player.js 가 맡는다. 서버는 첫 화면(시작 문장)을 미리 그려 둔다.
  * @var array $story
  * @var array $manifest
@@ -13,8 +14,9 @@
  * @var int $remaining
  * @var array $qa
  * @var int $estMs
+ * @var bool $hasVoices 가족 목소리가 하나라도 있는지(없으면 목소리 만들기, 있으면 이 동화 생성 요청으로 안내)
  */
-layout('user/layout', ['title' => $story['title'], 'nav' => 'player', 'mainClass' => 'px-margin-mobile pt-3 pb-6']);
+layout('user/layout', ['title' => $story['title'], 'nav' => 'library', 'mainClass' => 'px-margin-mobile pt-3 pb-6']);
 
 $current = isset($sentences[$startIndex]) ? $sentences[$startIndex] : ['seq' => 1, 'content' => '', 'words' => []];
 $prev = $startIndex > 0 && isset($sentences[$startIndex - 1]) ? $sentences[$startIndex - 1] : null;
@@ -38,6 +40,7 @@ $chipCount = max(2, count($voices) + 1); // 목소리가 없으면 '가족 목�
 $chipCols = [1 => 'grid-cols-1', 2 => 'grid-cols-2', 3 => 'grid-cols-3'];
 $chipWrap = $chipCount <= 3 ? 'grid gap-3 pt-1 ' . $chipCols[$chipCount] : '-mx-margin-mobile flex gap-3 overflow-x-auto no-scrollbar px-margin-mobile pt-1 pb-1';
 $chipSize = $chipCount <= 3 ? 'min-w-0' : 'w-[124px] shrink-0';
+$pl = $manifest['playlist'];
 $askSub = !$qa['enabled'] ? $qa['message'] : ($remaining > 0 ? '질문 ' . $remaining . '번 남았어요' : '이야기 끝나고 또 물어보자');
 ?>
 <div id="player" class="space-y-3" data-mode="<?= $device ? 'device' : 'audio' ?>">
@@ -53,6 +56,15 @@ $askSub = !$qa['enabled'] ? $qa['message'] : ($remaining > 0 ? '질문 ' . $rema
     <?php endif; ?>
   </section>
   <div class="space-y-1 text-center">
+    <?php if ($pl): ?>
+    <a href="<?= e($pl['url']) ?>" class="mx-auto inline-flex max-w-full items-center gap-1.5 rounded-full bg-secondary-container px-3 py-1 text-[12px] font-bold text-on-secondary-container" data-playlist-bar>
+      <span class="material-symbols-outlined text-[16px]">queue_music</span>
+      <span class="truncate"><?= e($pl['name']) ?></span>
+      <span class="shrink-0 opacity-80"><?= (int) $pl['pos'] + 1 ?>/<?= (int) $pl['total'] ?></span>
+      <?php if ($pl['repeat'] !== 'off'): ?><span class="material-symbols-outlined shrink-0 text-[15px]" title="<?= e($pl['repeat_label']) ?>"><?= $pl['repeat'] === 'one' ? 'repeat_one' : 'repeat' ?></span><?php endif; ?>
+      <?php if ($pl['shuffle']): ?><span class="material-symbols-outlined shrink-0 text-[15px]" title="랜덤 재생">shuffle</span><?php endif; ?>
+    </a>
+    <?php endif; ?>
     <h1 class="text-headline-md font-bold text-on-surface font-headline-md"><?= e($story['title']) ?></h1>
     <div class="flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
       <p id="pl-subtitle" class="font-label-lg text-label-lg text-on-surface-variant">문장 <?= (int) $startIndex + 1 ?> / <?= count($sentences) ?></p>
@@ -102,11 +114,11 @@ $askSub = !$qa['enabled'] ? $qa['message'] : ($remaining > 0 ? '질문 ' . $rema
       <?php if ($active): ?><div class="absolute -right-1 -top-1 h-4 w-4 rounded-full border-2 border-surface-container-lowest bg-primary"></div><?php endif; ?>
     </button>
     <?php if (!$voices): ?>
-    <a href="<?= e(url('/voice-lab/new')) ?>" class="relative flex <?= e($chipSize) ?> flex-col items-center gap-1 rounded-3xl border-2 border-dashed border-outline-variant bg-surface-container-low/60 px-2 py-2.5 transition-all duration-200 active:scale-95">
+    <a href="<?= e(url($hasVoices ? '/stories/' . (int) $story['id'] : '/voice-lab/new')) ?>" class="relative flex <?= e($chipSize) ?> flex-col items-center gap-1 rounded-3xl border-2 border-dashed border-outline-variant bg-surface-container-low/60 px-2 py-2.5 transition-all duration-200 active:scale-95">
       <div class="flex h-11 w-11 items-center justify-center rounded-full bg-surface-container-lowest">
-        <span class="material-symbols-outlined text-3xl text-primary">add</span>
+        <span class="material-symbols-outlined text-3xl text-primary"><?= $hasVoices ? 'library_add' : 'add' ?></span>
       </div>
-      <span class="font-label-lg text-label-lg text-primary">가족 목소리 만들기</span>
+      <span class="font-label-lg text-label-lg text-primary"><?= $hasVoices ? '가족 목소리로 요청' : '가족 목소리 만들기' ?></span>
     </a>
     <?php endif; ?>
   </section>
@@ -202,14 +214,14 @@ $askSub = !$qa['enabled'] ? $qa['message'] : ($remaining > 0 ? '질문 ' . $rema
     <div class="space-y-5 rounded-3xl bg-surface-container-lowest p-md text-center shadow-lg" role="dialog" aria-modal="true" aria-labelledby="pl-end-title">
       <div class="space-y-1">
         <p class="text-[40px] leading-none" aria-hidden="true">🎉</p>
-        <p id="pl-end-title" class="text-headline-md font-headline-md text-on-surface">끝까지 다 들었어요!</p>
+        <p id="pl-end-title" class="text-headline-md font-headline-md text-on-surface"><?= $pl && !$manifest['next'] ? '플레이리스트를 다 들었어요!' : '끝까지 다 들었어요!' ?></p>
         <p id="pl-end-xp" class="text-label-lg font-label-lg text-primary" hidden></p>
       </div>
       <?php if ($manifest['next']): ?>
       <a href="<?= e($manifest['next']['url']) ?>" id="pl-next" class="flex items-center gap-3 rounded-2xl border border-surface-variant/40 bg-surface-container-low p-3 text-left">
         <img src="<?= e($manifest['next']['cover']) ?>" alt="" class="h-16 w-14 shrink-0 rounded-xl bg-surface-container object-cover">
         <span class="min-w-0 flex-1">
-          <span class="block text-label-sm font-label-sm text-on-surface-variant">다음 이야기</span>
+          <span class="block text-label-sm font-label-sm text-on-surface-variant"><?= $pl ? ($pl['repeat'] === 'one' ? '한 편 반복' : '플레이리스트 다음 편') . ($manifest['next']['voice_label'] !== '' ? ' · ' . e($manifest['next']['voice_label']) . ' 목소리' : '') : '다음 이야기' ?></span>
           <span class="block truncate text-label-lg font-label-lg text-on-surface"><?= e($manifest['next']['title']) ?></span>
           <span id="pl-next-count" class="block text-label-sm font-label-sm text-primary" hidden></span>
         </span>
@@ -218,9 +230,13 @@ $askSub = !$qa['enabled'] ? $qa['message'] : ($remaining > 0 ? '질문 ' . $rema
       <?php endif; ?>
       <div class="grid grid-cols-2 gap-3">
         <button type="button" id="pl-again" class="btn-secondary px-3"><span class="material-symbols-outlined">replay</span>처음부터</button>
+        <?php if ($pl): ?>
+        <a href="<?= e($pl['url']) ?>" id="pl-home" class="btn-ghost px-3 bg-surface-container-low"><span class="material-symbols-outlined">queue_music</span>플레이리스트</a>
+        <?php else: ?>
         <a href="<?= e(url('/home')) ?>" id="pl-home" class="btn-ghost px-3 bg-surface-container-low"><span class="material-symbols-outlined">home</span>홈으로</a>
+        <?php endif; ?>
       </div>
-      <button type="button" id="pl-next-cancel" class="btn-ghost w-full" hidden>다음 이야기는 그만 들을래요</button>
+      <button type="button" id="pl-next-cancel" class="btn-ghost w-full" hidden><?= $pl ? '여기까지 들을래요' : '다음 이야기는 그만 들을래요' ?></button>
     </div>
   </div>
 </div>
