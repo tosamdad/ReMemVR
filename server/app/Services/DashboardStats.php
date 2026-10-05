@@ -100,17 +100,34 @@ class DashboardStats
         ];
     }
 
-    /** 오늘 누적 API 비용, 일일 한도 대비 비율, 질문 1건당 평균 */
+    /**
+     * 오늘 누적 API 비용, 일일 한도 대비 비율, 질문 1건당 평균,
+     * 오늘 쓴 ElevenLabs 크레딧(우리 기록 기준)과 비용 계산에 쓴 크레딧당 원화 단가.
+     * 비용은 설정 단가(1천 크레딧당 달러 × 환율)로 계산한 추정치라 ElevenLabs 청구액과 다를 수 있다.
+     */
     public static function costKpis(int $interactionsToday): array
     {
         $today = Usage::todayCostKrw();
         $budget = (float) setting('cost.daily_budget_krw', 27000);
+        $credits = 0;
+        try {
+            $credits = (int) round((float) db_value(
+                "SELECT COALESCE(SUM(CASE WHEN model LIKE '%flash%' OR model LIKE '%turbo%' THEN units * ? ELSE units END), 0)
+                   FROM api_usage_logs
+                  WHERE provider = 'elevenlabs' AND unit_type = 'chars' AND success = 1 AND created_at >= ?",
+                [(string) (float) setting('elevenlabs.flash_credit_ratio', 0.5), date('Y-m-d 00:00:00')]
+            ));
+        } catch (\Throwable $e) {
+            app_log('error', '오늘 크레딧 집계 실패: ' . $e->getMessage());
+        }
 
         return [
             'today' => $today,
             'budget' => $budget,
             'percent' => $budget > 0 ? (int) round($today * 100 / $budget) : null,
             'per_interaction' => $interactionsToday > 0 ? round($today / $interactionsToday, 1) : null,
+            'credits_today' => $credits,
+            'krw_per_credit' => Usage::krw((float) setting('elevenlabs.usd_per_1k_credits', 0.30) / 1000),
         ];
     }
 

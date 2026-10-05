@@ -241,7 +241,7 @@ $okChip = static function ($ok, string $yes = '정상', string $no = '확인 필
             <div></div>
             <?= $toggle('elevenlabs.speaker_boost', '화자 강조 (speaker boost)', '목소리 유사도를 조금 높입니다. 지연이 약간 늘어납니다.') ?>
             <?= $toggle('elevenlabs.remove_background_noise', '샘플 배경 소음 제거', '목소리 복제 때 녹음 샘플의 잡음을 지웁니다.') ?>
-            <?= $input('elevenlabs.usd_per_1k_credits', 'ElevenLabs 1천 크레딧 단가', '요금제 기준 달러 단가', ['suffix' => 'USD', 'step' => '0.01']) ?>
+            <?= $input('elevenlabs.usd_per_1k_credits', 'ElevenLabs 1천 크레딧 단가', '대시보드 비용 계산 기준. 정액 요금제 원가는 월 요금 ÷ 월 크레딧 × 1000, 초과 사용 단가는 보통 0.30', ['suffix' => 'USD', 'step' => '0.001']) ?>
             <?= $input('elevenlabs.flash_credit_ratio', 'Flash, Turbo 글자당 크레딧 비율', 'Multilingual 은 1자 1크레딧', ['step' => '0.05']) ?>
             <?= $input('gemini.model', 'Gemini 모델', '예) gemini-2.5-flash') ?>
             <?= $input('cost.usd_krw', '환율 (1달러)', '비용을 원화로 바꿀 때 씁니다', ['suffix' => '원']) ?>

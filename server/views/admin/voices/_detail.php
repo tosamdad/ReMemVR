@@ -43,7 +43,7 @@ $slider = static function ($key, $label, $value, $help, $accent) {
 };
 ?>
 <!-- 헤더, 샘플 분석, 파라미터 -->
-<div class="flex flex-col gap-5 rounded-xl bg-surface-container-lowest p-card-padding shadow-card" data-voice-detail data-voice-id="<?= $id ?>">
+<div class="flex flex-col gap-5 rounded-xl bg-surface-container-lowest p-card-padding shadow-card" data-voice-detail data-voice-id="<?= $id ?>" data-status="<?= e($v['status']) ?>" data-batch="<?= e($v['batch_status']) ?>">
   <div class="flex items-start justify-between gap-3">
     <div class="min-w-0">
       <div class="flex flex-wrap items-center gap-2">
@@ -61,6 +61,11 @@ $slider = static function ($key, $label, $value, $help, $accent) {
   <div class="flex items-start gap-2 rounded-xl bg-error-container/60 px-3 py-2.5 text-on-error-container">
     <span class="material-symbols-outlined text-[18px]">replay</span>
     <span class="font-label-sm text-label-sm font-semibold">반려 사유: <?= e($v['reject_reason']) ?></span>
+  </div>
+  <?php elseif ($v['status'] === 'failed'): ?>
+  <div class="flex items-start gap-2 rounded-xl bg-error-container/60 px-3 py-2.5 text-on-error-container">
+    <span class="material-symbols-outlined text-[18px]">error</span>
+    <span class="break-keep font-label-sm text-label-sm font-semibold">실패 사유: <?= $v['fail_reason'] ? e(preg_replace('/^ElevenLabs 목소리 생성 실패:\s*/u', '', $v['fail_reason'])) : '기록이 없습니다. 아래 처리 콘솔을 확인하세요.' ?></span>
   </div>
   <?php endif; ?>
 
@@ -129,9 +134,9 @@ $slider = static function ($key, $label, $value, $help, $accent) {
       <button type="submit" name="reset" value="1" class="a-btn-tonal py-2" title="설정의 기본값(안정성 <?= e(number_format($params['defaults']['stability'], 2)) ?>, 유사도 <?= e(number_format($params['defaults']['similarity_boost'], 2)) ?>)으로 되돌립니다">기본값</button>
       <?php endif; ?>
     </div>
-    <?php if ($canClone): ?>
-    <button type="submit" formaction="<?= e(url('/admin/voices/' . $id . '/clone')) ?>" class="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 font-label-md text-label-md text-on-primary shadow-md transition-all hover:bg-on-primary-fixed-variant disabled:cursor-not-allowed disabled:opacity-50" data-confirm="<?= e($name . '의 ElevenLabs Voice ID 를 생성할까요? 위 파라미터도 함께 저장됩니다.') ?>"<?= $elReady ? '' : ' disabled title="' . e($elTip) . '"' ?>>
-      <span class="material-symbols-outlined text-[20px]">smart_toy</span>[수동 호출] ElevenLabs Voice ID 생성
+    <?php if ($canClone): $retry = $v['status'] === 'failed'; ?>
+    <button type="submit" formaction="<?= e(url('/admin/voices/' . $id . '/clone')) ?>" class="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 font-label-md text-label-md text-on-primary shadow-md transition-all hover:bg-on-primary-fixed-variant disabled:cursor-not-allowed disabled:opacity-50" data-confirm="<?= e($name . ($retry ? '를 ElevenLabs 로 다시 생성할까요? 위 파라미터도 함께 저장됩니다.' : '의 ElevenLabs Voice ID 를 생성할까요? 위 파라미터도 함께 저장됩니다.')) ?>" data-confirm-ok="<?= $retry ? '다시 생성' : '생성 시작' ?>"<?= $elReady ? '' : ' disabled title="' . e($elTip) . '"' ?>>
+      <span class="material-symbols-outlined text-[20px]"><?= $retry ? 'refresh' : 'smart_toy' ?></span><?= $retry ? '[수동 호출] ElevenLabs 다시 생성' : '[수동 호출] ElevenLabs Voice ID 생성' ?>
     </button>
     <?php elseif ($hasVoice): ?>
     <div class="flex items-center justify-center gap-2 rounded-xl bg-surface-container-high py-3 font-label-md text-label-md text-on-surface-variant">

@@ -204,6 +204,33 @@ test('목소리 생성이 끝내 실패하면 실패로 바꾸고 운영 메일�
     });
 });
 
+test('실패한 목소리는 실패 사유를 보여 주고 회원이 다시 만들 수 있다', function () {
+    voice_test_tx(function () {
+        $t = voice_test_profile(['status' => 'completed']);
+        $pid = $t['profile_id'];
+        voice_test_sample($pid);
+        $msg = '';
+        try {
+            VoiceService::retryByUser($pid);
+        } catch (RuntimeException $e) {
+            $msg = $e->getMessage();
+        }
+        assert_contains('다시 만들 수 없어요', $msg, '실패가 아니면 다시 만들기 거부');
+
+        db_exec("UPDATE voice_profiles SET status = 'failed' WHERE id = ?", [$pid]);
+        $jobId = Jobs::enqueue('voice_clone', ['profile_id' => $pid], ['ref_type' => 'voice_profile', 'ref_id' => $pid, 'max_attempts' => 1]);
+        db_exec("UPDATE jobs SET status = 'failed', last_error = ? WHERE id = ?", ['ElevenLabs 목소리 생성 실패: 키 권한 없음', $jobId]);
+        $reasons = VoiceService::failReasons([$pid, 999999]);
+        assert_same(['ElevenLabs 목소리 생성 실패: 키 권한 없음'], array_values($reasons));
+        assert_true(isset($reasons[$pid]), '목소리 번호로 찾는다');
+
+        VoiceService::retryByUser($pid);
+        assert_same('cloning', db_value('SELECT status FROM voice_profiles WHERE id = ?', [$pid]));
+        assert_same(1, (int) db_value("SELECT COUNT(*) FROM jobs WHERE type = 'voice_clone' AND ref_id = ? AND status = 'pending'", [$pid]));
+        assert_same([], VoiceService::failReasons([$pid]), '다시 만드는 중에는 실패 사유를 보여 주지 않는다');
+    });
+});
+
 test('승인은 상태와 샘플을 확인하고 voice_clone 작업을 등록한다', function () {
     voice_test_tx(function () {
         $t = voice_test_profile(['status' => 'draft']);

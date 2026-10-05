@@ -5,7 +5,10 @@
  *   RM.toast('저장했습니다', 'success' | 'error' | 'info')
  *   RM.fmtTime(ms)                      m:ss
  *   RM.setDark(true|false)              다크 모드 즉시 적용(회원 화면)
- *   <form data-confirm="정말 삭제할까요?">, <button data-confirm="...">  제출 전 확인
+ *   await RM.confirm('정말 삭제할까요?', {ok: '삭제', danger: true})   화면을 어둡게 덮는 확인 팝업, 확인이면 true
+ *   await RM.alert('저장했습니다')        확인 버튼 하나짜리 팝업
+ *   <form data-confirm="정말 삭제할까요?">, <button data-confirm="...">  제출 전 확인 팝업
+ *     (data-confirm-ok 로 확인 버튼 글자, data-confirm-danger 로 빨간 버튼)
  *   <form data-ajax> 는 fetch 로 제출하고 응답 JSON 의 message 를 토스트로, redirect 가 있으면 이동한다.
  */
 (function () {
@@ -102,32 +105,160 @@
     });
   }
 
-  // 확인 창
+  // ───────── 확인 팝업(브라우저 기본 알림창 대신 화면을 어둡게 덮는 팝업) ─────────
+  var DANGER_WORDS = /삭제|지우|지울|지워|반려|탈퇴|초기화|사라/;
+  var dialogQueue = Promise.resolve();
+
+  function showDialog(message, opts) {
+    opts = opts || {};
+    return new Promise(function (resolve) {
+      var danger = opts.danger != null ? !!opts.danger : DANGER_WORDS.test(String(message));
+      var prevFocus = document.activeElement;
+      var wrap = document.createElement('div');
+      wrap.className = 'fixed inset-0 z-[80] flex items-end justify-center bg-black/50 p-4 opacity-0 transition-opacity duration-150 sm:items-center';
+      wrap.setAttribute('data-rm-dialog', '');
+      var box = document.createElement('div');
+      box.className = 'w-full max-w-[400px] translate-y-2 rounded-3xl bg-surface-container-lowest p-6 shadow-2xl transition-transform duration-150';
+      box.setAttribute('role', opts.alert ? 'alertdialog' : 'dialog');
+      box.setAttribute('aria-modal', 'true');
+      var id = 'rm-dialog-' + Date.now();
+      box.setAttribute('aria-labelledby', id);
+      if (opts.title) {
+        var h = document.createElement('p');
+        h.className = 'mb-2 text-[18px] font-bold leading-6 text-on-surface';
+        h.textContent = opts.title;
+        box.appendChild(h);
+      }
+      var p = document.createElement('p');
+      p.id = id;
+      p.className = 'whitespace-pre-line break-keep text-[15px] leading-6 text-on-surface';
+      p.textContent = message;
+      box.appendChild(p);
+      var row = document.createElement('div');
+      row.className = 'mt-6 flex justify-end gap-2';
+      var btnBase = 'min-w-[88px] rounded-full px-5 py-2.5 text-[14px] font-bold transition-opacity hover:opacity-90 focus:outline-none focus-visible:ring-4 ';
+      var cancel = null;
+      if (!opts.alert) {
+        cancel = document.createElement('button');
+        cancel.type = 'button';
+        cancel.className = btnBase + 'bg-surface-container-high text-on-surface focus-visible:ring-surface-container-high/60';
+        cancel.textContent = opts.cancel || '취소';
+        row.appendChild(cancel);
+      }
+      var ok = document.createElement('button');
+      ok.type = 'button';
+      ok.className = btnBase + (danger ? 'bg-error text-on-error focus-visible:ring-error/30' : 'bg-primary text-on-primary focus-visible:ring-primary/30');
+      ok.textContent = opts.ok || '확인';
+      row.appendChild(ok);
+      box.appendChild(row);
+      wrap.appendChild(box);
+
+      var done = false;
+      var overflow = document.documentElement.style.overflow;
+      function close(result) {
+        if (done) return;
+        done = true;
+        wrap.removeAttribute('data-rm-dialog'); // 닫히는 중인 팝업은 '열린 팝업'으로 세지 않는다.
+        document.removeEventListener('keydown', onKey, true);
+        document.documentElement.style.overflow = overflow;
+        wrap.classList.add('opacity-0');
+        setTimeout(function () { wrap.remove(); }, 150);
+        if (prevFocus && prevFocus.focus) { try { prevFocus.focus({ preventScroll: true }); } catch (e) {} }
+        resolve(result);
+      }
+      function onKey(e) {
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(!!opts.alert); }
+        else if (e.key === 'Tab') {
+          // 팝업 안에서만 초점이 돈다.
+          var items = cancel ? [cancel, ok] : [ok];
+          var i = items.indexOf(document.activeElement);
+          e.preventDefault();
+          items[(i + (e.shiftKey ? items.length - 1 : 1)) % items.length].focus();
+        }
+      }
+      ok.addEventListener('click', function () { close(true); });
+      if (cancel) cancel.addEventListener('click', function () { close(false); });
+      wrap.addEventListener('click', function (e) { if (e.target === wrap) close(!!opts.alert); });
+      document.addEventListener('keydown', onKey, true);
+      document.documentElement.style.overflow = 'hidden';
+      document.body.appendChild(wrap);
+      requestAnimationFrame(function () {
+        wrap.classList.remove('opacity-0');
+        box.classList.remove('translate-y-2');
+      });
+      ok.focus();
+    });
+  }
+
+  // 팝업이 겹치지 않게 차례로 띄운다.
+  function queued(message, opts) {
+    var next = dialogQueue.then(function () { return showDialog(message, opts); });
+    dialogQueue = next.catch(function () {});
+    return next;
+  }
+  function confirmBox(message, opts) { return queued(message, opts); }
+  function alertBox(message, opts) {
+    return queued(message, Object.assign({}, opts || {}, { alert: true })).then(function () {});
+  }
+
+  function confirmOpts(el) {
+    var o = {};
+    if (el.hasAttribute('data-confirm-ok')) o.ok = el.getAttribute('data-confirm-ok');
+    if (el.hasAttribute('data-confirm-danger')) o.danger = el.getAttribute('data-confirm-danger') !== '0';
+    return o;
+  }
+
+  // 확인을 마친 폼을 다시 제출한다(누른 버튼의 formaction 등을 그대로 살린다).
+  function resubmit(form, submitter) {
+    form._rmConfirmed = true;
+    if (typeof form.requestSubmit === 'function') {
+      try { form.requestSubmit(submitter || undefined); return; } catch (e) {}
+    }
+    if (submitter) submitter.click(); else form.submit();
+  }
+
   document.addEventListener('submit', function (e) {
     var form = e.target;
     var msg = form.getAttribute('data-confirm');
-    if (msg && !window.confirm(msg)) { e.preventDefault(); return; }
+    if (form._rmConfirmed) {
+      form._rmConfirmed = false;
+    } else if (msg) {
+      e.preventDefault();
+      e.stopPropagation();
+      var submitter = e.submitter || null;
+      confirmBox(msg, confirmOpts(form)).then(function (ok) { if (ok) resubmit(form, submitter); });
+      return;
+    }
     if (form.hasAttribute('data-ajax')) {
       e.preventDefault();
       var btn = form.querySelector('[type="submit"]');
       if (btn) btn.disabled = true;
       api(form.getAttribute('action') || location.pathname, { method: form.getAttribute('method') || 'POST', body: new FormData(form) })
         .then(function (data) {
-          if (data.message) toast(data.message, 'success');
+          if (data.message) toast(data.message, data.type === 'error' ? 'error' : (data.type === 'info' ? 'info' : 'success'));
           if (data.redirect) location.href = data.redirect;
-          form.dispatchEvent(new CustomEvent('rm:success', { detail: data }));
+          form.dispatchEvent(new CustomEvent('rm:success', { detail: data, bubbles: true }));
         })
-        .catch(function (err) { toast(err.message, 'error'); })
+        .catch(function (err) {
+          toast(err.message, 'error');
+          form.dispatchEvent(new CustomEvent('rm:error', { detail: err, bubbles: true }));
+        })
         .finally(function () { if (btn) btn.disabled = false; });
     }
   }, true);
   document.addEventListener('click', function (e) {
     var el = e.target.closest('[data-confirm]');
-    if (el && el.tagName !== 'FORM' && !el.form) {
-      if (!window.confirm(el.getAttribute('data-confirm'))) { e.preventDefault(); e.stopPropagation(); }
-    } else if (el && el.tagName === 'BUTTON' && el.form && !el.form.hasAttribute('data-confirm')) {
-      if (!window.confirm(el.getAttribute('data-confirm'))) { e.preventDefault(); e.stopPropagation(); }
-    }
+    if (!el || el.tagName === 'FORM') return;
+    // 폼 안의 버튼인데 폼에도 확인 문구가 있으면 제출 때 한 번만 묻는다.
+    if (el.form && el.form.hasAttribute('data-confirm')) return;
+    if (el._rmConfirmed) { el._rmConfirmed = false; return; }
+    e.preventDefault();
+    e.stopPropagation();
+    confirmBox(el.getAttribute('data-confirm'), confirmOpts(el)).then(function (ok) {
+      if (!ok) return;
+      el._rmConfirmed = true;
+      el.click();
+    });
   }, true);
 
   // 서버가 띄운 1회성 알림을 몇 초 뒤 닫는다.
@@ -136,5 +267,5 @@
     setTimeout(function () { box.remove(); }, 4000);
   });
 
-  window.RM = { url: url, api: api, toast: toast, fmtTime: fmtTime, setDark: setDark, csrf: csrf, escapeHtml: escapeHtml, config: cfg };
+  window.RM = { url: url, api: api, toast: toast, confirm: confirmBox, alert: alertBox, fmtTime: fmtTime, setDark: setDark, csrf: csrf, escapeHtml: escapeHtml, config: cfg };
 })();

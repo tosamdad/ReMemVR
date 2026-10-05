@@ -383,10 +383,13 @@
       return keys;
     }
 
-    function selectScript(key) {
+    async function selectScript(key) {
       if (recording) { RM.toast('녹음을 먼저 멈춰 주세요.', 'info'); return; }
-      if (take && take.scriptKey !== key && !window.confirm('저장하지 않은 녹음이 있어요. 지우고 다른 대본으로 넘어갈까요?')) return;
-      if (take && take.scriptKey !== key) discardTake();
+      if (take && take.scriptKey !== key) {
+        if (!(await RM.confirm('저장하지 않은 녹음이 있어요. 지우고 다른 대본으로 넘어갈까요?', { ok: '넘어가기', danger: true }))) return;
+        if (recording) return;
+        discardTake();
+      }
       scriptKey = key;
       el.scriptPanels.forEach(function (p) {
         p.hidden = p.getAttribute('data-script-panel') !== key;
@@ -489,7 +492,7 @@
     el.samplesList.addEventListener('click', async function (e) {
       var btn = e.target.closest('[data-delete-sample]');
       if (!btn) return;
-      if (!window.confirm('이 녹음을 지울까요? 지운 녹음은 되돌릴 수 없어요.')) return;
+      if (!(await RM.confirm('이 녹음을 지울까요? 지운 녹음은 되돌릴 수 없어요.', { ok: '지우기' }))) return;
       var id = Number(btn.getAttribute('data-delete-sample'));
       btn.disabled = true;
       try {
@@ -598,7 +601,8 @@
         RM.toast('이 브라우저에서는 녹음을 할 수 없어요. 아래 "파일로 올리기"를 이용해 주세요.', 'error');
         return;
       }
-      if (take && !window.confirm('저장하지 않은 녹음이 있어요. 지우고 새로 녹음할까요?')) return;
+      if (take && !(await RM.confirm('저장하지 않은 녹음이 있어요. 지우고 새로 녹음할까요?', { ok: '새로 녹음', danger: true }))) return;
+      if (recording) return;
       discardTake();
       stopPlayback();
       stopMicCheck();

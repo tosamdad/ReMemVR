@@ -33,6 +33,7 @@ $router->post('/admin/voices/{id:\d+}/refresh', [VoiceController::class, 'refres
 $router->post('/admin/voices/{id:\d+}/params', [VoiceController::class, 'params']);
 $router->post('/admin/voices/{id:\d+}/test', [VoiceController::class, 'test']);
 $router->post('/admin/voices/{id:\d+}/memo', [VoiceController::class, 'memo']);
+$router->get('/admin/api/voices/status', [VoiceController::class, 'statuses']);
 $router->get('/admin/api/voices/{id:\d+}/logs', [VoiceController::class, 'logs']);
 $router->get('/admin/api/voices/{id:\d+}/audios', [VoiceController::class, 'audios']);
 

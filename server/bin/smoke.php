@@ -106,13 +106,13 @@ if ($userCred !== '') {
 if ($adminCred !== '') {
     echo "관리자 화면\n";
     if (login($base, '/admin/login', 'login_id', $adminCred, $jar)) {
-        foreach (['/admin/dashboard', '/admin/requests', '/admin/requests?status=all', '/admin/requests?status=done', '/admin/voices', '/admin/voices?status=pending', '/admin/stories', '/admin/stories/new',
+        foreach (['/admin/dashboard', '/admin/requests', '/admin/requests?status=all', '/admin/requests?status=done', '/admin/requests?keep=1,2,3', '/admin/voices', '/admin/voices?status=failed', '/admin/voices?status=pending', '/admin/stories', '/admin/stories/new',
                   '/admin/members', '/admin/settings', '/admin/notices', '/admin/faqs', '/admin/inquiries', '/admin/admins',
                   '/admin/audit'] as $p) {
             list($status, $body) = http('GET', $base . $p, null, $jar);
             check('GET ' . $p, $status, $body, [200]);
         }
-        foreach (['/admin/api/dashboard'] as $p) {
+        foreach (['/admin/api/dashboard', '/admin/api/voices/status?ids=1,2,3'] as $p) {
             list($status, $body) = http('GET', $base . $p, null, $jar, ['Accept: application/json']);
             check('GET ' . $p, $status, $body, [200]);
         }

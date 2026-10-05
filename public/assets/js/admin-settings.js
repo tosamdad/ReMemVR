@@ -77,7 +77,18 @@
   // 대체 음성 다시 만들기는 별도 폼이라 저장 안 된 값이 사라진다는 것을 알린다.
   var clips = document.getElementById('clips-form');
   if (clips) clips.addEventListener('submit', function (e) {
-    if (dirty && !window.confirm('저장하지 않은 설정 변경이 사라집니다. 계속할까요?')) { e.preventDefault(); e.stopImmediatePropagation(); return; }
-    dirty = false;
+    if (clips._rmDirtyOk) { clips._rmDirtyOk = false; dirty = false; return; }
+    if (!dirty) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    var submitter = e.submitter || null;
+    RM.confirm('저장하지 않은 설정 변경이 사라집니다. 계속할까요?', { ok: '계속', danger: true }).then(function (ok) {
+      if (!ok) return;
+      dirty = false;
+      clips._rmDirtyOk = true;
+      clips._rmConfirmed = true; // 위의 확인 팝업(app.js)은 이미 지났다.
+      if (typeof clips.requestSubmit === 'function') clips.requestSubmit(submitter || undefined);
+      else clips.submit();
+    });
   }, true);
 })();

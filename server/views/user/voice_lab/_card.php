@@ -17,7 +17,7 @@ $looks = [
     'processing' => ['bg-tertiary-container/30', 'text-tertiary', 'bg-primary animate-pulse', 'text-primary tracking-tighter', '동화 만드는 중... ' . $percent . '%'],
     'pending' => ['bg-secondary-container/40', 'text-secondary', 'bg-tertiary', 'text-on-tertiary-container', '검토 대기 중'],
     'rejected' => ['bg-error-container/50', 'text-error', 'bg-error', 'text-error', '재녹음 필요'],
-    'failed' => ['bg-error-container/50', 'text-error', 'bg-error', 'text-error', '생성 실패, 문의해 주세요'],
+    'failed' => ['bg-error-container/50', 'text-error', 'bg-error', 'text-error', '만들지 못했어요, 다시 만들어 주세요'],
     'draft' => ['bg-surface-container', 'text-on-surface-variant', 'bg-outline', 'text-on-surface-variant', '녹음 이어하기'],
 ];
 $look = isset($looks[$status]) ? $looks[$status] : $looks['draft'];
@@ -57,9 +57,12 @@ $look = isset($looks[$status]) ? $looks[$status] : $looks['draft'];
       <span class="material-symbols-outlined">mic</span>
     </a>
   <?php elseif ($status === 'failed'): ?>
-    <div class="flex h-12 w-12 shrink-0 items-center justify-center text-error" aria-hidden="true">
-      <span class="material-symbols-outlined">error</span>
-    </div>
+    <form method="post" action="<?= e(url('/voice-lab/' . $id . '/retry')) ?>" class="relative z-10 shrink-0" data-confirm="<?= e($v['label']) ?> 목소리를 다시 만들어 볼까요?" data-confirm-ok="다시 만들기" data-confirm-danger="0">
+      <?= csrf_field() ?>
+      <button type="submit" class="flex h-12 w-12 items-center justify-center rounded-full bg-error-container text-on-error-container transition-all active:scale-90" aria-label="<?= e($v['label']) ?> 목소리 다시 만들기" title="다시 만들기">
+        <span class="material-symbols-outlined">refresh</span>
+      </button>
+    </form>
   <?php else: ?>
     <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary-container/40 text-primary" aria-hidden="true">
       <span class="material-symbols-outlined">mic</span>

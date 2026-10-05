@@ -28,7 +28,8 @@ $gradeChip = [
     'error' => 'bg-error-container text-on-error-container',
     'muted' => 'bg-surface-container-high text-on-surface-variant',
 ];
-$query = array_filter($filters, static function ($v) {
+// keep(처리 후 남겨 둔 목소리)은 탭, 쪽 이동 링크에는 넘기지 않고 상세 링크에만 넘긴다.
+$query = array_filter(array_diff_key($filters, ['keep' => true]), static function ($v) {
     return $v !== '';
 });
 $pageUrl = static function ($path, array $extra = []) use ($query) {
@@ -52,7 +53,7 @@ $to = min($total, $page * 20);
 ?>
 <div class="flex w-full flex-col gap-6">
   <!-- KPI -->
-  <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+  <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4" data-soft="kpi">
     <div class="flex items-center justify-between gap-3 rounded-xl bg-surface-container-lowest p-card-padding shadow-card">
       <div class="flex flex-col">
         <span class="font-label-sm text-label-sm uppercase tracking-wider text-on-surface-variant">신규 대기 건수</span>
@@ -101,7 +102,7 @@ $to = min($total, $page * 20);
   <div class="grid grid-cols-1 items-start gap-6 xl:grid-cols-12">
     <!-- 왼쪽: 탭, 필터, 표 -->
     <div class="flex min-w-0 flex-col gap-4 xl:col-span-8">
-      <nav class="no-scrollbar flex items-center gap-1 overflow-x-auto rounded-xl bg-surface-container-lowest p-2 shadow-card" aria-label="상태">
+      <nav class="no-scrollbar flex items-center gap-1 overflow-x-auto rounded-xl bg-surface-container-lowest p-2 shadow-card" aria-label="상태" data-soft="tabs">
         <?php foreach ($tabs as $key => $t):
             $on = $filters['status'] === $key;
             $href = url('/admin/voices', array_filter(array_merge($query, ['status' => $key]), static function ($v) { return $v !== ''; }));
@@ -137,7 +138,7 @@ $to = min($total, $page * 20);
         </div>
       </form>
 
-      <div class="overflow-hidden rounded-xl bg-surface-container-lowest shadow-card">
+      <div class="overflow-hidden rounded-xl bg-surface-container-lowest shadow-card" data-soft="list">
         <?php if (!$rows): ?>
         <div class="flex flex-col items-center gap-3 px-6 py-16 text-center">
           <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-container-high text-on-surface-variant"><span class="material-symbols-outlined text-[28px]"><?= $query ? 'search_off' : 'mic_none' ?></span></div>
@@ -168,7 +169,7 @@ $to = min($total, $page * 20);
                 $age = $child ? child_age($child) : null;
                 $hasVoice = (string) $r['provider_voice_id'] !== '';
                 $name = $r['user_name'] . ' (' . $r['label'] . ')';
-                $detailUrl = $pageUrl('/admin/voices/' . $id, ['page' => $page > 1 ? $page : null]);
+                $detailUrl = $pageUrl('/admin/voices/' . $id, ['page' => $page > 1 ? $page : null, 'keep' => isset($filters['keep']) ? $filters['keep'] : null]);
                 $contact = (string) $r['user_phone'] !== '' ? mask_phone($r['user_phone']) : mask_email($r['user_email']);
                 $batchText = [
                     'none' => $p['total'] > 0 ? '생성 대기' : '생성 시작한 요청 없음',
@@ -183,7 +184,7 @@ $to = min($total, $page * 20);
                     $state = '옛 본문 ' . (int) $p['stale'] . '편 재생성 필요';
                 }
             ?>
-              <tr class="group cursor-pointer border-t border-surface-container-high transition-colors <?= $sel ? 'bg-primary/5 hover:bg-primary/10' : 'hover:bg-surface-container-low' ?>" data-href="<?= e($detailUrl) ?>">
+              <tr class="group cursor-pointer border-t border-surface-container-high transition-colors <?= $sel ? 'bg-primary/5 hover:bg-primary/10' : 'hover:bg-surface-container-low' ?>" data-href="<?= e($detailUrl) ?>" data-voice-row="<?= $id ?>" data-status="<?= e($r['status']) ?>" data-batch="<?= e($r['batch_status']) ?>">
                 <td class="px-2.5 py-4 align-top">
                   <div class="flex flex-col">
                     <div class="flex flex-wrap items-center gap-2">
@@ -216,6 +217,9 @@ $to = min($total, $page * 20);
                     <?php elseif ($r['status'] === 'cloning'): ?>
                     <span class="flex w-fit items-center gap-1 rounded-md bg-primary-fixed px-2.5 py-1 font-label-sm text-label-sm text-on-primary-fixed-variant"><span class="material-symbols-outlined animate-spin text-[14px]">progress_activity</span>생성 중</span>
                     <span class="mt-1.5 font-label-sm text-label-sm text-on-surface-variant">ElevenLabs 응답 대기</span>
+                    <?php elseif ($r['status'] === 'failed'): ?>
+                    <span class="flex w-fit items-center gap-1 rounded-md bg-error-container px-2.5 py-1 font-label-sm text-label-sm font-bold text-on-error-container"><span class="material-symbols-outlined text-[14px]">error</span>생성 실패</span>
+                    <span class="mt-1.5 max-w-[190px] break-keep font-label-sm text-label-sm leading-snug text-error"<?= $r['fail_reason'] ? ' title="' . e($r['fail_reason']) . '"' : '' ?>><?= $r['fail_reason'] ? e(str_limit(preg_replace('/^ElevenLabs 목소리 생성 실패:\s*/u', '', $r['fail_reason']), 110)) : '실패 사유 기록 없음' ?></span>
                     <?php else: ?>
                     <span class="flex w-fit items-center gap-1 rounded-md bg-surface-container-highest px-2.5 py-1 font-label-sm text-label-sm text-on-surface-variant"><span class="h-2 w-2 rounded-full bg-outline"></span> 미생성</span>
                     <?php endif; ?>
@@ -238,10 +242,10 @@ $to = min($total, $page * 20);
                 </td>
                 <td class="px-2.5 py-4 text-right align-top">
                   <div class="flex w-[118px] flex-col items-end gap-1.5">
-                    <?php if (in_array($r['status'], ['pending', 'failed'], true) && !$hasVoice): ?>
-                    <form method="post" action="<?= e(url('/admin/voices/' . $id . '/clone')) ?>" class="w-full" data-confirm="<?= e($name . ' 목소리로 ElevenLabs 목소리 생성을 시작할까요?') ?>">
+                    <?php if (in_array($r['status'], ['pending', 'failed'], true) && !$hasVoice): $retry = $r['status'] === 'failed'; ?>
+                    <form method="post" action="<?= e(url('/admin/voices/' . $id . '/clone')) ?>" class="w-full" data-confirm="<?= e($retry ? $name . ' 목소리를 ElevenLabs 로 다시 생성할까요?' : $name . ' 목소리로 ElevenLabs 목소리 생성을 시작할까요?') ?>" data-confirm-ok="<?= $retry ? '다시 생성' : '생성 시작' ?>">
                       <?= csrf_field() ?>
-                      <button type="submit" class="flex w-full items-center justify-center gap-1 rounded-lg bg-primary px-2 py-1.5 text-center font-label-sm text-label-sm leading-tight text-on-primary shadow-sm transition-colors hover:bg-on-primary-fixed-variant disabled:cursor-not-allowed disabled:opacity-40"<?= $elReady ? '' : ' disabled title="' . e($elTip) . '"' ?>><span class="material-symbols-outlined shrink-0 text-[16px]">record_voice_over</span>ElevenLabs 모델 생성</button>
+                      <button type="submit" class="flex w-full items-center justify-center gap-1 rounded-lg bg-primary px-2 py-1.5 text-center font-label-sm text-label-sm leading-tight text-on-primary shadow-sm transition-colors hover:bg-on-primary-fixed-variant disabled:cursor-not-allowed disabled:opacity-40"<?= $elReady ? '' : ' disabled title="' . e($elTip) . '"' ?>><span class="material-symbols-outlined shrink-0 text-[16px]"><?= $retry ? 'refresh' : 'record_voice_over' ?></span><?= $retry ? '다시 생성' : 'ElevenLabs 모델 생성' ?></button>
                     </form>
                     <?php elseif ($r['status'] === 'cloning'): ?>
                     <button type="button" class="flex w-full cursor-not-allowed items-center justify-center gap-1 rounded-lg bg-surface-container px-2 py-1.5 text-center font-label-sm text-label-sm leading-tight text-on-surface-variant/60" disabled><span class="material-symbols-outlined shrink-0 animate-spin text-[16px]">sync</span>모델 생성 중</button>
@@ -301,7 +305,7 @@ $to = min($total, $page * 20);
     </div>
 
     <!-- 오른쪽: 상세 검수 패널 -->
-    <div class="flex min-w-0 flex-col gap-4 xl:col-span-4">
+    <div class="flex min-w-0 flex-col gap-4 xl:col-span-4" data-soft="detail">
       <?php if ($detail): ?>
       <?= partial('admin/voices/_detail', ['detail' => $detail, 'elReady' => $elReady, 'chip' => $chip, 'storyCount' => $storyCount, 'elTip' => $elTip]) ?>
       <?php else: ?>

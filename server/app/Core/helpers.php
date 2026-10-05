@@ -313,6 +313,43 @@ function redirect_back(string $fallback = '/'): void
     redirect($fallback);
 }
 
+/**
+ * 직전 목록 화면으로 돌아가되, 방금 처리한 항목 번호를 keep 파라미터에 더한다.
+ * 목록은 keep 에 든 항목을 지금 탭 조건과 관계없이 남겨 두어, 상태가 바뀌어도 줄이 사라지지 않는다.
+ * 직전 화면의 경로가 $listPath 로 시작하지 않으면(다른 화면에서 보냈으면) keep 없이 그냥 돌아간다.
+ */
+function redirect_back_keep(array $ids, string $listPath, string $fallback): void
+{
+    $ref = isset($_SERVER['HTTP_REFERER']) ? (string) $_SERVER['HTTP_REFERER'] : '';
+    $host = isset($_SERVER['HTTP_HOST']) ? (string) $_SERVER['HTTP_HOST'] : '';
+    if ($ref === '' || $host === '' || parse_url($ref, PHP_URL_HOST) !== parse_url('http://' . $host, PHP_URL_HOST)) {
+        redirect($fallback);
+    }
+    $path = (string) parse_url($ref, PHP_URL_PATH);
+    $list = base_path() . $listPath;
+    if ($path !== $list && strpos($path, $list . '/') !== 0) {
+        redirect_back($fallback);
+    }
+    parse_str((string) parse_url($ref, PHP_URL_QUERY), $query);
+    $old = isset($query['keep']) && is_string($query['keep']) ? explode(',', $query['keep']) : [];
+    $keep = keep_ids(implode(',', array_merge($old, array_map('strval', $ids))));
+    if ($keep) {
+        $query['keep'] = implode(',', $keep);
+    }
+    header('Location: ' . $path . ($query ? '?' . http_build_query($query) : ''), true, 302);
+    exit;
+}
+
+/** "1,2,3" → [1, 2, 3] (양의 정수만, 중복 제거, 최근 100개) */
+function keep_ids(string $raw): array
+{
+    $ids = array_values(array_unique(array_filter(array_map('intval', explode(',', $raw)), static function ($v) {
+        return $v > 0;
+    })));
+
+    return array_slice($ids, -100);
+}
+
 /** 내부 경로만 허용하는 next 파라미터 정리(오픈 리다이렉트 방지) */
 function safe_next(?string $next, string $fallback = '/home'): string
 {
