@@ -101,7 +101,8 @@ jobs:
 
   tag:
     needs: production
-    if: needs.production.outputs.deployed == 'true'
+    # 수동 실행에서는 ci 작업이 건너뛰어져 기본 조건(success())이 거짓이 되므로 always() 로 배포 결과만 본다.
+    if: always() && needs.production.result == 'success' && needs.production.outputs.deployed == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
