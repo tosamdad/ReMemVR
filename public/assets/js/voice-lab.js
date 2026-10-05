@@ -276,6 +276,7 @@
     var el = {
       tabs: $$('[data-step-tab]', root),
       steps: $$('[data-step]', root),
+      totalCard: $('[data-total-card]', root),
       samplesWrap: $('[data-samples-wrap]', root),
       samplesList: $('[data-samples]', root),
       samplesEmpty: $('[data-samples-empty]', root),
@@ -286,6 +287,7 @@
       totalHint: $('[data-total-hint]', root),
       scriptTabs: $$('[data-script-tab]', root),
       scriptPanels: $$('[data-script-panel]', root),
+      recorder: $('[data-recorder]', root),
       recBtn: $('[data-rec-btn]', root),
       recIcon: $('[data-rec-icon]', root),
       recRing: $('[data-rec-ring]', root),
@@ -313,7 +315,7 @@
       submitBtn: $('[data-submit-btn]', root),
       submitHint: $('[data-submit-hint]', root)
     };
-    var meter = makeMeter($('[data-meter]', root), 40);
+    var meter = makeMeter($('[data-meter]', root), 32);
     var micMeter = makeMeter($('[data-mic-meter]', root), 40);
 
     var rec = null;          // 녹음 중인 RMRecorder
@@ -347,13 +349,19 @@
         t.setAttribute('aria-current', on ? 'step' : 'false');
       });
       el.samplesWrap.hidden = n === 1;
+      // 녹음 단계에서는 녹음 버튼과 대본이 화면 위쪽에 오도록 녹음한 시간 카드를 저장한 녹음 위로 내린다.
+      var stepOne = $('[data-step="1"]', root);
+      if (n === 2) el.samplesWrap.parentNode.insertBefore(el.totalCard, el.samplesWrap);
+      else stepOne.parentNode.insertBefore(el.totalCard, stepOne);
       updateTotals();
+      fitScript();
       try {
         var u = new URL(location.href);
         u.searchParams.set('step', String(n));
         history.replaceState(null, '', u.pathname + u.search);
       } catch (e) {}
-      if (scroll) window.scrollTo({ top: 0, behavior: 'smooth' });
+      if (scroll && n === 2) alignScript(true);
+      else if (scroll) window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
     el.tabs.forEach(function (t) {
@@ -378,7 +386,10 @@
       if (take && take.scriptKey !== key && !window.confirm('저장하지 않은 녹음이 있어요. 지우고 다른 대본으로 넘어갈까요?')) return;
       if (take && take.scriptKey !== key) discardTake();
       scriptKey = key;
-      el.scriptPanels.forEach(function (p) { p.hidden = p.getAttribute('data-script-panel') !== key; });
+      el.scriptPanels.forEach(function (p) {
+        p.hidden = p.getAttribute('data-script-panel') !== key;
+        if (!p.hidden) p.scrollTop = 0;
+      });
       el.scriptTabs.forEach(function (t) {
         var on = t.getAttribute('data-script-tab') === key;
         swap(t, on, SCRIPT_ON, SCRIPT_OFF);
@@ -528,6 +539,35 @@
       return (Math.round(bytes / 104857.6) / 10) + 'MB';
     }
 
+    // ── 녹음기 고정과 대본 높이 ──
+    // 녹음기는 머리글 바로 아래에 붙고, 대본은 남은 화면 높이 안에서만 스크롤된다.
+    // 그래서 대본을 끝까지 내려 읽어도 녹음 버튼이 늘 보여 바로 멈출 수 있다.
+    var GAP = 20; // space-y-5
+    function headerHeight() {
+      var h = document.querySelector('header.sticky');
+      return h ? h.offsetHeight : 0;
+    }
+    function currentPanel() {
+      return el.scriptPanels.filter(function (p) { return !p.hidden; })[0] || null;
+    }
+    function fitScript() {
+      var top = headerHeight();
+      el.recorder.style.top = top + 'px';
+      var room = window.innerHeight - top - el.recorder.offsetHeight - GAP - 16;
+      var h = Math.max(220, room) + 'px';
+      el.scriptPanels.forEach(function (p) { p.style.maxHeight = h; });
+    }
+    /** 대본 첫 줄이 녹음기 바로 아래에 오도록 화면을 옮긴다(녹음기는 위에 붙는다). */
+    function alignScript(smooth) {
+      var p = currentPanel();
+      if (!p || step !== 2) return;
+      fitScript();
+      p.scrollTop = 0;
+      var y = p.getBoundingClientRect().top + window.pageYOffset - headerHeight() - el.recorder.offsetHeight - GAP;
+      if (Math.abs(y - window.pageYOffset) > 1) window.scrollTo({ top: Math.max(0, y), behavior: smooth ? 'smooth' : 'auto' });
+    }
+    window.addEventListener('resize', fitScript);
+
     // ── 녹음 ──
     function setRecUi(state) {
       var on = state === 'recording';
@@ -540,7 +580,7 @@
       el.recBtn.setAttribute('aria-label', on ? '녹음 멈추기' : '녹음 시작');
       el.recBtn.disabled = state === 'starting' || state === 'stopping';
       var text = {
-        idle: '버튼을 누르고 위 대본을 소리 내어 읽어 주세요.',
+        idle: '버튼을 누르고 아래 대본을 소리 내어 읽어 주세요.',
         starting: '마이크를 켜고 있어요...',
         recording: '녹음 중이에요. 다 읽으면 버튼을 눌러 멈춰 주세요.',
         stopping: '녹음을 정리하고 있어요...',
@@ -548,6 +588,7 @@
       }[state];
       if (text) el.recState.textContent = text;
       el.recState.classList.toggle('text-primary', on);
+      fitScript();
     }
 
     async function startRec() {
@@ -577,6 +618,7 @@
           }
         }
       });
+      alignScript(true);
       setRecUi('starting');
       try {
         await rec.start();
@@ -814,6 +856,7 @@
     var first = data.scripts.filter(function (s) { return !doneKeys()[s.key]; })[0] || data.scripts[0];
     selectScript(first.key);
     setStep(step, false);
+    alignScript(false);
   }
 
   // ───────────────────────── 시작 ─────────────────────────

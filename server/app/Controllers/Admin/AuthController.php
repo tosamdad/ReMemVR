@@ -169,7 +169,7 @@ class AuthController
 
     // ───────────────────────── 내부 ─────────────────────────
 
-    /** 최초 설정 입력값(앞뒤 공백 정리, 비밀번호는 그대로) */
+    /** 최초 설정 입력값(앞뒤 공백 정리, OPS_TOKEN 은 모든 공백 제거, 비밀번호는 그대로) */
     private static function setupInput(array $post): array
     {
         $str = static function ($k) use ($post) {
@@ -177,7 +177,8 @@ class AuthController
         };
 
         return [
-            'ops_token' => trim($str('ops_token')),
+            // 배포가 Secret 의 줄바꿈과 공백을 모두 빼고 서버에 넣으므로 입력값도 똑같이 뺀 뒤 비교한다.
+            'ops_token' => (string) preg_replace('/\s+/', '', $str('ops_token')),
             'login_id' => trim($str('login_id')),
             'name' => trim($str('name')),
             'email' => trim($str('email')),

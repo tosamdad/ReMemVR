@@ -174,3 +174,11 @@ test('비밀번호 지문은 해시가 바뀌면 달라진다', function () {
     assert_true($a !== App\Core\Auth::passwordVersion('$2y$10$bbbb'));
     assert_true(App\Core\Auth::passwordVersion(null) !== $a);
 });
+
+test('최초 관리자 설정: 붙여 넣은 OPS_TOKEN 의 줄바꿈과 공백은 빼고 비교한다(배포와 같은 규칙)', function () {
+    $m = new ReflectionMethod(App\Controllers\Admin\AuthController::class, 'setupInput');
+    $m->setAccessible(true);
+    $d = $m->invoke(null, ['ops_token' => " abcd\r\nefgh \n\tijkl ", 'login_id' => ' admin ']);
+    assert_same('abcdefghijkl', $d['ops_token']);
+    assert_same('admin', $d['login_id']);
+});

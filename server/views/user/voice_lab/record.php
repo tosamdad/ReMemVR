@@ -78,8 +78,8 @@ $stepTabs = [1 => ['준비', 'tune'], 2 => ['녹음', 'mic'], 3 => ['확인 & �
     <?php endforeach; ?>
   </nav>
 
-  <!-- 녹음한 시간 -->
-  <section class="card space-y-3 p-5" aria-live="polite">
+  <!-- 녹음한 시간(녹음 단계에서는 대본이 위에 오도록 녹음 영역 아래로 옮긴다) -->
+  <section class="card space-y-3 p-5" aria-live="polite" data-total-card>
     <div class="flex items-baseline justify-between">
       <p class="font-label-lg text-label-lg text-on-surface">녹음한 시간</p>
       <p class="font-label-lg text-label-lg text-on-surface-variant"><span class="text-[20px] font-bold text-primary" data-total>0:00</span> / 권장 <?= e(fmt_duration($recSec * 1000)) ?></p>
@@ -155,46 +155,33 @@ $stepTabs = [1 => ['준비', 'tune'], 2 => ['녹음', 'mic'], 3 => ['확인 & �
 
   <!-- 2단계: 녹음 -->
   <section class="space-y-5" data-step="2"<?= $step === 2 ? '' : ' hidden' ?>>
-    <div class="no-scrollbar -mx-margin-mobile flex gap-2 overflow-x-auto px-margin-mobile" role="tablist" aria-label="대본 고르기">
-      <?php foreach ($scripts as $s): ?>
-        <button type="button" role="tab" data-script-tab="<?= e($s['key']) ?>" class="flex shrink-0 items-center gap-1.5 rounded-full border-2 border-surface-variant bg-surface-container-lowest px-4 py-2 font-label-lg text-label-lg text-on-surface-variant transition-all">
-          <span class="material-symbols-outlined hidden text-[18px] text-secondary icon-fill" data-script-done>check_circle</span>
-          대본 <?= (int) $s['no'] ?>
-        </button>
-      <?php endforeach; ?>
-    </div>
-
-    <?php foreach ($scripts as $s): ?>
-      <article class="card space-y-4 p-6" data-script-panel="<?= e($s['key']) ?>" hidden>
-        <div class="flex items-center justify-between gap-2">
-          <span class="inline-flex items-center gap-1.5 rounded-full bg-tertiary-container px-3 py-1.5 font-label-sm text-label-sm text-on-tertiary-container">
-            <span class="material-symbols-outlined icon-fill text-[16px]"><?= e($s['icon']) ?></span><?= e($s['kind']) ?>
-          </span>
-          <span class="text-label-sm text-outline">대본 <?= (int) $s['no'] ?> / <?= count($scripts) ?></span>
-        </div>
-        <h2 class="font-headline-md text-[20px] font-bold leading-7 text-primary"><?= e($s['title']) ?></h2>
-        <p class="flex items-start gap-1.5 rounded-xl bg-surface-container-low px-3 py-2.5 text-label-sm text-on-surface-variant">
-          <span class="material-symbols-outlined text-[16px]">lightbulb</span><?= e($s['guide']) ?>
-        </p>
-        <p class="whitespace-pre-line break-keep font-story text-[21px] leading-[1.9] text-on-surface"><?= e($s['text']) ?></p>
-      </article>
-    <?php endforeach; ?>
-
-    <!-- 녹음기 -->
-    <div class="card space-y-5 p-6" data-recorder>
-      <div class="flex h-16 items-center justify-center gap-[3px]" data-meter aria-hidden="true"></div>
-      <p class="text-center font-headline-md text-[28px] font-bold tabular-nums leading-9 text-on-surface">
-        <span data-timer>00:00</span><span class="text-[16px] font-semibold text-outline"> / 01:30</span>
-      </p>
-      <div class="flex items-center justify-center">
-        <div class="relative h-24 w-24">
-          <span class="pulse-ring absolute inset-0 hidden rounded-full bg-error/40" data-rec-ring aria-hidden="true"></span>
-          <button type="button" class="relative flex h-24 w-24 items-center justify-center rounded-full bg-primary text-on-primary shadow-lg transition-all active:scale-90" data-rec-btn aria-label="녹음 시작">
-            <span class="material-symbols-outlined icon-fill text-[44px]" data-rec-icon>mic</span>
+    <!-- 대본 고르기와 녹음기: 대본을 읽는 동안 언제든 멈출 수 있게 머리글 아래에 붙어 있고, 대본만 아래에서 스크롤된다. -->
+    <div class="sticky top-14 z-40 -mx-margin-mobile space-y-3 bg-background px-margin-mobile py-2" data-recorder>
+      <div class="no-scrollbar -mx-margin-mobile flex gap-2 overflow-x-auto px-margin-mobile pb-1" role="tablist" aria-label="대본 고르기">
+        <?php foreach ($scripts as $s): ?>
+          <button type="button" role="tab" data-script-tab="<?= e($s['key']) ?>" class="flex shrink-0 items-center gap-1.5 rounded-full border-2 border-surface-variant bg-surface-container-lowest px-4 py-2 font-label-lg text-label-lg text-on-surface-variant transition-all">
+            <span class="material-symbols-outlined hidden text-[18px] text-secondary icon-fill" data-script-done>check_circle</span>
+            대본 <?= (int) $s['no'] ?>
           </button>
-        </div>
+        <?php endforeach; ?>
       </div>
-      <p class="text-center text-[14px] font-semibold leading-5 text-on-surface-variant" data-rec-state>버튼을 누르고 위 대본을 소리 내어 읽어 주세요.</p>
+      <div class="card p-4">
+        <div class="flex items-center gap-4">
+          <div class="relative h-16 w-16 shrink-0">
+            <span class="pulse-ring absolute inset-0 hidden rounded-full bg-error/40" data-rec-ring aria-hidden="true"></span>
+            <button type="button" class="relative flex h-16 w-16 items-center justify-center rounded-full bg-primary text-on-primary shadow-lg transition-all active:scale-90" data-rec-btn aria-label="녹음 시작">
+              <span class="material-symbols-outlined icon-fill text-[34px]" data-rec-icon>mic</span>
+            </button>
+          </div>
+          <div class="min-w-0 flex-1 space-y-1">
+            <p class="font-headline-md text-[22px] font-bold tabular-nums leading-7 text-on-surface">
+              <span data-timer>00:00</span><span class="text-[14px] font-semibold text-outline"> / 01:30</span>
+            </p>
+            <div class="flex h-8 items-center gap-[2px] overflow-hidden" data-meter aria-hidden="true"></div>
+          </div>
+        </div>
+        <p class="mt-3 text-[14px] font-semibold leading-5 text-on-surface-variant" data-rec-state>버튼을 누르고 아래 대본을 소리 내어 읽어 주세요.</p>
+      </div>
     </div>
 
     <!-- 방금 녹음한 것 확인 -->
@@ -214,6 +201,23 @@ $stepTabs = [1 => ['준비', 'tune'], 2 => ['녹음', 'mic'], 3 => ['확인 & �
         </button>
       </div>
     </div>
+
+    <?php foreach ($scripts as $s): ?>
+      <article class="card max-h-[60vh] space-y-4 overflow-y-auto overscroll-contain p-6" data-script-panel="<?= e($s['key']) ?>" tabindex="0" hidden>
+        <div class="flex items-center justify-between gap-2">
+          <span class="inline-flex items-center gap-1.5 rounded-full bg-tertiary-container px-3 py-1.5 font-label-sm text-label-sm text-on-tertiary-container">
+            <span class="material-symbols-outlined icon-fill text-[16px]"><?= e($s['icon']) ?></span><?= e($s['kind']) ?>
+          </span>
+          <span class="text-label-sm text-outline">대본 <?= (int) $s['no'] ?> / <?= count($scripts) ?></span>
+        </div>
+        <h2 class="font-headline-md text-[20px] font-bold leading-7 text-primary"><?= e($s['title']) ?></h2>
+        <p class="flex items-start gap-1.5 rounded-xl bg-surface-container-low px-3 py-2.5 text-label-sm text-on-surface-variant">
+          <span class="material-symbols-outlined text-[16px]">lightbulb</span><?= e($s['guide']) ?>
+        </p>
+        <p class="whitespace-pre-line break-keep font-story text-[21px] leading-[1.9] text-on-surface"><?= e($s['text']) ?></p>
+      </article>
+    <?php endforeach; ?>
+
 
     <!-- 파일로 올리기 -->
     <details class="card group overflow-hidden" data-upload-box>
