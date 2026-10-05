@@ -106,10 +106,20 @@ $c = $d['cost'];
         <div class="h-full rounded-full <?= $w['cost.percent'] >= 90 ? 'bg-error' : 'bg-secondary-container' ?> transition-all duration-500" style="width: <?= (int) $w['cost.percent'] ?>%" data-stat-width="cost.percent"></div>
       </div>
       <div class="mt-3 flex flex-wrap items-center justify-between gap-2 text-on-surface-variant">
-        <span class="font-label-sm text-label-sm">오늘 합성 <strong class="text-on-surface" data-stat="cost.credits"><?= e($s['cost.credits']) ?></strong></span>
+        <span class="font-label-sm text-label-sm">오늘 사용 <strong class="text-on-surface" data-stat="cost.credits"><?= e($s['cost.credits']) ?></strong></span>
         <span class="font-label-sm text-label-sm text-on-surface-variant">안전 한도 <span data-stat="cost.budget"><?= e($s['cost.budget']) ?></span></span>
       </div>
-      <p class="mt-1 font-label-sm text-[11px] leading-4 text-on-surface-variant/80"><a href="<?= e(url('/admin/settings')) ?>" class="hover:underline">설정 단가</a> 기준 추정치(<span data-stat="cost.unit"><?= e($s['cost.unit']) ?></span>, 오늘 0시부터). 요금제 결제액과 다를 수 있습니다.</p>
+      <div class="mt-3 rounded-xl bg-surface-container-low px-3 py-2.5">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <span class="font-label-sm text-label-sm text-on-surface-variant">이번 달 사용 크레딧</span>
+          <span class="font-label-sm text-label-sm font-bold text-on-surface" data-stat="cost.cycle"><?= e($s['cost.cycle']) ?></span>
+        </div>
+        <div class="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-surface-container-high" role="progressbar" aria-label="이번 결제 주기 크레딧 사용률" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<?= (int) $w['cost.cycle'] ?>">
+          <div class="h-full rounded-full bg-primary transition-all duration-500" style="width: <?= e((string) $w['cost.cycle']) ?>%" data-stat-width="cost.cycle"></div>
+        </div>
+        <span class="mt-1 block font-label-sm text-[11px] leading-4 text-on-surface-variant" data-stat="cost.cycle_note"><?= e($s['cost.cycle_note']) ?></span>
+      </div>
+      <p class="mt-2 font-label-sm text-[11px] leading-4 text-on-surface-variant/80" data-stat="cost.source"><?= e($s['cost.source']) ?></p>
     </div>
   </div>
 

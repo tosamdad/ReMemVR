@@ -167,3 +167,19 @@ test('작업 기록을 이어 받고 현황 형식을 지킨다', function () {
         assert_true(isset($s['by_type']['story_tts']), '기본 종류가 없다');
     });
 });
+
+test('미루기는 시도 횟수를 쓰지 않고, 너무 오래된 작업은 미루지 않는다', function () {
+    jobs_test_tx(function () {
+        $id = Jobs::enqueue('zz_test_postpone', ['x' => 1]);
+        db_exec("UPDATE jobs SET status = 'running', attempts = 1 WHERE id = ?", [$id]);
+        assert_true(Jobs::postpone($id, 60, '자리 기다림'), '미루지 못했다');
+        $row = db_one('SELECT * FROM jobs WHERE id = ?', [$id]);
+        assert_same('pending', $row['status']);
+        assert_same(0, (int) $row['attempts']);
+        assert_same('자리 기다림', $row['last_error']);
+        assert_true(strtotime($row['available_at']) > time() + 30, '다음 시도 시각');
+
+        db_exec("UPDATE jobs SET status = 'running', created_at = DATE_SUB(NOW(), INTERVAL 2 DAY) WHERE id = ?", [$id]);
+        assert_same(false, Jobs::postpone($id, 60, '자리 기다림'));
+    });
+});

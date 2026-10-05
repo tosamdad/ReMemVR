@@ -50,7 +50,7 @@ class ElevenLabs
     {
         $started = microtime(true);
         $name = trim($name) !== '' ? mb_substr(trim($name), 0, 100) : '르멤버 목소리';
-        $result = ['ok' => false, 'voice_id' => null, 'error' => null, 'ms' => 0, 'permanent' => false];
+        $result = ['ok' => false, 'voice_id' => null, 'error' => null, 'ms' => 0, 'permanent' => false, 'voice_limit' => false];
 
         if (!self::ready()) {
             $result['error'] = 'ElevenLabs API 키가 등록되지 않았습니다.';
@@ -110,6 +110,7 @@ class ElevenLabs
         } else {
             $result['error'] = self::errorMessage($res);
             $result['permanent'] = self::isPermanent($res);
+            $result['voice_limit'] = self::isVoiceLimit($res);
         }
         self::logClone($usage, $result);
 
@@ -494,6 +495,68 @@ class ElevenLabs
     }
 
     /**
+     * 기간 동안 ElevenLabs 가 실제로 차감한 크레딧(GET /v1/usage/character-stats, 1시간 단위 합).
+     * 대시보드가 우리 기록으로 계산한 추정치 대신 ElevenLabs 의 실제 사용량을 보여 줄 때 쓴다.
+     * @return array ['ok', 'credits', 'error', 'ms']
+     */
+    public static function usageCredits(int $fromTs, int $toTs): array
+    {
+        $started = microtime(true);
+        $out = ['ok' => false, 'credits' => 0, 'error' => null, 'ms' => 0];
+        if (!self::ready()) {
+            $out['error'] = 'ElevenLabs API 키가 등록되지 않았습니다.';
+
+            return $out;
+        }
+        if (self::fake()) {
+            $out['ok'] = true;
+            $out['credits'] = (int) round((float) db_value(
+                "SELECT COALESCE(SUM(CASE WHEN model LIKE '%flash%' OR model LIKE '%turbo%' THEN units * ? ELSE units END), 0)
+                   FROM api_usage_logs WHERE provider = 'elevenlabs' AND unit_type = 'chars' AND success = 1 AND created_at >= ? AND created_at < ?",
+                [(string) (float) setting('elevenlabs.flash_credit_ratio', 0.5), date('Y-m-d H:i:s', $fromTs), date('Y-m-d H:i:s', $toTs + 1)]
+            ));
+            $out['ms'] = self::elapsed($started);
+
+            return $out;
+        }
+        $query = http_build_query([
+            'start_unix' => $fromTs * 1000,
+            'end_unix' => max($fromTs + 1, $toTs) * 1000,
+            'aggregation_interval' => 'hour',
+            'breakdown_type' => 'none',
+            'metric' => 'credits',
+        ]);
+        $res = HttpClient::request('GET', self::base() . '/usage/character-stats?' . $query, [
+            'headers' => self::headers(['Accept' => 'application/json']),
+            'timeout' => 15,
+        ]);
+        $out['ms'] = self::elapsed($started);
+        $data = HttpClient::json($res);
+        if ($res['status'] !== 200 || !isset($data['usage']) || !is_array($data['usage'])) {
+            $out['error'] = self::errorMessage($res);
+
+            return $out;
+        }
+        $sum = 0.0;
+        // 나눔 없이 부르면 'All' 하나가 온다. 다른 나눔이 섞여 와도 전체(All)만 더한다.
+        $all = isset($data['usage']['All']) && is_array($data['usage']['All']) ? ['All' => $data['usage']['All']] : $data['usage'];
+        foreach ($all as $series) {
+            if (!is_array($series)) {
+                continue;
+            }
+            foreach ($series as $v) {
+                if (is_numeric($v)) {
+                    $sum += (float) $v;
+                }
+            }
+        }
+        $out['ok'] = true;
+        $out['credits'] = (int) round($sum);
+
+        return $out;
+    }
+
+    /**
      * 구독 사용량을 읽어 잔여 크레딧 기록(provider_credit_snapshots)을 남긴다.
      * internal_estimate: 직전 기록의 잔량에서 그 뒤 우리 DB 에 기록된 사용 크레딧을 뺀 값(비교용).
      * @return array subscription() 결과 + 'remaining', 'internal_estimate'
@@ -666,6 +729,19 @@ class ElevenLabs
         }
 
         return in_array($status, [400, 401, 402, 403, 413, 422], true);
+    }
+
+    /** 요금제의 목소리 개수 한도에 걸린 오류인가(자리를 비우고 다시 만들면 된다). */
+    public static function isVoiceLimit(array $res): bool
+    {
+        $data = HttpClient::json($res);
+        $code = (string) self::detailStatus($data);
+        if (in_array($code, ['voice_limit_reached', 'max_voices_reached'], true)) {
+            return true;
+        }
+        $message = isset($data['detail']['message']) && is_string($data['detail']['message']) ? $data['detail']['message'] : '';
+
+        return $message !== '' && (bool) preg_match('/maximum (amount|number) of (custom )?voices/i', $message);
     }
 
     /** API 오류를 관리자가 이해할 수 있는 한글 메시지로 바꾼다(API 키는 절대 넣지 않는다). */

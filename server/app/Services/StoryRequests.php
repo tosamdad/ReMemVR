@@ -23,7 +23,8 @@ class StoryRequests
     const SELECT = 'SELECT r.*, s.title AS story_title, s.category AS story_category, s.cover_image_path, s.updated_at AS story_updated_at,
             s.est_duration_sec, s.char_count AS story_chars, s.status AS story_status, s.deleted_at AS story_deleted_at, s.content_hash AS story_hash,
             vp.label AS voice_label, vp.icon AS voice_icon, vp.status AS voice_status, vp.deleted_at AS voice_deleted_at,
-            (vp.provider_voice_id IS NOT NULL AND vp.provider_voice_id <> \'\') AS voice_has_provider,
+            ((vp.provider_voice_id IS NOT NULL AND vp.provider_voice_id <> \'\') OR vp.provider_released_at IS NOT NULL) AS voice_usable,
+            (vp.provider_released_at IS NOT NULL AND (vp.provider_voice_id IS NULL OR vp.provider_voice_id = \'\')) AS voice_released,
             sa.id AS audio_id, sa.status AS audio_status, sa.file_path AS audio_file, sa.duration_ms AS audio_duration_ms,
             sa.error_message AS audio_error, sa.generated_at AS audio_generated_at, sa.content_hash AS audio_hash
           FROM story_requests r
@@ -118,7 +119,7 @@ class StoryRequests
             throw new \RuntimeException('읽어 줄 목소리를 하나 이상 골라 주세요.');
         }
         $voices = db_all(
-            'SELECT id, label, status, provider_voice_id FROM voice_profiles
+            'SELECT id, label, status, provider_voice_id, provider_released_at FROM voice_profiles
               WHERE user_id = ? AND deleted_at IS NULL AND id IN (' . implode(', ', array_fill(0, count($voiceIds), '?')) . ')
               ORDER BY id',
             array_merge([$userId], $voiceIds)
@@ -134,7 +135,8 @@ class StoryRequests
         $skipped = [];
         foreach ($voices as $v) {
             $vid = (int) $v['id'];
-            if ($v['status'] !== 'completed' || (string) $v['provider_voice_id'] === '') {
+            // 자리를 비운 목소리(provider_released_at)도 요청할 수 있다. 생성을 시작하면 녹음으로 다시 만든다.
+            if ($v['status'] !== 'completed' || ((string) $v['provider_voice_id'] === '' && empty($v['provider_released_at']))) {
                 $skipped[] = ['voice' => (string) $v['label'], 'reason' => '목소리가 아직 준비되지 않았어요'];
                 continue;
             }
@@ -254,12 +256,12 @@ class StoryRequests
     public static function voiceStates(int $userId, int $storyId): array
     {
         $voices = db_all(
-            'SELECT id, label, icon, status, provider_voice_id FROM voice_profiles WHERE user_id = ? AND deleted_at IS NULL ORDER BY id',
+            'SELECT id, label, icon, status, provider_voice_id, provider_released_at FROM voice_profiles WHERE user_id = ? AND deleted_at IS NULL ORDER BY id',
             [$userId]
         );
         $out = [];
         foreach ($voices as $v) {
-            $ready = $v['status'] === 'completed' && (string) $v['provider_voice_id'] !== '';
+            $ready = $v['status'] === 'completed' && ((string) $v['provider_voice_id'] !== '' || !empty($v['provider_released_at']));
             $req = self::latestFor($userId, $storyId, (int) $v['id']);
             $state = $req ? self::state($req) : 'none';
             if (!$ready && ($state === 'none' || $state === 'rejected')) {
@@ -296,7 +298,7 @@ class StoryRequests
                 $errors[] = $label . ': ' . self::adminStateLabel($state) . ' 상태라 건너뜁니다.';
                 continue;
             }
-            if ($r['voice_deleted_at'] !== null || !(int) $r['voice_has_provider'] || $r['voice_status'] !== 'completed') {
+            if ($r['voice_deleted_at'] !== null || !(int) $r['voice_usable'] || $r['voice_status'] !== 'completed') {
                 $errors[] = $label . ': 목소리(' . $r['voice_label'] . ')가 준비되지 않았습니다.';
                 continue;
             }

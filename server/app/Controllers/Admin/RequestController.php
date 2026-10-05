@@ -95,7 +95,8 @@ class RequestController
         $rows = db_all(
             'SELECT r.*, s.title AS story_title, s.char_count AS story_chars, s.status AS story_status, s.deleted_at AS story_deleted_at,
                     vp.label AS voice_label, vp.icon AS voice_icon, vp.status AS voice_status, vp.deleted_at AS voice_deleted_at,
-                    (vp.provider_voice_id IS NOT NULL AND vp.provider_voice_id <> \'\') AS voice_has_provider,
+                    ((vp.provider_voice_id IS NOT NULL AND vp.provider_voice_id <> \'\') OR vp.provider_released_at IS NOT NULL) AS voice_usable,
+                    (vp.provider_released_at IS NOT NULL AND (vp.provider_voice_id IS NULL OR vp.provider_voice_id = \'\')) AS voice_released,
                     u.name AS user_name, u.email AS user_email, a.name AS admin_name,
                     sa.id AS audio_id, sa.status AS audio_status, sa.file_path AS audio_file, sa.duration_ms AS audio_duration_ms,
                     sa.error_message AS audio_error'

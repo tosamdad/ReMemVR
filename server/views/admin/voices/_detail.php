@@ -5,6 +5,7 @@
  */
 use App\Services\DashboardStats;
 use App\Services\StoryRequests;
+use App\Services\VoiceService;
 
 $v = $detail['voice'];
 $id = (int) $v['id'];
@@ -15,6 +16,7 @@ $age = $child ? child_age($child) : null;
 $params = $detail['params'];
 $progress = $detail['progress'];
 $hasVoice = (string) $v['provider_voice_id'] !== '';
+$released = !$hasVoice && VoiceService::isReleased($v);
 $canClone = in_array($v['status'], ['pending', 'rejected', 'failed'], true);
 $name = $v['user_name'] . ' (' . $v['label'] . ' 목소리)';
 $requests = $detail['requests'];
@@ -141,6 +143,11 @@ $slider = static function ($key, $label, $value, $help, $accent) {
     <?php elseif ($hasVoice): ?>
     <div class="flex items-center justify-center gap-2 rounded-xl bg-surface-container-high py-3 font-label-md text-label-md text-on-surface-variant">
       <span class="material-symbols-outlined text-[20px] text-primary">verified</span>Voice ID 발급 완료: <?= e(DashboardStats::maskVoiceId($v['provider_voice_id'])) ?>
+    </div>
+    <?php elseif ($released): ?>
+    <div class="flex flex-col items-center justify-center gap-1 rounded-xl bg-surface-container-high px-3 py-3 text-center font-label-md text-label-md text-on-surface-variant">
+      <span class="flex items-center gap-2"><span class="material-symbols-outlined text-[20px]">event_seat</span>ElevenLabs 자리 비움 (<?= e(date('m.d H:i', strtotime($v['provider_released_at']))) ?>)</span>
+      <span class="font-label-sm text-label-sm">자리가 모자라 가장 오래 쓰지 않은 이 목소리를 ElevenLabs 에서만 지웠습니다. 녹음과 만든 동화는 그대로이고, 이 목소리로 새 동화를 만들 때 녹음으로 다시 만듭니다.</span>
     </div>
     <?php else: ?>
     <div class="flex items-center justify-center gap-2 rounded-xl bg-primary-fixed py-3 font-label-md text-label-md text-on-primary-fixed-variant">

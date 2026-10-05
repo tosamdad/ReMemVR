@@ -128,7 +128,7 @@ foreach ($rows as $r) {
               $state = $r['state'];
               $rid = (int) $r['id'];
               $canStart = in_array($state, $selectable, true);
-              $voiceOk = !$r['voice_deleted_at'] && (int) $r['voice_has_provider'] && $r['voice_status'] === 'completed';
+              $voiceOk = !$r['voice_deleted_at'] && (int) $r['voice_usable'] && $r['voice_status'] === 'completed';
               $chip = isset(RequestController::CHIPS[$state]) ? RequestController::CHIPS[$state] : 'bg-surface-container-high text-on-surface-variant';
           ?>
           <tr class="align-top transition-colors hover:bg-surface-container-low/70" data-req-row="<?= $rid ?>" data-state="<?= e($state) ?>">

@@ -176,6 +176,20 @@ class Jobs
         return ['final' => false, 'delay' => $delay, 'attempts' => $attempts, 'max_attempts' => $max];
     }
 
+    /**
+     * 시도 횟수를 쓰지 않고 잠시 뒤로 미룬다(다른 작업이 끝나야 할 수 있는 일, 예: 목소리 자리 기다림).
+     * 등록한 지 $maxAgeHours 가 지난 작업은 미루지 않고 false 를 돌려준다(그때는 보통의 실패로 처리한다).
+     */
+    public static function postpone(int $jobId, int $seconds, string $reason, int $maxAgeHours = 24): bool
+    {
+        return db_exec(
+            'UPDATE jobs SET status = ?, attempts = GREATEST(attempts - 1, 0), last_error = ?, locked_at = NULL, locked_by = NULL,
+                    available_at = DATE_ADD(NOW(), INTERVAL ? SECOND)
+              WHERE id = ? AND created_at > DATE_SUB(NOW(), INTERVAL ? HOUR)',
+            ['pending', self::cut($reason, 1000), max(1, $seconds), $jobId, max(1, $maxAgeHours)]
+        ) === 1;
+    }
+
     /** n 번째 시도가 실패한 뒤 기다릴 시간(초): 30, 60, 120, 240 ... (상한 1시간) */
     public static function backoffSeconds(int $attempts): int
     {

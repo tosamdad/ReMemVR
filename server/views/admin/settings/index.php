@@ -243,6 +243,7 @@ $okChip = static function ($ok, string $yes = '정상', string $no = '확인 필
             <?= $toggle('elevenlabs.remove_background_noise', '샘플 배경 소음 제거', '목소리 복제 때 녹음 샘플의 잡음을 지웁니다.') ?>
             <?= $input('elevenlabs.usd_per_1k_credits', 'ElevenLabs 1천 크레딧 단가', '대시보드 비용 계산 기준. 정액 요금제 원가는 월 요금 ÷ 월 크레딧 × 1000, 초과 사용 단가는 보통 0.30', ['suffix' => 'USD', 'step' => '0.001']) ?>
             <?= $input('elevenlabs.flash_credit_ratio', 'Flash, Turbo 글자당 크레딧 비율', 'Multilingual 은 1자 1크레딧', ['step' => '0.05']) ?>
+            <?= $input('elevenlabs.voice_slot_limit', 'ElevenLabs 목소리 자리 수', '요금제의 커스텀 목소리 한도(Starter 10). 다 차면 가장 오래 안 쓴 목소리의 자리를 비우고, 그 목소리로 동화를 만들 때 녹음으로 다시 만듭니다. 0 이면 관리하지 않습니다', ['suffix' => '개']) ?>
             <?= $input('gemini.model', 'Gemini 모델', '예) gemini-2.5-flash') ?>
             <?= $input('cost.usd_krw', '환율 (1달러)', '비용을 원화로 바꿀 때 씁니다', ['suffix' => '원']) ?>
             <?= $input('gemini.usd_per_1m_input', 'Gemini 텍스트 입력 100만 토큰 단가', '', ['suffix' => 'USD']) ?>

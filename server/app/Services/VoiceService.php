@@ -139,6 +139,127 @@ class VoiceService
         Worker::kick();
     }
 
+    // ───────────────────────── ElevenLabs 목소리 자리(슬롯) ─────────────────────────
+    // 요금제마다 ElevenLabs 에 만들어 둘 수 있는 목소리 수가 정해져 있다(Starter 10).
+    // 자리가 모자라면 가장 오래 쓰지 않은 목소리를 ElevenLabs 에서만 지운다(released).
+    // 녹음 샘플과 만든 동화 오디오는 남기므로 재생은 그대로 되고, 그 목소리로 새 동화를 만들 때 다시 만든다.
+
+    /** 자리를 비운 목소리인가(준비됨 상태인데 ElevenLabs 목소리만 없다) */
+    public static function isReleased(array $profile): bool
+    {
+        return (string) $profile['status'] === 'completed'
+            && (string) $profile['provider_voice_id'] === ''
+            && !empty($profile['provider_released_at']);
+    }
+
+    /** 동화를 요청하거나 만들 수 있는 목소리인지 고르는 SQL 조건(별칭 $a). 자리를 비운 목소리도 포함한다. */
+    public static function readySql(string $a = 'vp'): string
+    {
+        return "({$a}.status = 'completed' AND (({$a}.provider_voice_id IS NOT NULL AND {$a}.provider_voice_id <> '') OR {$a}.provider_released_at IS NOT NULL))";
+    }
+
+    /** 설정한 자리 수(0 이면 관리하지 않음) */
+    public static function slotLimit(): int
+    {
+        return max(0, (int) setting('elevenlabs.voice_slot_limit', 10));
+    }
+
+    /** ElevenLabs 에 목소리가 남아 자리를 차지하는 행의 조건(삭제를 기다리는 목소리 포함, 이미 지운 목소리 제외) */
+    private static function slotSql(string $a): string
+    {
+        return "({$a}.provider_voice_id IS NOT NULL AND {$a}.provider_voice_id <> '' AND {$a}.provider_deleted_at IS NULL)";
+    }
+
+    /** 지금 ElevenLabs 에 있는 우리 목소리 수(삭제 처리 중인 목소리 포함) */
+    public static function slotsUsed(): int
+    {
+        return (int) db_value('SELECT COUNT(*) FROM voice_profiles vp WHERE ' . self::slotSql('vp'));
+    }
+
+    /** ElevenLabs 목소리를 썼다고 기록한다(자리를 비울 순서를 정할 때 쓴다). */
+    public static function touch(int $profileId): void
+    {
+        db_exec('UPDATE voice_profiles SET provider_last_used_at = NOW() WHERE id = ?', [$profileId]);
+    }
+
+    /**
+     * 새 목소리를 만들 자리를 마련한다. 자리가 다 찼으면 가장 오래 쓰지 않은 목소리를 비운다.
+     * $force 면 개수와 관계없이 한 자리를 비운다(ElevenLabs 가 한도에 걸렸다고 알려 온 경우).
+     * 비울 수 있는 목소리가 없으면 RetryLater(작업은 시도 횟수를 쓰지 않고 잠시 뒤로 미룬다).
+     * 반환: 자리를 비운 목소리 id 목록
+     */
+    public static function ensureSlot(int $forProfileId, bool $force = false): array
+    {
+        $limit = self::slotLimit();
+        if ($limit <= 0 && !$force) {
+            return [];
+        }
+        $released = [];
+        $guard = 0;
+        while ($guard++ < 20) {
+            $used = (int) db_value('SELECT COUNT(*) FROM voice_profiles vp WHERE ' . self::slotSql('vp') . ' AND vp.id <> ?', [$forProfileId]);
+            if (!$force && $used < $limit) {
+                break;
+            }
+            $victim = self::slotVictim($forProfileId);
+            if (!$victim) {
+                throw new RetryLater('ElevenLabs 목소리 자리(' . ($limit > 0 ? $limit : $used) . '개)가 모두 동화를 만드는 중이라 비울 수 있는 목소리가 없습니다. 자리가 나면 이어서 만듭니다.', 60);
+            }
+            self::releaseSlot($victim, $forProfileId);
+            $released[] = (int) $victim['id'];
+            if ($force) {
+                break;
+            }
+        }
+
+        return $released;
+    }
+
+    /**
+     * 자리를 비울 목소리: 삭제된 목소리(남아 있는 ElevenLabs 목소리)를 먼저, 그다음 가장 오래 쓰지 않은 목소리.
+     * 지금 만들거나 합성 중인 목소리(대기, 진행 중 작업이 있는 목소리)는 고르지 않는다.
+     */
+    private static function slotVictim(int $exceptId): ?array
+    {
+        return db_one(
+            'SELECT vp.* FROM voice_profiles vp
+              WHERE ' . self::slotSql('vp') . " AND vp.id <> ?
+                AND vp.status NOT IN ('cloning', 'processing')
+                AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.ref_type = 'voice_profile' AND j.ref_id = vp.id
+                                   AND j.type IN ('story_tts', 'voice_clips', 'voice_clone') AND j.status IN ('pending', 'running'))
+              ORDER BY (vp.deleted_at IS NULL) ASC, COALESCE(vp.provider_last_used_at, vp.cloned_at, vp.created_at) ASC, vp.id ASC
+              LIMIT 1",
+            [$exceptId]
+        );
+    }
+
+    /** ElevenLabs 에서 목소리만 지우고 자리를 비웠다고 기록한다. 실패하면 RuntimeException. */
+    private static function releaseSlot(array $victim, int $forProfileId): void
+    {
+        $vid = (int) $victim['id'];
+        $res = ElevenLabs::deleteVoice((string) $victim['provider_voice_id']);
+        if (empty($res['ok'])) {
+            throw new \RuntimeException('자리를 비우려고 목소리 #' . $vid . '를 지우지 못했습니다: ' . (string) $res['error']);
+        }
+        if ($victim['deleted_at'] !== null) {
+            db_exec('UPDATE voice_profiles SET provider_voice_id = NULL, provider_deleted_at = NOW() WHERE id = ?', [$vid]);
+        } else {
+            db_exec('UPDATE voice_profiles SET provider_voice_id = NULL, provider_released_at = NOW() WHERE id = ?', [$vid]);
+            Jobs::log(null, 'voice_profile', $vid, 'info', 'ElevenLabs 목소리 자리가 모자라 이 목소리의 자리를 비웠습니다(녹음과 만든 동화는 그대로, 새 동화를 만들 때 다시 만듭니다).');
+        }
+        Jobs::log(null, 'voice_profile', $forProfileId, 'info', 'ElevenLabs 목소리 자리를 마련하려고 목소리 #' . $vid . '(' . $victim['label'] . ')의 자리를 비웠습니다.');
+    }
+
+    /** 자리를 비운 목소리를 남겨 둔 녹음으로 다시 만드는 작업을 등록한다(이미 있으면 그대로). */
+    public static function restore(int $profileId): void
+    {
+        Jobs::enqueue('voice_clone', ['profile_id' => $profileId, 'restore' => true], [
+            'priority' => 1, 'ref_type' => 'voice_profile', 'ref_id' => $profileId, 'unique' => true,
+        ]);
+        Jobs::log(null, 'voice_profile', $profileId, 'info', '자리를 비웠던 목소리를 녹음으로 다시 만드는 작업을 등록했습니다.');
+        Worker::kick();
+    }
+
     /**
      * 회원이 실패한 목소리를 다시 만든다(failed → cloning). 목소리 만들기는 크레딧을 쓰지 않는다.
      * 다시 만들 수 없으면 RuntimeException(회원에게 보여 줄 문구).
@@ -266,8 +387,13 @@ class VoiceService
     public static function queueStories(int $profileId, ?array $storyIds = null, bool $force = false): int
     {
         $profile = self::find($profileId);
+        $released = false;
         if ((string) $profile['provider_voice_id'] === '') {
-            throw new \RuntimeException('아직 ElevenLabs 목소리가 만들어지지 않아 동화 오디오를 생성할 수 없습니다.');
+            if (!self::isReleased($profile)) {
+                throw new \RuntimeException('아직 ElevenLabs 목소리가 만들어지지 않아 동화 오디오를 생성할 수 없습니다.');
+            }
+            // 자리를 비운 목소리: 만들 동화가 있으면 아래에서 목소리를 먼저 다시 만들도록 등록한다.
+            $released = true;
         }
         $sql = 'SELECT * FROM stories WHERE status = ? AND deleted_at IS NULL';
         $params = ['published'];
@@ -332,6 +458,10 @@ class VoiceService
 
         if ($count > 0) {
             db_exec('UPDATE voice_profiles SET batch_status = ? WHERE id = ?', ['queued', $profileId]);
+            if ($released) {
+                // 다시 만들기 작업은 우선순위가 높아 동화 작업보다 먼저 처리된다.
+                self::restore($profileId);
+            }
             Worker::kick();
         } else {
             self::refresh($profileId);
@@ -481,7 +611,9 @@ class VoiceService
             return ['ok' => false, 'error' => '목소리를 찾을 수 없습니다.'];
         }
         if ((string) $profile['provider_voice_id'] === '') {
-            return ['ok' => false, 'error' => '아직 ElevenLabs 목소리가 생성되지 않았습니다.'];
+            return ['ok' => false, 'error' => self::isReleased($profile)
+                ? 'ElevenLabs 목소리 자리를 비운 목소리입니다. 이 목소리로 동화 생성을 시작하면 녹음으로 다시 만들어집니다.'
+                : '아직 ElevenLabs 목소리가 생성되지 않았습니다.'];
         }
         if (!ElevenLabs::ready()) {
             return ['ok' => false, 'error' => 'ElevenLabs API 키가 설정되지 않았습니다.'];
@@ -496,6 +628,7 @@ class VoiceService
             'text_hash' => $hash,
             'status' => 'pending',
         ]);
+        self::touch($profileId);
         $res = ElevenLabs::synthesize((string) $profile['provider_voice_id'], $text, [
             'model_id' => (string) setting('elevenlabs.model_answer', 'eleven_flash_v2_5'),
             'voice_settings' => self::voiceSettings($profile),

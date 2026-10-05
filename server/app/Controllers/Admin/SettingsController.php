@@ -37,6 +37,7 @@ class SettingsController
         'elevenlabs.default_style' => ['type' => 'float', 'min' => 0, 'max' => 1],
         'elevenlabs.speaker_boost' => ['type' => 'bool'],
         'elevenlabs.remove_background_noise' => ['type' => 'bool'],
+        'elevenlabs.voice_slot_limit' => ['type' => 'int', 'min' => 0, 'max' => 1000],
         'elevenlabs.usd_per_1k_credits' => ['type' => 'float', 'min' => 0, 'max' => 10],
         'elevenlabs.flash_credit_ratio' => ['type' => 'float', 'min' => 0, 'max' => 1],
         'gemini.model' => ['type' => 'string', 'len' => 60, 'pattern' => '/^[a-z0-9][a-z0-9.\-]*$/'],
