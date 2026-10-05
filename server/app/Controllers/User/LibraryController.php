@@ -47,7 +47,20 @@ class LibraryController
             'playlists' => Playlists::forUser($userId),
             'readyVoices' => $readyVoices,
             'anyVoices' => $anyVoices,
+            'autoApprove' => StoryRequests::autoApprove(),
         ]);
+    }
+
+    /**
+     * GET /api/requests/status?ids=1,2,3 : 내 요청들의 지금 진행 단계.
+     * 동화 상세와 내 동화 화면이 확인 대기, 만드는 중인 요청을 몇 초마다 확인해 바뀌면 화면을 다시 그린다.
+     */
+    public function status(): array
+    {
+        $user = require_user();
+        $ids = explode(',', (string) Request::query('ids', ''));
+
+        return ['ok' => true, 'states' => (object) StoryRequests::statesFor((int) $user['id'], $ids)];
     }
 
     /** POST /library/requests/{id}/cancel (back) : 확인 대기 중인 요청 취소 */

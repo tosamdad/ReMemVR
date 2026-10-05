@@ -117,6 +117,7 @@ class StoryController
             'story' => $story,
             'durationLabel' => Progress::durationLabel($sec),
             'voices' => StoryRequests::voiceStates($userId, $sid),
+            'autoApprove' => StoryRequests::autoApprove(),
             'completed' => in_array($sid, Progress::completedStoryIds($scope), true),
             'resumeUrl' => $resumeUrl,
         ]);
@@ -138,7 +139,10 @@ class StoryController
         }
         $n = count($res['created']);
         if ($n > 0) {
-            $msg = '생성 요청을 보냈어요. 운영팀이 확인한 뒤 만들어 드릴게요.';
+            // 바로 만드는 설정이면 생성을 시작했다고, 아니면 운영팀 확인을 기다린다고 알린다.
+            $msg = !empty($res['approved'])
+                ? '동화 만들기를 시작했어요. 다 만들어지면 이 화면에서 완성으로 바뀌고 메일로도 알려 드려요.'
+                : '생성 요청을 보냈어요. 운영팀이 확인한 뒤 만들어 드릴게요.';
             if ($res['skipped']) {
                 $msg .= ' (' . implode(', ', array_map(static function ($s) {
                     return $s['voice'] . ': ' . $s['reason'];

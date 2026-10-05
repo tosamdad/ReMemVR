@@ -98,6 +98,8 @@ if ($userCred !== '') {
         }
         list($status, $body) = http('GET', $base . '/api/voice-lab/status', null, $jar, ['Accept: application/json']);
         check('GET /api/voice-lab/status', $status, $body, [200]);
+        list($status, $body) = http('GET', $base . '/api/requests/status?ids=1,2,3', null, $jar, ['Accept: application/json']);
+        check('GET /api/requests/status', $status, $body, [200]);
     } else {
         $failures++;
     }

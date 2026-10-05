@@ -267,5 +267,47 @@
     setTimeout(function () { box.remove(); }, 4000);
   });
 
+  // 동화 생성 요청 지켜보기(회원 동화 상세, 내 동화): [data-req-id][data-req-state] 중 확인 대기나 만드는 중이 있으면
+  // /api/requests/status 로 진행 단계를 확인하고, 하나라도 바뀌면(만드는 중 → 완성 등) 화면을 다시 그린다.
+  // 만드는 중이면 5초, 확인 대기면 20초마다 확인하고, 1시간이 지나면 멈춘다. 고르던 목소리, 열린 팝업이 있으면 기다렸다가 다시 그린다.
+  (function watchRequests() {
+    var rows = Array.prototype.slice.call(document.querySelectorAll('[data-req-id][data-req-state]'));
+    var seen = {};
+    rows.forEach(function (el) { seen[String(el.getAttribute('data-req-id'))] = el.getAttribute('data-req-state'); });
+    var ids = Object.keys(seen);
+    function open() { return ids.filter(function (id) { return seen[id] === 'making' || seen[id] === 'requested'; }); }
+    if (!open().length) return;
+    var started = Date.now();
+    var changed = false;
+    function busy() {
+      return !!document.querySelector('[data-rm-dialog], [data-voice-pick]:checked, #add-sheet:not([hidden])');
+    }
+    function next() {
+      if (Date.now() - started > 3600000) return;
+      var making = open().some(function (id) { return seen[id] === 'making'; });
+      setTimeout(poll, making ? 5000 : 20000);
+    }
+    async function poll() {
+      if (changed) {
+        if (busy()) { setTimeout(poll, 3000); return; }
+        location.reload();
+        return;
+      }
+      if (document.hidden) { next(); return; }
+      try {
+        var data = await api('/api/requests/status?ids=' + open().join(','));
+        var states = (data && data.states) || {};
+        Object.keys(states).forEach(function (id) {
+          if (seen[id] !== undefined && states[id] !== seen[id]) changed = true;
+        });
+      } catch (e) {
+        // 잠깐 연결이 끊겨도 다음 차례에 다시 확인한다.
+      }
+      if (changed) { poll(); return; }
+      next();
+    }
+    next();
+  })();
+
   window.RM = { url: url, api: api, toast: toast, confirm: confirmBox, alert: alertBox, fmtTime: fmtTime, setDark: setDark, csrf: csrf, escapeHtml: escapeHtml, config: cfg };
 })();
