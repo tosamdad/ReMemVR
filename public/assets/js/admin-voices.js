@@ -151,7 +151,7 @@
         body.innerHTML = '<div class="flex flex-col items-center gap-2 py-10 text-center">'
           + '<span class="material-symbols-outlined text-[28px] text-on-surface-variant">library_music</span>'
           + '<p class="font-label-md text-label-md text-on-surface">아직 만든 동화 오디오가 없습니다</p>'
-          + '<p class="font-label-sm text-label-sm text-on-surface-variant">일괄 생성을 시작하면 파일이 여기에 쌓입니다.</p></div>';
+          + '<p class="font-label-sm text-label-sm text-on-surface-variant">동화 생성 요청을 시작하면 파일이 여기에 쌓입니다.</p></div>';
         return;
       }
       var rows = data.items.map(function (it, i) {
@@ -244,37 +244,12 @@
     }
   });
 
-  // ───────────────────────── 파라미터, 체크리스트 ─────────────────────────
+  // ───────────────────────── 파라미터 ─────────────────────────
 
   document.querySelectorAll('[data-range]').forEach(function (input) {
     var out = document.querySelector('[data-range-value="' + input.getAttribute('data-range') + '"]');
     input.addEventListener('input', function () { if (out) out.textContent = Number(input.value).toFixed(2); });
   });
-
-  var checks = document.querySelectorAll('[data-story-check]');
-  var summary = document.querySelector('[data-check-summary]');
-  var checkAll = document.querySelector('[data-check-all]');
-  function updateChecks() {
-    var n = 0, sec = 0;
-    checks.forEach(function (c) { if (c.checked) { n++; sec += parseInt(c.getAttribute('data-sec') || '0', 10); } });
-    if (summary) summary.textContent = '선택 ' + n + '편 · 약 ' + Math.round(sec / 60) + '분 분량';
-    if (checkAll) {
-      checkAll.checked = n > 0 && n === checks.length;
-      checkAll.indeterminate = n > 0 && n < checks.length;
-    }
-  }
-  checks.forEach(function (c) { c.addEventListener('change', updateChecks); });
-  if (checkAll) checkAll.addEventListener('change', function () {
-    checks.forEach(function (c) { c.checked = checkAll.checked; });
-    updateChecks();
-  });
-  if (checks.length) updateChecks();
-  window.addEventListener('submit', function (e) {
-    if (!e.target.matches || !e.target.matches('[data-batch-form]')) return;
-    var any = false;
-    checks.forEach(function (c) { if (c.checked) any = true; });
-    if (!any) { e.preventDefault(); e.stopImmediatePropagation(); RM.toast('생성할 동화를 하나 이상 선택하세요.', 'error'); }
-  }, true);
 
   // ───────────────────────── 샘플 파형 ─────────────────────────
 

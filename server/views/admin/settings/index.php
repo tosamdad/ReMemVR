@@ -294,7 +294,7 @@ $okChip = static function ($ok, string $yes = '정상', string $no = '확인 필
         <section id="voice" class="a-card flex scroll-mt-24 flex-col gap-5" data-section>
           <div>
             <h2 class="font-headline-md text-headline-md text-on-surface">목소리 정책</h2>
-            <p class="font-label-sm text-label-sm text-on-surface-variant">회원 목소리 연구실의 녹음 기준과 생성 흐름입니다.</p>
+            <p class="font-label-sm text-label-sm text-on-surface-variant">회원 목소리 연구실의 녹음 기준, 목소리 생성과 동화 생성 요청 흐름입니다.</p>
           </div>
           <div class="grid grid-cols-1 gap-5 md:grid-cols-4">
             <?= $input('voice.max_per_user', '회원당 목소리 수', '', ['suffix' => '개']) ?>
@@ -303,8 +303,11 @@ $okChip = static function ($ok, string $yes = '정상', string $no = '확인 필
             <?= $input('voice.max_sample_seconds', '최대 녹음 길이', '', ['suffix' => '초']) ?>
           </div>
           <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <?= $toggle('voice.auto_batch_after_clone', '목소리 생성 후 동화 자동 일괄 생성', '목소리가 만들어지면 공개 동화 전체 오디오를 바로 만듭니다.') ?>
-            <?= $toggle('voice.auto_clone_on_submit', '제출 즉시 자동 승인', '관리자 검토 없이 바로 ElevenLabs 목소리를 만듭니다(비용 주의).') ?>
+            <?= $toggle('voice.auto_clone_on_submit', '목소리 제출 즉시 자동 승인', '관리자 검토 없이 바로 ElevenLabs 목소리를 만듭니다(비용 주의).') ?>
+            <?= $toggle('request.auto_approve', '동화 생성 요청 자동 승인', '회원이 요청하면 관리자 확인 없이 바로 동화를 만듭니다(비용 주의).') ?>
+          </div>
+          <div class="grid grid-cols-1 gap-5 md:grid-cols-4">
+            <?= $input('request.max_open', '회원당 진행 중 요청', '확인 대기와 만드는 중인 요청을 합친 최대 개수', ['suffix' => '건']) ?>
           </div>
         </section>
 

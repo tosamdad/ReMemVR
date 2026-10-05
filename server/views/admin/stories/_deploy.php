@@ -16,8 +16,8 @@ $cell = static function (array $names, string $cls) {
 <?php if (!$voices): ?>
 <div class="flex flex-col items-center gap-3 py-12 text-center">
   <span class="material-symbols-outlined text-[40px] text-outline">record_voice_over</span>
-  <p class="font-label-md text-label-md text-on-surface">오디오를 만들 목소리가 아직 없습니다.</p>
-  <p class="font-label-sm text-label-sm text-on-surface-variant">회원 목소리가 ElevenLabs 에서 만들어지면(처리 중, 완료) 동화 오디오 배포 상태가 여기에 표시됩니다.</p>
+  <p class="font-label-md text-label-md text-on-surface">생성 요청으로 만든 동화 오디오가 아직 없습니다.</p>
+  <p class="font-label-sm text-label-sm text-on-surface-variant">회원이 요청한 동화의 생성을 시작하면 동화별 오디오 배포 상태가 여기에 표시됩니다.</p>
 </div>
 <?php else: ?>
 <div class="flex flex-col gap-4">
@@ -68,7 +68,7 @@ $cell = static function (array $names, string $cls) {
                 <?= csrf_field() ?><input type="hidden" name="mode" value="stale">
                 <button type="submit" class="a-btn-tonal px-3 py-1.5"<?= $todo === 0 ? ' disabled' : '' ?>>다시 생성</button>
               </form>
-              <form method="post" action="<?= e(url('/admin/stories/' . (int) $s['id'] . '/regenerate')) ?>" data-ajax data-deploy-action data-confirm="「<?= e($s['title']) ?>」을(를) 모든 목소리(<?= count($voices) ?>개)로 처음부터 다시 생성할까요? 최신 오디오도 다시 만들며 약 <?= number_format(count($voices) * (int) $s['char_count']) ?>자 분량의 크레딧이 사용됩니다.">
+              <form method="post" action="<?= e(url('/admin/stories/' . (int) $s['id'] . '/regenerate')) ?>" data-ajax data-deploy-action data-confirm="「<?= e($s['title']) ?>」을(를) 이 동화를 요청한 모든 목소리로 처음부터 다시 생성할까요? 최신 오디오도 다시 만들며 목소리마다 약 <?= number_format((int) $s['char_count']) ?>자 분량의 크레딧이 사용됩니다.">
                 <?= csrf_field() ?><input type="hidden" name="mode" value="all">
                 <button type="submit" class="a-btn-tonal px-3 py-1.5 text-primary">전체 다시 생성</button>
               </form>

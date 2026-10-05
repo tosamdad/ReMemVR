@@ -1,6 +1,6 @@
 <?php
 /**
- * 목소리 상세: 진행 단계, 생성 진행률(10초마다 갱신), 반려 사유, 이 목소리로 준비된 동화, 샘플, 이름 바꾸기, 삭제.
+ * 목소리 상세: 진행 단계, 목소리 생성 상태(10초마다 갱신), 반려 사유, 동화 요청 안내, 이 목소리로 만든 동화, 샘플, 이름 바꾸기, 삭제.
  * 변수: $voice(decorate 결과), $samples, $stories, $progress, $timeline, $labelMax
  */
 $pid = (int) $voice['id'];
@@ -12,7 +12,7 @@ layout('user/layout', [
     'back' => '/voice-lab',
     'headerTitle' => $voice['label'] . ' 목소리',
 ]);
-$working = in_array($status, ['cloning', 'processing'], true);
+$working = $status === 'cloning';
 $chips = [
     'draft' => 'bg-surface-container text-on-surface-variant',
     'pending' => 'bg-tertiary-container text-on-tertiary-container',
@@ -27,7 +27,6 @@ $grades = [
     'fair' => ['괜찮아요', 'bg-tertiary-container text-on-tertiary-container'],
     'poor' => ['다시 녹음을 권해요', 'bg-error-container text-on-error-container'],
 ];
-$p = $progress ?: ['total' => 0, 'completed' => 0, 'percent' => 0, 'failed' => 0];
 // 녹음 합계는 지금 남아 있는 샘플 기준으로 보여 준다.
 $sampleMs = 0;
 foreach ($samples as $s) {
@@ -37,8 +36,7 @@ $stepDesc = [
     'record' => $samples ? '녹음 ' . count($samples) . '개 · 총 ' . fmt_duration($sampleMs) : '대본을 읽어 녹음해 주세요',
     'review' => $status === 'rejected' ? '다시 녹음이 필요해요' : ($status === 'pending' ? '운영팀이 녹음 상태를 확인하고 있어요' : ($status === 'draft' ? '제출하면 운영팀이 확인해요' : '확인을 마쳤어요')),
     'clone' => $status === 'cloning' ? 'AI가 목소리를 배우고 있어요' : (!empty($voice['cloned_at']) ? time_ago($voice['cloned_at']) . ' 완료' : ($status === 'failed' ? '목소리를 만들지 못했어요' : 'AI가 목소리의 특징을 배워요')),
-    'stories' => in_array($status, ['processing', 'completed', 'failed'], true) && $p['total'] > 0 ? '동화 ' . (int) $p['total'] . '편 중 ' . (int) $p['completed'] . '편 준비' : '무료 동화를 이 목소리로 미리 읽어 둬요',
-    'done' => $status === 'completed' ? '이제 이 목소리로 동화를 들을 수 있어요' : '준비가 끝나면 바로 들을 수 있어요',
+    'done' => in_array($status, ['completed', 'processing'], true) ? '동화를 골라 이 목소리로 만들어 달라고 요청할 수 있어요' : '준비가 끝나면 동화를 골라 요청할 수 있어요',
 ];
 $dot = [
     'done' => 'bg-secondary text-on-secondary',
@@ -57,7 +55,7 @@ $dot = [
     <h2 class="relative font-headline-md text-headline-md text-on-surface"><?= e($voice['label']) ?> 목소리</h2>
     <span class="relative mt-2 inline-flex items-center gap-1.5 rounded-full px-3 py-1 font-label-sm text-label-sm <?= isset($chips[$status]) ? $chips[$status] : $chips['draft'] ?>">
       <?php if ($working): ?><span class="material-symbols-outlined animate-spin text-[14px]">progress_activity</span><?php endif; ?>
-      <span data-voice-status><?= e($working ? '생성 중... ' . (int) $p['percent'] . '%' : voice_status_label($status)) ?></span>
+      <span data-voice-status><?= e($working ? '목소리 만드는 중...' : voice_status_label($status)) ?></span>
     </span>
     <?php if (!empty($voice['play_url']) && in_array($status, ['completed', 'processing'], true)): ?>
       <button type="button" class="btn-secondary relative mt-5 rounded-full px-6 py-3" data-play-src="<?= e($voice['play_url']) ?>">
@@ -100,17 +98,29 @@ $dot = [
     </section>
   <?php endif; ?>
 
-  <?php if ($working || ($status === 'completed' && $p['total'] > 0)): ?>
-    <!-- 생성 진행률 -->
-    <section class="card space-y-3 p-6" data-progress-card>
-      <div class="flex items-baseline justify-between">
-        <p class="font-label-lg text-label-lg text-on-surface"><?= $status === 'cloning' ? '목소리 만드는 중' : '동화 준비' ?></p>
-        <p class="font-headline-md text-[24px] font-bold text-primary"><span data-progress-percent><?= (int) $p['percent'] ?></span>%</p>
+  <?php if ($working): ?>
+    <!-- 목소리 생성 중 -->
+    <section class="card flex items-start gap-3 p-6" data-progress-card>
+      <span class="material-symbols-outlined animate-pulse text-primary">graphic_eq</span>
+      <div class="space-y-1">
+        <p class="font-label-lg text-label-lg text-on-surface">AI가 목소리를 배우고 있어요</p>
+        <p class="text-[14px] leading-5 text-on-surface-variant">화면을 닫아도 계속 만들어요. 준비가 끝나면 메일로 알려 드릴게요.</p>
       </div>
-      <div class="h-3 w-full overflow-hidden rounded-full bg-surface-container">
-        <div class="h-full rounded-full bg-secondary transition-all duration-700" style="width:<?= (int) $p['percent'] ?>%" data-progress-bar></div>
+    </section>
+  <?php elseif (in_array($status, ['completed', 'processing'], true)): ?>
+    <!-- 동화 요청 안내 -->
+    <section class="space-y-4 rounded-3xl bg-secondary-container/40 p-6">
+      <div class="flex items-start gap-3">
+        <span class="material-symbols-outlined text-secondary">auto_stories</span>
+        <div class="space-y-1">
+          <p class="font-label-lg text-label-lg text-on-surface">목소리가 준비되었어요</p>
+          <p class="text-[14px] leading-5 text-on-surface-variant">동화 책장에서 듣고 싶은 동화를 고르고 <?= e($voice['label']) ?> 목소리로 만들어 달라고 요청해 주세요. 운영팀이 확인한 뒤 만들어 드려요.</p>
+        </div>
       </div>
-      <p class="text-label-sm text-on-surface-variant">동화 <span data-progress-total><?= (int) $p['total'] ?></span>편 중 <span data-progress-done><?= (int) $p['completed'] ?></span>편 준비됨<?= $working ? ' · 화면을 닫아도 계속 만들어요' : '' ?></p>
+      <div class="grid grid-cols-2 gap-3">
+        <a href="<?= e(url('/stories')) ?>" class="btn-primary rounded-full py-3"><span class="material-symbols-outlined">library_add</span>동화 고르기</a>
+        <a href="<?= e(url('/library')) ?>" class="btn-ghost rounded-full border-2 border-surface-variant py-3"><span class="material-symbols-outlined">library_music</span>내 동화</a>
+      </div>
     </section>
   <?php endif; ?>
 
@@ -139,13 +149,13 @@ $dot = [
     <!-- 이 목소리로 준비된 동화 -->
     <section class="space-y-4">
       <div class="flex items-end justify-between">
-        <h3 class="font-headline-md text-[20px] font-bold leading-7 text-on-surface">이 목소리로 듣는 동화</h3>
+        <h3 class="font-headline-md text-[20px] font-bold leading-7 text-on-surface">이 목소리로 만든 동화</h3>
         <span class="font-label-sm text-label-sm text-outline"><?= count($stories) ?>편</span>
       </div>
       <?php if (!$stories): ?>
         <div class="flex flex-col items-center rounded-[24px] bg-surface-container-low px-6 py-8 text-center">
           <img src="<?= e(asset('img/empty-stories.svg')) ?>" alt="" class="mb-3 h-24 w-24 object-contain" width="96" height="96">
-          <p class="text-[14px] leading-5 text-on-surface-variant">아직 준비된 동화가 없어요.<br>한 편씩 준비되는 대로 여기에 나타나요.</p>
+          <p class="text-[14px] leading-5 text-on-surface-variant">아직 이 목소리로 만든 동화가 없어요.<br>동화 책장에서 골라 요청하면 완성되는 대로 여기에 나타나요.</p>
         </div>
       <?php else: ?>
         <ul class="space-y-3">

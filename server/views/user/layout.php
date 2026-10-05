@@ -3,7 +3,7 @@
  * 회원 화면 공통 레이아웃(Luminous Storyteller).
  * 템플릿에서 layout('user/layout', [...]) 로 쓴다. 변수:
  *   title       문서 제목
- *   nav         하단 탭 강조: home | voice | player | report (없으면 강조 없음)
+ *   nav         하단 탭 강조: home | voice | library | report (없으면 강조 없음)
  *   showNav     하단 탭 표시 여부(기본 true)
  *   header      main(기본, 아바타+로고+설정) | sub(뒤로 가기+제목) | none
  *   back        header=sub 일 때 뒤로 갈 주소(기본: 브라우저 뒤로 가기)
@@ -28,7 +28,7 @@ $darkChosen = Auth::darkModeChosen();
 $tabs = [
     'home' => ['/home', 'home', '홈'],
     'voice' => ['/voice-lab', 'mic', '목소리 연구실'],
-    'player' => ['/player', 'auto_stories', '플레이어'],
+    'library' => ['/library', 'library_music', '내 동화'],
     'report' => ['/report', 'bar_chart', '리포트'],
 ];
 ?><!DOCTYPE html>

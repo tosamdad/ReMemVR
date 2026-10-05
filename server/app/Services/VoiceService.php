@@ -6,8 +6,11 @@ use App\Core\Text;
 
 /**
  * 가족 목소리의 상태 흐름을 다룬다.
- *   draft → pending(제출) → cloning(승인, voice_clone 작업) → processing(동화 오디오 생성 중) → completed
+ *   draft → pending(제출) → cloning(승인, voice_clone 작업) → completed(목소리 준비됨)
  *   rejected(반려), failed(생성 실패). 삭제는 소프트 삭제 + voice_delete 작업.
+ * 목소리가 준비되어도 동화를 한꺼번에 만들지 않는다. 회원이 동화마다 생성 요청을 하고
+ * 관리자가 생성을 시작하면(StoryRequests::approve) queueStories 로 그 동화만 만든다.
+ * processing 은 예전 일괄 생성 방식의 상태로, 지금은 쓰지 않는다(0004 에서 completed 로 옮김).
  * 컨트롤러는 본인 소유 확인을 마친 profile id 로 부른다.
  */
 class VoiceService
@@ -199,6 +202,7 @@ class VoiceService
     /**
      * 동화 오디오 생성 작업을 등록하고 등록 개수를 돌려준다.
      * 게시된 동화만 대상이며, 최신 본문으로 만든 오디오가 있으면 $force 가 아닌 한 건너뛴다.
+     * $storyIds 가 null 이면 이 목소리로 생성을 시작한 요청(approved)이 있는 동화만 대상이다.
      */
     public static function queueStories(int $profileId, ?array $storyIds = null, bool $force = false): int
     {
@@ -208,6 +212,12 @@ class VoiceService
         }
         $sql = 'SELECT * FROM stories WHERE status = ? AND deleted_at IS NULL';
         $params = ['published'];
+        if ($storyIds === null) {
+            $storyIds = array_map('intval', array_column(db_all(
+                "SELECT DISTINCT story_id FROM story_requests WHERE voice_profile_id = ? AND status = 'approved'",
+                [$profileId]
+            ), 'story_id'));
+        }
         if ($storyIds !== null) {
             $ids = array_values(array_unique(array_filter(array_map('intval', $storyIds))));
             if (!$ids) {
@@ -262,8 +272,7 @@ class VoiceService
         }
 
         if ($count > 0) {
-            $status = in_array($profile['status'], ['completed', 'processing', 'cloning', 'failed'], true) ? 'processing' : $profile['status'];
-            db_exec('UPDATE voice_profiles SET batch_status = ?, status = ? WHERE id = ?', ['queued', $status, $profileId]);
+            db_exec('UPDATE voice_profiles SET batch_status = ? WHERE id = ?', ['queued', $profileId]);
             Worker::kick();
         } else {
             self::refresh($profileId);
@@ -273,43 +282,47 @@ class VoiceService
     }
 
     /**
-     * 게시된 동화 기준 진행률.
+     * 생성을 시작한 요청(approved) 기준 진행률.
      * ['total', 'completed', 'failed', 'pending', 'percent', 'processing', 'stale'(옛 본문으로 만든 완료 오디오)]
      */
     public static function progress(int $profileId): array
     {
-        $total = (int) db_value('SELECT COUNT(*) FROM stories WHERE status = ? AND deleted_at IS NULL', ['published']);
         $rows = db_all(
-            'SELECT sa.status, COUNT(*) AS n, SUM(sa.status = ? AND s.content_hash IS NOT NULL AND (sa.content_hash IS NULL OR sa.content_hash <> s.content_hash)) AS stale
-             FROM story_audios sa
-             JOIN stories s ON s.id = sa.story_id AND s.status = ? AND s.deleted_at IS NULL
-             WHERE sa.voice_profile_id = ?
-             GROUP BY sa.status',
-            ['completed', 'published', $profileId]
+            "SELECT sa.status, COUNT(DISTINCT r.story_id) AS n,
+                    COUNT(DISTINCT CASE WHEN sa.status = 'completed' AND s.content_hash IS NOT NULL AND (sa.content_hash IS NULL OR sa.content_hash <> s.content_hash) THEN r.story_id END) AS stale
+               FROM story_requests r
+               JOIN stories s ON s.id = r.story_id AND s.status = 'published' AND s.deleted_at IS NULL
+               LEFT JOIN story_audios sa ON sa.story_id = r.story_id AND sa.voice_profile_id = r.voice_profile_id
+              WHERE r.voice_profile_id = ? AND r.status = 'approved'
+              GROUP BY sa.status",
+            [$profileId]
         );
         $by = ['pending' => 0, 'processing' => 0, 'completed' => 0, 'failed' => 0];
         $stale = 0;
+        $total = 0;
         foreach ($rows as $r) {
-            $by[(string) $r['status']] = (int) $r['n'];
+            $key = $r['status'] === null ? 'pending' : (string) $r['status'];
+            if (isset($by[$key])) {
+                $by[$key] += (int) $r['n'];
+            }
+            $total += (int) $r['n'];
             $stale += (int) $r['stale'];
         }
-        $completed = min($total, $by['completed']);
-        $failed = min($total - $completed, $by['failed']);
 
         return [
             'total' => $total,
-            'completed' => $completed,
-            'failed' => $failed,
-            'pending' => max(0, $total - $completed - $failed),
-            'percent' => $total > 0 ? (int) floor($completed * 100 / $total) : 0,
+            'completed' => $by['completed'],
+            'failed' => $by['failed'],
+            'pending' => max(0, $total - $by['completed'] - $by['failed']),
+            'percent' => $total > 0 ? (int) floor($by['completed'] * 100 / $total) : 0,
             'processing' => $by['processing'],
             'stale' => $stale,
         ];
     }
 
     /**
-     * 작업과 오디오 상태로 status, batch_status 를 다시 계산해 저장한다.
-     * 일괄 생성이 처음 끝나면 사용자에게 준비 완료 메일(설정에서 켠 경우)을 보낸다.
+     * 작업과 오디오 상태로 batch_status(이 목소리의 동화 생성 진행)를 다시 계산해 저장한다.
+     * 목소리 상태(status)는 바꾸지 않는다. 예전 방식의 processing 만 completed 로 정리한다.
      * 반환: ['status', 'batch_status', 'progress' => progress()]
      */
     public static function refresh(int $profileId): array
@@ -320,7 +333,7 @@ class VoiceService
         }
         $status = (string) $profile['status'];
         $batch = (string) $profile['batch_status'];
-        if ($profile['deleted_at'] !== null || (string) $profile['provider_voice_id'] === '' || !in_array($status, ['processing', 'completed', 'failed'], true)) {
+        if ($profile['deleted_at'] !== null || (string) $profile['provider_voice_id'] === '') {
             return ['status' => $status, 'batch_status' => $batch, 'progress' => self::progress($profileId)];
         }
 
@@ -342,38 +355,23 @@ class VoiceService
             ['voice_profile', $profileId, 'story_tts', 'pending']
         );
         // 합성 중인 오디오가 있거나, 대기 오디오를 처리할 작업이 남아 있으면 진행 중이다.
-        // (지금 도는 작업이 스스로 refresh 할 때는 자기 오디오를 이미 completed 로 바꾼 뒤라 끝을 알아챈다)
         $active = $counts['processing'] > 0 || ($counts['pending'] > 0 && $pendingJobs + $runningJobs > 0);
         $touched = $counts['pending'] + $counts['processing'] + $counts['completed'] + $counts['failed'];
 
-        $newStatus = $status;
+        $newStatus = $status === 'processing' ? 'completed' : $status;
         $newBatch = $batch;
         $finishedNow = false;
         if ($active) {
-            $newStatus = 'processing';
             $newBatch = ($counts['processing'] > 0 || $runningJobs > 0 || $batch === 'running') ? 'running' : 'queued';
-        } elseif ($touched === 0) {
-            // 게시된 동화가 없거나 아직 생성 요청이 없다.
-            $newStatus = 'completed';
-            $newBatch = in_array($batch, ['queued', 'running'], true) ? 'done' : $batch;
-            $finishedNow = in_array($batch, ['queued', 'running'], true);
-        } else {
-            // 처리할 작업 없이 남은 대기 오디오는 실패와 같이 본다.
+        } elseif ($touched > 0 && in_array($batch, ['queued', 'running'], true)) {
             $incomplete = $counts['failed'] + $counts['pending'];
-            if ($incomplete === 0) {
-                $newBatch = 'done';
-                $newStatus = 'completed';
-            } elseif ($counts['completed'] === 0) {
-                $newBatch = 'failed';
-                $newStatus = 'failed';
-            } else {
-                $newBatch = 'partial';
-                $newStatus = 'completed';
-            }
-            $finishedNow = in_array($batch, ['queued', 'running', 'none'], true) || $status === 'processing';
+            $newBatch = $incomplete === 0 ? 'done' : ($counts['completed'] === 0 ? 'failed' : 'partial');
+            $finishedNow = true;
+        } elseif ($touched === 0 && in_array($batch, ['queued', 'running'], true)) {
+            $newBatch = 'done';
         }
 
-        if ($newStatus !== $status || $newBatch !== $batch || $finishedNow) {
+        if ($newStatus !== $status || $newBatch !== $batch) {
             $sets = ['status' => $newStatus, 'batch_status' => $newBatch];
             if ($finishedNow) {
                 $sets['batch_done_at'] = now();
@@ -583,19 +581,25 @@ class VoiceService
         return $profile;
     }
 
-    /** 일괄 생성이 끝났을 때: 콘솔 기록, 첫 완료면 사용자에게 준비 완료 메일 */
+    /** 이 목소리의 동화 생성 작업이 모두 끝났을 때 처리 콘솔에 남긴다. */
     private static function onBatchFinished(array $profile, array $counts, string $batch): void
     {
         $pid = (int) $profile['id'];
         $done = $counts['completed'];
         $all = $counts['completed'] + $counts['failed'] + $counts['pending'];
         $level = $batch === 'done' ? 'info' : ($batch === 'partial' ? 'warn' : 'error');
-        Jobs::log(null, 'voice_profile', $pid, $level, $all > 0
-            ? '동화 오디오 일괄 생성 완료: ' . $all . '편 중 ' . $done . '편 성공' . ($all - $done > 0 ? ', ' . ($all - $done) . '편 실패' : '')
-            : '목소리 준비 완료(생성할 동화가 없습니다).');
+        Jobs::log(null, 'voice_profile', $pid, $level, '동화 오디오 생성 작업 마침: ' . $all . '편 중 ' . $done . '편 완성'
+            . ($all - $done > 0 ? ', ' . ($all - $done) . '편 실패' : ''));
+    }
 
-        // 준비 완료 메일은 처음 한 번만(관리자가 다시 생성할 때마다 보내지 않는다).
-        if ($profile['batch_done_at'] !== null || $batch === 'failed') {
+    /**
+     * 목소리가 처음 준비되었을 때 회원에게 메일로 알린다(알림을 끄지 않은 경우).
+     * 이제 동화 목록에서 동화를 골라 이 목소리로 생성을 요청할 수 있다고 안내한다.
+     */
+    public static function notifyReady(int $profileId): void
+    {
+        $profile = db_one('SELECT id, user_id, label FROM voice_profiles WHERE id = ? AND deleted_at IS NULL', [$profileId]);
+        if (!$profile) {
             return;
         }
         $user = db_one('SELECT id, name, email, status, prefs FROM users WHERE id = ? AND deleted_at IS NULL', [(int) $profile['user_id']]);
@@ -609,15 +613,15 @@ class VoiceService
         $brand = (string) setting('app.brand', '르멤버');
         $text = $user['name'] . "님, 안녕하세요.\n\n"
             . "'" . $profile['label'] . "' 목소리가 준비되었어요.\n"
-            . ($done > 0 ? '이제 ' . $profile['label'] . ' 목소리로 동화 ' . $done . "편을 들을 수 있어요.\n" : '')
-            . "오늘 밤 아이와 함께 들어 보세요.\n\n"
-            . absolute_url('/home') . "\n\n"
+            . '이제 동화 책장에서 듣고 싶은 동화를 고르고, ' . $profile['label'] . " 목소리로 만들어 달라고 요청해 보세요.\n"
+            . "동화가 완성되면 다시 알려 드릴게요.\n\n"
+            . absolute_url('/stories') . "\n\n"
             . $brand . ' 드림';
         Jobs::enqueue('mail', [
             'to' => (string) $user['email'],
             'subject' => '[' . $brand . "] '" . $profile['label'] . "' 목소리가 준비되었어요",
             'text' => $text,
-        ], ['priority' => 6, 'ref_type' => 'voice_profile', 'ref_id' => $pid]);
+        ], ['priority' => 6, 'ref_type' => 'voice_profile', 'ref_id' => $profileId]);
     }
 
     /** 테스트 음성은 목소리마다 최근 20개만 남긴다. */

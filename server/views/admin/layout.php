@@ -2,7 +2,7 @@
 /**
  * 관리자 화면 공통 레이아웃(Kindred Audio). 왼쪽 메뉴 + 상단 상태 바.
  * 템플릿에서 layout('admin/layout', ['title' => '대시보드', 'active' => 'dashboard']) 로 쓴다.
- * active: dashboard | voices | stories | members | notices | inquiries | settings | admins | audit
+ * active: dashboard | voices | requests | stories | members | notices | inquiries | settings | admins | audit
  * section('head'), section('scripts') 로 페이지별 요소를 넣는다.
  */
 use App\Core\AdminAuth;
@@ -10,10 +10,11 @@ use App\Core\AdminAuth;
 $admin = AdminAuth::admin();
 $title = isset($title) ? $title : '';
 $active = isset($active) ? $active : '';
-$counts = ['voices' => 0, 'inquiries' => 0];
+$counts = ['voices' => 0, 'requests' => 0, 'inquiries' => 0];
 $todayCost = 0.0;
 try {
     $counts['voices'] = (int) db_value("SELECT COUNT(*) FROM voice_profiles WHERE status = 'pending' AND deleted_at IS NULL");
+    $counts['requests'] = (int) db_value("SELECT COUNT(*) FROM story_requests WHERE status = 'requested'");
     $counts['inquiries'] = (int) db_value("SELECT COUNT(*) FROM inquiries WHERE status = 'open'");
     $todayCost = (float) db_value('SELECT COALESCE(SUM(cost_krw), 0) FROM api_usage_logs WHERE created_at >= CURDATE()');
 } catch (Throwable $e) {
@@ -34,6 +35,7 @@ if (config('providers_fake')) {
 $menu = [
     ['dashboard', '/admin/dashboard', 'space_dashboard', '대시보드', 0],
     ['voices', '/admin/voices', 'mic', '목소리 생성 관리', $counts['voices']],
+    ['requests', '/admin/requests', 'library_add', '동화 생성 요청', $counts['requests']],
     ['stories', '/admin/stories', 'auto_stories', '동화 콘텐츠 관리', 0],
     ['members', '/admin/members', 'monitoring', '회원 및 통계', 0],
 ];
@@ -102,7 +104,7 @@ $navLink = static function (array $item, string $active): string {
         <div class="hidden items-center gap-2 rounded-full bg-surface-container-low px-3 py-1.5 md:flex"><span class="material-symbols-outlined text-[18px] text-secondary">monetization_on</span><span class="font-label-sm text-label-sm text-on-surface-variant">금일 예상 API 비용:</span><span class="font-label-md text-label-md font-bold text-secondary"><?= e(fmt_krw($todayCost)) ?></span></div>
       </div>
       <div class="flex items-center gap-3 lg:gap-4">
-        <a href="<?= e(url('/admin/inquiries')) ?>" class="relative flex h-10 w-10 items-center justify-center rounded-full text-on-surface-variant transition-colors hover:bg-surface-container-high" aria-label="알림"><span class="material-symbols-outlined text-[20px]">notifications</span><?php if ($counts['voices'] + $counts['inquiries'] > 0): ?><span class="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-error"></span><?php endif; ?></a>
+        <a href="<?= e(url('/admin/inquiries')) ?>" class="relative flex h-10 w-10 items-center justify-center rounded-full text-on-surface-variant transition-colors hover:bg-surface-container-high" aria-label="알림"><span class="material-symbols-outlined text-[20px]">notifications</span><?php if ($counts['voices'] + $counts['requests'] + $counts['inquiries'] > 0): ?><span class="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-error"></span><?php endif; ?></a>
         <div class="h-6 w-[1px] bg-surface-variant"></div>
         <div class="flex items-center gap-3">
           <div class="flex h-8 w-8 items-center justify-center rounded-full bg-primary"><span class="material-symbols-outlined text-[18px] text-on-primary">person</span></div>

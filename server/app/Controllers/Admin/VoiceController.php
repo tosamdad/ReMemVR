@@ -4,10 +4,11 @@ namespace App\Controllers\Admin;
 use App\Core\Request;
 use App\Services\DashboardStats;
 use App\Services\Jobs;
+use App\Services\StoryRequests;
 use App\Services\VoiceService;
 
 /**
- * 목소리 생성 관리(디자인 시안 _2). 목록 + 오른쪽 상세 검수 패널, 승인(복제), 반려, 동화 오디오 일괄 생성,
+ * 목소리 생성 관리(디자인 시안 _2). 목록 + 오른쪽 상세 검수 패널, 승인(복제), 반려, 요청 동화 생성 현황,
  * 상태 다시 계산, 합성 파라미터, 테스트 재생, 회원 메모, 처리 콘솔(작업 기록) API.
  * 상태 변경은 모두 VoiceService 를 거치고 감사 로그(admin_audit)를 남긴다.
  */
@@ -94,28 +95,12 @@ class VoiceController
         $voice = DashboardStats::enrich([$row])[0];
         $samples = db_all('SELECT * FROM voice_samples WHERE voice_profile_id = ? ORDER BY id', [$id]);
 
-        // 게시된 동화와 이 목소리의 오디오 상태
-        $audios = [];
-        foreach (db_all('SELECT story_id, status, content_hash, duration_ms FROM story_audios WHERE voice_profile_id = ?', [$id]) as $a) {
-            $audios[(int) $a['story_id']] = $a;
+        // 회원이 이 목소리로 요청한 동화(취소 제외)
+        $requests = db_all(StoryRequests::SELECT . " WHERE r.voice_profile_id = ? AND r.status <> 'canceled' ORDER BY r.id DESC LIMIT 100", [$id]);
+        foreach ($requests as &$r) {
+            $r['state'] = StoryRequests::state($r);
         }
-        $stories = [];
-        foreach (db_all(
-            "SELECT id, code, title, est_duration_sec, char_count, content_hash FROM stories
-              WHERE status = 'published' AND deleted_at IS NULL ORDER BY sort_order, id"
-        ) as $s) {
-            $a = isset($audios[(int) $s['id']]) ? $audios[(int) $s['id']] : null;
-            $state = 'none';
-            if ($a) {
-                $state = (string) $a['status'];
-                if ($state === 'completed' && $s['content_hash'] !== null && $a['content_hash'] !== $s['content_hash']) {
-                    $state = 'outdated';
-                }
-            }
-            $s['audio_state'] = $state;
-            $s['needs'] = !in_array($state, ['completed', 'processing'], true);
-            $stories[] = $s;
-        }
+        unset($r);
 
         $defaults = [
             'stability' => (float) setting('elevenlabs.default_stability', 0.65),
@@ -140,7 +125,7 @@ class VoiceController
         return [
             'voice' => $voice,
             'samples' => $samples,
-            'stories' => $stories,
+            'requests' => $requests,
             'progress' => VoiceService::progress($id),
             'params' => [
                 'stability' => $settings['stability'],
@@ -195,33 +180,6 @@ class VoiceController
         admin_audit('voice.reject', 'voice_profile', (int) $voice['id'], ['reason' => mb_substr($reason, 0, 255)]);
 
         return self::respond('success', DashboardStats::reqId($voice['id']) . ' 반려: 회원에게 재녹음을 요청했습니다.', $voice);
-    }
-
-    /** POST /admin/voices/{id}/batch : 동화 오디오 일괄 생성(story_ids[] 가 없으면 게시 동화 전체) */
-    public function batch(string $id)
-    {
-        require_admin();
-        $voice = self::voice((int) $id);
-        $ids = null;
-        if (input('selected') !== null || input('story_ids') !== null) {
-            $raw = input('story_ids', []);
-            $ids = array_values(array_filter(array_map('intval', is_array($raw) ? $raw : [])));
-            if (!$ids) {
-                return self::respond('error', '생성할 동화를 하나 이상 선택하세요.', $voice);
-            }
-        }
-        $force = (bool) input('force', false);
-        try {
-            $count = VoiceService::queueStories((int) $voice['id'], $ids, $force);
-        } catch (\RuntimeException $e) {
-            return self::respond('error', $e->getMessage(), $voice);
-        }
-        admin_audit('voice.batch', 'voice_profile', (int) $voice['id'], ['count' => $count, 'story_ids' => $ids, 'force' => $force]);
-        if ($count === 0) {
-            return self::respond('info', '새로 만들 동화 오디오가 없습니다. 선택한 동화는 이미 최신 본문으로 만들어져 있습니다.', $voice);
-        }
-
-        return self::respond('success', '동화 ' . $count . '편의 오디오 생성 작업을 등록했습니다.', $voice);
     }
 
     /** POST /admin/voices/{id}/refresh : 작업과 오디오 상태로 다시 계산 */

@@ -1,6 +1,6 @@
 <?php
 /** 들을 수 있는 동화가 하나도 없을 때의 플레이어 */
-layout('user/layout', ['title' => '플레이어', 'nav' => 'player']);
+layout('user/layout', ['title' => '플레이어', 'nav' => 'library']);
 ?>
 <div class="card mt-6 flex flex-col items-center gap-3 p-8 text-center">
   <img src="<?= e(asset('img/empty-stories.svg')) ?>" alt="" class="h-32 w-auto">

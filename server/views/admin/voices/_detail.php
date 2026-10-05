@@ -4,6 +4,7 @@
  * 변수: detail(VoiceController::detail), elReady, chip(상태 칩 함수), storyCount, elTip
  */
 use App\Services\DashboardStats;
+use App\Services\StoryRequests;
 
 $v = $detail['voice'];
 $id = (int) $v['id'];
@@ -16,32 +17,21 @@ $progress = $detail['progress'];
 $hasVoice = (string) $v['provider_voice_id'] !== '';
 $canClone = in_array($v['status'], ['pending', 'rejected', 'failed'], true);
 $name = $v['user_name'] . ' (' . $v['label'] . ' 목소리)';
-$stories = $detail['stories'];
-$checkedSec = 0;
-$checkedN = 0;
-foreach ($stories as $s) {
-    if ($s['needs']) {
-        $checkedSec += (int) $s['est_duration_sec'];
-        $checkedN++;
+$requests = $detail['requests'];
+$reqCounts = ['requested' => 0, 'making' => 0, 'done' => 0, 'failed' => 0, 'rejected' => 0];
+foreach ($requests as $r) {
+    if (isset($reqCounts[$r['state']])) {
+        $reqCounts[$r['state']]++;
     }
 }
-$audioState = [
-    'none' => ['미생성', 'bg-surface-container-high text-on-surface-variant'],
-    'pending' => ['대기', 'bg-secondary-fixed text-on-secondary-fixed'],
-    'processing' => ['생성 중', 'bg-primary-fixed text-on-primary-fixed-variant'],
-    'completed' => ['완료', 'bg-primary-fixed text-on-primary-fixed-variant'],
-    'failed' => ['실패', 'bg-error-container text-on-error-container'],
-    'outdated' => ['옛 본문', 'bg-error-container text-on-error-container'],
+$reqChip = [
+    'requested' => 'bg-secondary-fixed text-on-secondary-fixed',
+    'making' => 'bg-primary-fixed text-on-primary-fixed-variant',
+    'done' => 'bg-emerald-100 text-emerald-800',
+    'failed' => 'bg-error-container text-on-error-container',
+    'rejected' => 'bg-surface-container-high text-on-surface-variant',
 ];
 $levelClass = ['info' => 'text-inverse-on-surface/85', 'warn' => 'text-secondary-fixed', 'error' => 'text-error-container'];
-$fmtSec = static function ($sec) {
-    $sec = (int) $sec;
-    if ($sec <= 0) {
-        return '-';
-    }
-
-    return intdiv($sec, 60) . 'm ' . sprintf('%02d', $sec % 60) . 's';
-};
 $slider = static function ($key, $label, $value, $help, $accent) {
     $v = number_format((float) $value, 2, '.', '');
 
@@ -155,54 +145,47 @@ $slider = static function ($key, $label, $value, $help, $accent) {
   </form>
 </div>
 
-<!-- 동화 일괄 사전 생성 체크리스트 -->
-<form method="post" action="<?= e(url('/admin/voices/' . $id . '/batch')) ?>" class="flex flex-col gap-4 rounded-xl bg-surface-container-lowest p-card-padding shadow-card" data-batch-form data-confirm="선택한 동화의 오디오를 이 목소리로 만들까요? ElevenLabs 크레딧이 소모됩니다.">
-  <?= csrf_field() ?>
-  <input type="hidden" name="selected" value="1">
+<!-- 이 목소리로 요청된 동화 -->
+<div class="flex flex-col gap-4 rounded-xl bg-surface-container-lowest p-card-padding shadow-card">
   <div class="flex items-center justify-between gap-2">
     <div class="flex items-center gap-2">
-      <span class="material-symbols-outlined text-[20px] text-primary">auto_stories</span>
-      <span class="font-headline-md text-[17px] text-on-surface">무료 동화 <?= (int) $storyCount ?>편 일괄 캐싱</span>
+      <span class="material-symbols-outlined text-[20px] text-primary">library_add</span>
+      <span class="font-headline-md text-[17px] text-on-surface">동화 생성 요청</span>
     </div>
-    <span class="shrink-0 rounded-full bg-surface-container px-2 py-0.5 font-label-sm text-label-sm text-on-surface-variant">대상 <?= (int) $storyCount ?>편</span>
+    <span class="shrink-0 rounded-full bg-surface-container px-2 py-0.5 font-label-sm text-label-sm text-on-surface-variant">요청 <?= count($requests) ?>건</span>
   </div>
-  <p class="font-label-sm text-label-sm leading-relaxed text-on-surface-variant">아이가 들을 때 실시간 API 를 부르지 않도록, Voice ID 가 생기면 게시된 동화 오디오를 한 번에 만들어 자체 서버에 저장합니다. 이미 최신 본문으로 만든 동화는 다시 만들지 않습니다.</p>
+  <p class="font-label-sm text-label-sm leading-relaxed text-on-surface-variant">동화는 한꺼번에 만들지 않습니다. 회원이 동화 책장에서 이 목소리로 요청한 동화만, 동화 생성 요청 화면에서 확인한 뒤 만듭니다.</p>
   <div class="flex items-center justify-between gap-2 font-label-sm text-label-sm">
-    <span class="text-on-surface-variant">진행: <strong class="text-on-surface" data-live-progress><?= (int) $progress['completed'] ?> / <?= (int) $progress['total'] ?>편 완료</strong><?= $progress['failed'] > 0 ? ' · <span class="text-error">실패 ' . (int) $progress['failed'] . '편</span>' : '' ?></span>
+    <span class="text-on-surface-variant">생성 시작한 요청: <strong class="text-on-surface" data-live-progress><?= (int) $progress['completed'] ?> / <?= (int) $progress['total'] ?>편 완료</strong><?= $progress['failed'] > 0 ? ' · <span class="text-error">실패 ' . (int) $progress['failed'] . '편</span>' : '' ?></span>
     <span class="font-bold text-primary" data-live-percent><?= (int) $progress['percent'] ?>%</span>
   </div>
   <div class="h-2 w-full overflow-hidden rounded-full bg-surface-container-high"><div class="h-full rounded-full bg-primary transition-all duration-500" style="width: <?= (int) $progress['percent'] ?>%" data-live-bar></div></div>
-  <?php if (!$stories): ?>
+  <?php if (!$requests): ?>
   <div class="flex flex-col items-center gap-2 rounded-lg bg-surface-container-low px-4 py-6 text-center">
     <span class="material-symbols-outlined text-[24px] text-on-surface-variant">menu_book</span>
-    <p class="font-label-sm text-label-sm text-on-surface-variant">게시된 동화가 없습니다. 동화 콘텐츠 관리에서 먼저 게시하세요.</p>
-    <a href="<?= e(url('/admin/stories')) ?>" class="font-label-sm text-label-sm font-bold text-primary hover:underline">동화 콘텐츠 관리로 이동</a>
+    <p class="font-label-sm text-label-sm text-on-surface-variant">아직 이 목소리로 요청된 동화가 없습니다.</p>
   </div>
   <?php else: ?>
-  <div class="flex items-center justify-between gap-2">
-    <label class="flex cursor-pointer items-center gap-2 font-label-sm text-label-sm text-on-surface-variant"><input type="checkbox" class="rounded border-outline-variant text-primary focus:ring-primary/30" data-check-all>전체 선택</label>
-    <span class="font-label-sm text-label-sm text-on-surface-variant" data-check-summary>선택 <?= $checkedN ?>편 · 약 <?= (int) round($checkedSec / 60) ?>분 분량</span>
-  </div>
   <div class="flex max-h-64 flex-col gap-2 overflow-y-auto pr-1">
-    <?php foreach ($stories as $i => $s): $st = $audioState[$s['audio_state']]; ?>
-    <label class="flex cursor-pointer items-center justify-between gap-2 rounded-lg bg-surface-container-low p-2 font-label-sm text-label-sm transition-colors hover:bg-surface-container">
-      <span class="flex min-w-0 items-center gap-2">
-        <input type="checkbox" name="story_ids[]" value="<?= (int) $s['id'] ?>" class="rounded border-outline-variant text-primary focus:ring-primary/30" data-story-check data-sec="<?= (int) $s['est_duration_sec'] ?>"<?= $s['needs'] ? ' checked' : '' ?>>
-        <span class="truncate text-on-surface"><?= sprintf('%02d', $i + 1) ?>. <?= e($s['title']) ?></span>
-      </span>
+    <?php foreach ($requests as $r): ?>
+    <div class="flex items-center justify-between gap-2 rounded-lg bg-surface-container-low p-2 font-label-sm text-label-sm">
+      <span class="min-w-0 truncate text-on-surface"><?= e($r['story_title']) ?></span>
       <span class="flex shrink-0 items-center gap-1.5">
-        <span class="rounded-full px-1.5 py-0.5 text-[10px] <?= $st[1] ?>"><?= e($st[0]) ?></span>
-        <span class="font-mono text-[11px] text-on-surface-variant"><?= e($fmtSec($s['est_duration_sec'])) ?></span>
+        <span class="rounded-full px-1.5 py-0.5 text-[10px] <?= isset($reqChip[$r['state']]) ? $reqChip[$r['state']] : $reqChip['rejected'] ?>"><?= e(StoryRequests::adminStateLabel($r['state'])) ?></span>
+        <span class="font-mono text-[11px] text-on-surface-variant"><?= e(date('m.d', strtotime((string) $r['created_at']))) ?></span>
       </span>
-    </label>
+    </div>
     <?php endforeach; ?>
   </div>
-  <label class="flex cursor-pointer items-center gap-2 font-label-sm text-label-sm text-on-surface-variant"><input type="checkbox" name="force" value="1" class="rounded border-outline-variant text-secondary focus:ring-secondary/30">이미 만든 오디오도 다시 생성 (크레딧 다시 소모)</label>
   <?php endif; ?>
-  <?php $canBatch = $hasVoice && $elReady && $stories; ?>
-  <button type="submit" class="flex w-full items-center justify-center gap-2 rounded-xl bg-secondary py-2.5 font-label-md text-label-md text-on-secondary shadow-sm transition-colors hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50"<?= $canBatch ? '' : ' disabled title="' . e(!$elReady ? $elTip : (!$hasVoice ? 'ElevenLabs Voice ID 를 먼저 생성하세요' : '게시된 동화가 없습니다')) . '"' ?>>
-    <span class="material-symbols-outlined text-[18px]">bolt</span>선택 동화 오디오 일괄 생성
-  </button>
+  <div class="grid grid-cols-1 gap-2">
+    <?php if ($reqCounts['requested'] + $reqCounts['failed'] > 0): ?>
+    <a href="<?= e(url('/admin/requests', ['voice' => $id])) ?>" class="flex w-full items-center justify-center gap-2 rounded-xl bg-secondary py-2.5 font-label-md text-label-md text-on-secondary shadow-sm transition-colors hover:opacity-95">
+      <span class="material-symbols-outlined text-[18px]">play_circle</span>확인 대기 <?= (int) $reqCounts['requested'] ?>건<?= $reqCounts['failed'] ? ', 실패 ' . (int) $reqCounts['failed'] . '건' : '' ?> 처리하기
+    </a>
+    <?php endif; ?>
+    <a href="<?= e(url('/admin/requests', ['voice' => $id, 'status' => 'all'])) ?>" class="a-btn-tonal justify-center py-2 text-[13px]"><span class="material-symbols-outlined text-[16px]">list</span>이 목소리 요청 전체 보기</a>
+  </div>
   <?php if ($hasVoice || $progress['completed'] > 0): ?>
   <div class="flex flex-wrap justify-center gap-2">
     <button type="button" class="a-btn-tonal py-1.5 text-[13px]" data-audios-url="<?= e(url('/admin/api/voices/' . $id . '/audios')) ?>" data-audios-name="<?= e($name) ?>"><span class="material-symbols-outlined text-[16px]">folder_open</span>캐시 파일 목록</button>
@@ -211,7 +194,7 @@ $slider = static function ($key, $label, $value, $help, $accent) {
     <?php endif; ?>
   </div>
   <?php endif; ?>
-</form>
+</div>
 
 <!-- 처리 콘솔 -->
 <div class="flex flex-col gap-3 rounded-xl bg-surface-container-lowest p-card-padding shadow-card">

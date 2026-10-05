@@ -662,14 +662,19 @@ class StoryController
         redirect('/admin/stories/' . (int) $story['id'] . '#sentences');
     }
 
-    /** 오디오를 만들 수 있는 목소리(ElevenLabs 목소리가 있고 처리 중 또는 완료) */
-    private function deployableVoices(): array
+    /**
+     * 오디오를 다시 만들 수 있는 목소리(ElevenLabs 목소리가 있고 준비됨, 생성을 시작한 요청이 있음).
+     * $storyId 를 주면 그 동화를 요청한 목소리만.
+     */
+    private function deployableVoices(?int $storyId = null): array
     {
         return db_all(
             "SELECT vp.id, vp.label, vp.status, u.name AS user_name FROM voice_profiles vp JOIN users u ON u.id = vp.user_id
               WHERE vp.deleted_at IS NULL AND vp.provider_voice_id IS NOT NULL AND vp.provider_voice_id <> ''
                 AND vp.status IN ('processing', 'completed')
-              ORDER BY vp.id"
+                AND EXISTS (SELECT 1 FROM story_requests r WHERE r.voice_profile_id = vp.id AND r.status = 'approved'"
+            . ($storyId !== null ? ' AND r.story_id = ' . (int) $storyId : '') . ')
+              ORDER BY vp.id'
         );
     }
 
@@ -684,7 +689,8 @@ class StoryController
         }
         $queued = 0;
         $failed = 0;
-        $voices = $this->deployableVoices();
+        // 회원이 이 동화를 요청해 생성을 시작한 목소리만 다시 만든다(요청 없는 목소리로는 만들지 않는다).
+        $voices = $this->deployableVoices((int) $story['id']);
         foreach ($voices as $v) {
             try {
                 $queued += VoiceService::queueStories((int) $v['id'], [(int) $story['id']], $mode === 'all');
@@ -696,7 +702,7 @@ class StoryController
         admin_audit('story.regenerate', 'story', (int) $story['id'], ['mode' => $mode, 'voices' => count($voices), 'queued' => $queued, 'failed' => $failed]);
         $msg = $queued > 0
             ? '「' . $story['title'] . '」 오디오 ' . $queued . '건을 생성 대기열에 넣었습니다.'
-            : ($voices ? '다시 만들 오디오가 없습니다. 모두 최신 본문 기준입니다.' : '오디오를 만들 목소리가 아직 없습니다.');
+            : ($voices ? '다시 만들 오디오가 없습니다. 모두 최신 본문 기준입니다.' : '이 동화를 생성 요청해 만든 목소리가 아직 없습니다.');
 
         return $this->respond(true, $msg . ($failed ? ' (등록 실패 ' . $failed . '건, 로그 확인)' : ''), ['queued' => $queued]);
     }
@@ -740,11 +746,19 @@ class StoryController
                 $audio[(int) $a['story_id']][(int) $a['voice_profile_id']] = $a;
             }
         }
+        // 회원이 요청해 생성을 시작한 동화, 목소리 쌍만 점검한다.
+        $requested = [];
+        foreach (db_all("SELECT DISTINCT story_id, voice_profile_id FROM story_requests WHERE status = 'approved'") as $q) {
+            $requested[(int) $q['story_id']][(int) $q['voice_profile_id']] = true;
+        }
         $rows = [];
         $totals = ['fresh' => 0, 'outdated' => 0, 'working' => 0, 'missing' => 0];
         foreach ($stories as $s) {
             $r = ['story' => $s, 'fresh' => [], 'outdated' => [], 'working' => [], 'missing' => []];
             foreach ($voices as $v) {
+                if (empty($requested[(int) $s['id']][(int) $v['id']])) {
+                    continue;
+                }
                 $a = isset($audio[(int) $s['id']][(int) $v['id']]) ? $audio[(int) $s['id']][(int) $v['id']] : null;
                 $state = self::audioState($a, $s['content_hash']);
                 $r[$state][] = $v['label'] . ' · ' . $v['user_name'];

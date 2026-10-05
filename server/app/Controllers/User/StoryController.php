@@ -4,8 +4,12 @@ namespace App\Controllers\User;
 use App\Core\Auth;
 use App\Core\Request;
 use App\Services\Progress;
+use App\Services\StoryRequests;
 
-/** 동화 전체 목록: 분류 칩, 제목 검색, 다 들은 표시, 이어 듣기 진행률 */
+/**
+ * 동화 책장: 분류 칩, 제목 검색, 다 들은 표시, 이어 듣기 진행률.
+ * 동화를 누르면 상세 화면에서 가족 목소리를 골라 생성 요청을 하고, 완성된 목소리로 바로 듣는다.
+ */
 class StoryController
 {
     /** 분류 칩 기본 순서(DB 에 있는 분류만 보인다) */
@@ -48,6 +52,19 @@ class StoryController
         $completed = array_flip(Progress::completedStoryIds($scope));
         $resume = Progress::resumeStates($scope);
         $durations = Progress::audioDurations($userId, array_column($stories, 'id'));
+        // 동화별 내 요청 현황(완성, 만드는 중)
+        $mine = [];
+        foreach (StoryRequests::forUser($userId) as $r) {
+            $sid = (int) $r['story_id'];
+            if (!isset($mine[$sid])) {
+                $mine[$sid] = ['done' => 0, 'making' => 0];
+            }
+            if ($r['state'] === 'done') {
+                $mine[$sid]['done']++;
+            } elseif (in_array($r['state'], ['requested', 'making', 'failed'], true)) {
+                $mine[$sid]['making']++;
+            }
+        }
         foreach ($stories as &$s) {
             $sid = (int) $s['id'];
             $sec = Progress::durationSec($s, isset($durations[$sid]) ? $durations[$sid] : null);
@@ -61,7 +78,8 @@ class StoryController
                     'url' => url('/player/' . $sid, ['voice' => $r['voice'], 't' => $r['position_ms'], 's' => $r['sentence_seq']]),
                 ];
             }
-            $s['url'] = $s['resume'] ? $s['resume']['url'] : url('/player/' . $sid);
+            $s['url'] = url('/stories/' . $sid);
+            $s['mine'] = isset($mine[$sid]) ? $mine[$sid] : ['done' => 0, 'making' => 0];
         }
         unset($s);
 
@@ -72,6 +90,67 @@ class StoryController
             'q' => $q,
             'total' => (int) db_value("SELECT COUNT(*) FROM stories WHERE status = 'published' AND deleted_at IS NULL"),
         ]);
+    }
+
+    /** GET /stories/{id}: 동화 소개, 가족 목소리별 상태(완성이면 듣기, 아니면 생성 요청) */
+    public function show(string $id): string
+    {
+        $user = require_user();
+        if (Auth::child() === null) {
+            redirect('/onboarding');
+        }
+        $userId = (int) $user['id'];
+        $story = db_one("SELECT * FROM stories WHERE id = ? AND status = 'published' AND deleted_at IS NULL", [(int) $id]);
+        if (!$story) {
+            abort(404, '동화를 찾을 수 없어요.');
+        }
+        $sid = (int) $story['id'];
+        $scope = Progress::currentScope();
+        $durations = Progress::audioDurations($userId, [$sid]);
+        $sec = Progress::durationSec($story, isset($durations[$sid]) ? $durations[$sid] : null);
+        $resume = Progress::resumeStates($scope);
+        $resumeUrl = isset($resume[$sid])
+            ? url('/player/' . $sid, ['voice' => $resume[$sid]['voice'], 't' => $resume[$sid]['position_ms'], 's' => $resume[$sid]['sentence_seq']])
+            : null;
+
+        return view('user/stories/show', [
+            'story' => $story,
+            'durationLabel' => Progress::durationLabel($sec),
+            'voices' => StoryRequests::voiceStates($userId, $sid),
+            'completed' => in_array($sid, Progress::completedStoryIds($scope), true),
+            'resumeUrl' => $resumeUrl,
+        ]);
+    }
+
+    /** POST /stories/{id}/request (voice_ids[]) : 고른 가족 목소리로 생성 요청 */
+    public function request(string $id): void
+    {
+        $user = require_user();
+        $raw = input('voice_ids', []);
+        $ids = is_array($raw) ? $raw : [$raw];
+        try {
+            $res = StoryRequests::create((int) $user['id'], (int) $id, $ids);
+        } catch (\RuntimeException $e) {
+            flash('error', $e->getMessage());
+            redirect('/stories/' . (int) $id);
+
+            return;
+        }
+        $n = count($res['created']);
+        if ($n > 0) {
+            $msg = '생성 요청을 보냈어요. 운영팀이 확인한 뒤 만들어 드릴게요.';
+            if ($res['skipped']) {
+                $msg .= ' (' . implode(', ', array_map(static function ($s) {
+                    return $s['voice'] . ': ' . $s['reason'];
+                }, $res['skipped'])) . ')';
+            }
+            flash('success', $msg);
+        } else {
+            flash('info', $res['skipped'] ? implode(', ', array_map(static function ($s) {
+                return $s['voice'] . ' 목소리는 ' . $s['reason'];
+            }, $res['skipped'])) . '.' : '요청할 목소리를 골라 주세요.');
+        }
+        redirect('/stories/' . (int) $id);
     }
 
     /** 게시된 동화의 분류 목록(기본 순서 먼저, 나머지는 가나다순) */

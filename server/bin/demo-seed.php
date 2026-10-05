@@ -107,12 +107,13 @@ final class DemoSeed
         echo sprintf("데모 데이터를 만들었다 (%.1f초)\n", microtime(true) - $started);
         echo sprintf("  회원 %d명, 자녀 %d명\n", $c['users'], $c['children']);
         $vs = [];
-        foreach (['completed', 'processing', 'cloning', 'pending', 'rejected', 'failed'] as $st) {
+        foreach (['completed', 'cloning', 'pending', 'rejected', 'failed'] as $st) {
             if (!empty($c['voice_' . $st])) {
                 $vs[] = voice_status_label($st) . ' ' . $c['voice_' . $st];
             }
         }
         echo sprintf("  목소리 %d개(%s), 샘플 %d개, 동화 오디오 %d개, 안내 음성 %d개\n", $c['voices'], implode(', ', $vs), $c['samples'], $c['story_audios'], $c['clips']);
+        echo sprintf("  동화 생성 요청 %d건(확인 대기 %d), 플레이리스트 %d개\n", $c['requests'], $c['requests_pending'], $c['playlists']);
         echo sprintf("  재생 기록 %d회(최근 30일), 질문 %d개(답변 %d, 한도 초과 %d)\n", $c['sessions'], $c['interactions'], $c['answers'], $c['quota']);
         echo sprintf("  API 사용 기록 %d건(추정 비용 %s), 크레딧 기록 %d건, 1:1 문의 %d건, 관리자 기록 %d건\n", $c['usage'], fmt_krw($c['cost_krw']), $c['snapshots'], $c['inquiries'], $c['audits']);
         echo sprintf("  저장 폴더에 만든 파일 %d개: %s\n", count(self::$files), storage_path());
@@ -687,7 +688,8 @@ final class DemoSeed
     {
         $now = time();
         self::$count = ['users' => 0, 'children' => 0, 'voices' => 0, 'samples' => 0, 'story_audios' => 0, 'clips' => 0, 'sessions' => 0,
-            'interactions' => 0, 'answers' => 0, 'quota' => 0, 'usage' => 0, 'cost_krw' => 0.0, 'snapshots' => 0, 'inquiries' => 0, 'audits' => 0];
+            'interactions' => 0, 'answers' => 0, 'quota' => 0, 'usage' => 0, 'cost_krw' => 0.0, 'snapshots' => 0, 'inquiries' => 0, 'audits' => 0,
+            'requests' => 0, 'requests_pending' => 0, 'playlists' => 0];
         $manifest = ['created_at' => self::dt($now), 'credit_snapshot_ids' => [], 'audit_ids' => [], 'job_log_ids' => []];
         $admin = db_one('SELECT id FROM admins ORDER BY (role = ?) DESC, id LIMIT 1', ['super']);
         $adminId = $admin ? (int) $admin['id'] : null;
@@ -807,6 +809,9 @@ final class DemoSeed
                 $v = self::createVoice($u, $plan[0], $plan[1], $stories, $now, $adminId, $scriptKeys, $manifest, $timeline);
                 $users[$k]['voices'][] = $v;
             }
+            if ($u['index'] === 0) {
+                self::createPlaylists($u['id'], $users[$k]['voices'], $now);
+            }
         }
 
         // 재생 기록과 질문
@@ -829,7 +834,33 @@ final class DemoSeed
         return ['login' => $users[0]['email']];
     }
 
-    /** 역할별 목소리 [호칭, 상태] */
+    /** 데모 로그인 회원의 플레이리스트: 엄마 목소리 4편(전체 반복), 완성된 모든 동화(랜덤) */
+    private static function createPlaylists(int $uid, array $voices, int $now): void
+    {
+        $all = [];
+        $first = [];
+        foreach ($voices as $v) {
+            foreach (array_keys($v['audios']) as $sid) {
+                $all[] = [(int) $sid, (int) $v['id']];
+                if ($v === $voices[0] && count($first) < 4) {
+                    $first[] = [(int) $sid, (int) $v['id']];
+                }
+            }
+        }
+        foreach ([['잠자리 동화', 'all', 0, $first], ['가족 목소리 모음', 'all', 1, $all]] as $i => $p) {
+            if (!$p[3]) {
+                continue;
+            }
+            $at = self::dt($now - (2 - $i) * 86400);
+            $plId = db_insert('playlists', ['user_id' => $uid, 'name' => $p[0], 'repeat_mode' => $p[1], 'shuffle' => $p[2], 'created_at' => $at, 'updated_at' => $at]);
+            foreach ($p[3] as $k => $item) {
+                db_insert('playlist_items', ['playlist_id' => $plId, 'story_id' => $item[0], 'voice_profile_id' => $item[1], 'sort_order' => $k + 1, 'created_at' => $at]);
+            }
+            self::add('playlists');
+        }
+    }
+
+    /** 역할별 목소리 [호칭, 상태(processing: 목소리는 준비됨, 요청한 동화를 만드는 중)] */
     private static function voicePlan(string $role): array
     {
         $one = self::chance(0.8) ? '엄마' : '아빠';
@@ -937,7 +968,7 @@ final class DemoSeed
             'consent_ip' => '127.0.0.1',
             'sample_total_ms' => $total,
             'quality_grade' => $overall,
-            'status' => $status,
+            'status' => $status === 'processing' ? 'completed' : $status,
             'provider' => 'elevenlabs',
             'provider_voice_id' => $cloned ? 'demo' . bin2hex(random_bytes(8)) : null,
             'stability' => $tuned ? round(self::rf(0.55, 0.75), 2) : null,
@@ -955,7 +986,7 @@ final class DemoSeed
             'updated_at' => self::dt($processed ?: $requested),
         ]);
         self::add('voices');
-        self::add('voice_' . $status);
+        self::add('voice_' . ($status === 'processing' ? 'completed' : $status));
 
         $t = $requested - 1500;
         foreach ($samples as $k => $smp) {
@@ -1006,15 +1037,24 @@ final class DemoSeed
         $timeline[] = ['prio' => $status === 'processing' ? 0 : 2, 'action' => 'voice.approve', 'pid' => $pid, 'at' => $processed,
             'detail' => ['stability' => (float) setting('elevenlabs.default_stability', 0.65), 'similarity_boost' => (float) setting('elevenlabs.default_similarity', 0.8), 'style' => (float) setting('elevenlabs.default_style', 0.0)]];
 
-        // 동화 오디오: 준비됨이면 12편 모두, 동화 준비 중이면 9편 완료 + 1편 생성 중 + 나머지 대기
+        // 동화 생성 요청: 목소리가 준비된 뒤 회원이 고른 동화만 만든다.
+        //   준비됨: 요청한 동화(데모 로그인 회원 8편, 나머지 3~8편) 모두 완성
+        //   요청 동화 만드는 중(plan processing): 5편 요청, 3편 완성 + 1편 생성 중 + 1편 대기
         $model = (string) setting('elevenlabs.model_story', 'eleven_multilingual_v2');
-        $gen = $cloned + self::rnd(40, 90);
-        $doneCount = $status === 'completed' ? count($stories) : min(count($stories), 9);
-        foreach ($stories as $k => $s) {
+        $making = $status === 'processing';
+        $reqCount = $making ? 5 : ($u['index'] === 0 ? 8 : self::rnd(3, 8));
+        $reqCount = min($reqCount, count($stories));
+        $requested = array_slice($stories, 0, $reqCount);
+        $reqAt = $making ? $cloned + self::rnd(60, 300) : $cloned + self::rnd(600, 7200);
+        $approvedAt = $making ? min($reqAt + self::rnd(60, 300), $now - 600) : $reqAt + self::rnd(600, 3 * 3600);
+        $gen = $approvedAt + self::rnd(40, 90);
+        $doneCount = $making ? min($reqCount, 3) : $reqCount;
+        foreach ($requested as $k => $s) {
             $sid = (int) $s['id'];
+            $completedAt = null;
             if ($k < $doneCount) {
                 $gen += self::rnd(80, 150);
-                if ($status === 'processing') {
+                if ($making) {
                     $gen = min($gen, $now - 120);
                 }
                 $duration = (int) (round($s['est_ms'] * self::rf(0.94, 1.08) / 10) * 10);
@@ -1042,16 +1082,17 @@ final class DemoSeed
                     'char_count' => (int) $s['char_count'],
                     'attempts' => 1,
                     'generated_at' => self::dt($gen),
-                    'created_at' => self::dt($cloned + 30),
+                    'created_at' => self::dt($approvedAt),
                     'updated_at' => self::dt($gen),
                 ]);
                 self::usage($u['id'], 'elevenlabs', 'story_tts', $model, 'story_audio', $aid, 'chars', (int) $s['char_count'],
                     self::elevenCost((int) $s['char_count'], $model), self::rnd(9000, 26000), true, $gen);
-                if ($status === 'processing') {
+                if ($making) {
                     self::jobLog($manifest, $pid, 'info', "'" . $s['title'] . "' 오디오 생성 완료 (길이 " . fmt_duration($duration) . ', ' . number_format((int) $s['char_count']) . '자)', $gen);
                 }
                 $voice['audios'][$sid] = ['id' => $aid, 'duration' => $duration, 'timings' => $timings];
                 self::add('story_audios');
+                $completedAt = $gen;
             } else {
                 db_insert('story_audios', [
                     'story_id' => $sid,
@@ -1059,16 +1100,61 @@ final class DemoSeed
                     'status' => $k === $doneCount ? 'processing' : 'pending',
                     'char_count' => (int) $s['char_count'],
                     'attempts' => $k === $doneCount ? 1 : 0,
-                    'created_at' => self::dt($cloned + 30),
-                    'updated_at' => self::dt($k === $doneCount ? $now - 60 : $cloned + 30),
+                    'created_at' => self::dt($approvedAt),
+                    'updated_at' => self::dt($k === $doneCount ? $now - 60 : $approvedAt),
                 ]);
             }
+            db_insert('story_requests', [
+                'user_id' => $u['id'],
+                'story_id' => $sid,
+                'voice_profile_id' => $pid,
+                'status' => 'approved',
+                'processed_by' => $adminId,
+                'processed_at' => self::dt($approvedAt),
+                'completed_at' => $completedAt ? self::dt($completedAt) : null,
+                'notified_at' => $completedAt && !$making ? self::dt($completedAt) : null,
+                'created_at' => self::dt($reqAt + $k * 20),
+                'updated_at' => self::dt($completedAt ?: $approvedAt),
+            ]);
+            self::add('requests');
         }
-        if ($status === 'completed') {
+        if (!$making) {
             $batchDone = $gen + self::rnd(20, 60);
             db_update('voice_profiles', ['batch_done_at' => self::dt($batchDone), 'updated_at' => self::dt($batchDone)], 'id = ?', [$pid]);
-            self::jobLog($manifest, $pid, 'info', '동화 ' . count($stories) . '편 오디오 생성 완료', $batchDone);
+            self::jobLog($manifest, $pid, 'info', '동화 오디오 생성 작업 마침: ' . $reqCount . '편 중 ' . $reqCount . '편 완성', $batchDone);
             $voice['ready_at'] = $batchDone;
+
+            // 관리자 확인을 기다리는 새 요청(데모 로그인 회원은 1건 + 반려 1건, 나머지는 절반 정도)
+            $rest = array_slice($stories, $reqCount);
+            $extra = $u['index'] === 0 ? 1 : (self::chance(0.5) ? self::rnd(1, 2) : 0);
+            foreach (array_slice($rest, 0, $extra) as $k => $s) {
+                $at = max($batchDone + 600, $now - self::rnd(1, 30) * 3600 - $k * 600);
+                db_insert('story_requests', [
+                    'user_id' => $u['id'],
+                    'story_id' => (int) $s['id'],
+                    'voice_profile_id' => $pid,
+                    'status' => 'requested',
+                    'created_at' => self::dt(min($at, $now - 300)),
+                    'updated_at' => self::dt(min($at, $now - 300)),
+                ]);
+                self::add('requests');
+                self::add('requests_pending');
+            }
+            if ($u['index'] === 0 && isset($rest[$extra])) {
+                $at = min($batchDone + 3600, $now - 7200);
+                db_insert('story_requests', [
+                    'user_id' => $u['id'],
+                    'story_id' => (int) $rest[$extra]['id'],
+                    'voice_profile_id' => $pid,
+                    'status' => 'rejected',
+                    'reject_reason' => '이 동화는 문장을 다듬고 있어요. 다음 주에 다시 요청해 주세요.',
+                    'processed_by' => $adminId,
+                    'processed_at' => self::dt($at + 1800),
+                    'created_at' => self::dt($at),
+                    'updated_at' => self::dt($at + 1800),
+                ]);
+                self::add('requests');
+            }
         }
 
         // 안내 음성(질문 한도 초과 대체 문장, 오류 안내)
