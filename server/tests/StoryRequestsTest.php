@@ -409,3 +409,39 @@ test('플레이리스트 재생 순서: 차례, 전체 반복, 한 편 반복, �
         assert_same('all', $get()['repeat_mode']);
     });
 });
+
+test('자동 생성 설정이면 요청하자마자 만들기 시작하고, 진행 단계를 본인 요청만 돌려준다', function () {
+    sr_tx(function () {
+        if (!App\Services\ElevenLabs::ready()) {
+            skip_test('ElevenLabs 키(또는 가짜 모드)가 없다');
+        }
+        $uid = sr_user();
+        $mom = sr_voice($uid, '엄마');
+        $sid = sr_story('자동 생성 테스트 동화');
+
+        // 관리자 확인 설정: 요청만 남는다
+        Settings::set('request.auto_approve', false);
+        $res = StoryRequests::create($uid, $sid, [$mom]);
+        assert_same(false, $res['auto']);
+        assert_same(0, $res['approved']);
+        $manual = $res['created'][0];
+        assert_same([(string) $manual => 'requested'], StoryRequests::statesFor($uid, [$manual]));
+        StoryRequests::cancel($uid, $manual);
+
+        // 자동 생성 설정: 바로 생성을 시작해 만드는 중이 되고, 오디오가 완성되면 완성으로 바뀐다
+        Settings::set('request.auto_approve', true);
+        $res = StoryRequests::create($uid, $sid, [$mom]);
+        assert_same(true, $res['auto']);
+        assert_same(1, $res['approved']);
+        $rid = $res['created'][0];
+        assert_same([(string) $rid => 'making'], StoryRequests::statesFor($uid, [$rid, 999999999]));
+        db_exec('DELETE FROM story_audios WHERE story_id = ? AND voice_profile_id = ?', [$sid, $mom]);
+        sr_audio($sid, $mom);
+        $states = StoryRequests::statesFor($uid, [$rid, $manual]);
+        assert_same('done', $states[(string) $rid]);
+        assert_same('canceled', $states[(string) $manual]);
+
+        // 다른 회원은 남의 요청 상태를 볼 수 없다
+        assert_same([], StoryRequests::statesFor(sr_user(), [$rid]));
+    });
+});

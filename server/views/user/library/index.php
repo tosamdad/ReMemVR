@@ -8,6 +8,7 @@
  * @var array $playlists Playlists::forUser()
  * @var int $readyVoices
  * @var int $anyVoices
+ * @var bool $autoApprove 요청하면 관리자 확인 없이 바로 만드는지
  */
 use App\Controllers\User\LibraryController;
 use App\Services\Playlists;
@@ -33,7 +34,7 @@ $storyOf = static function (array $r): array {
 $back = '/library' . ($tab !== 'all' ? '?tab=' . $tab : '');
 $empty = [
     'all' => ['아직 요청한 동화가 없어요', '동화 책장에서 듣고 싶은 동화를 고르고, 읽어 줄 가족 목소리를 골라 요청해 주세요.'],
-    'making' => ['만드는 중인 동화가 없어요', '요청한 동화는 운영팀이 확인한 뒤 만들어요. 완성되면 메일로 알려 드려요.'],
+    'making' => ['만드는 중인 동화가 없어요', $autoApprove ? '요청한 동화는 바로 만들기 시작해요. 완성되면 메일로 알려 드려요.' : '요청한 동화는 운영팀이 확인한 뒤 만들어요. 완성되면 메일로 알려 드려요.'],
     'done' => ['아직 완성된 동화가 없어요', '요청한 동화가 완성되면 여기에서 바로 들을 수 있어요.'],
     'rejected' => ['반려된 요청이 없어요', ''],
 ];
@@ -128,7 +129,7 @@ $empty = [
         $playable = $state === 'done' && $published;
         $when = $state === 'done' && $r['completed_at'] ? '완성 ' . time_ago($r['completed_at']) : '요청 ' . time_ago($r['created_at']);
     ?>
-    <li class="card flex gap-3 p-3">
+    <li class="card flex gap-3 p-3" data-req-id="<?= (int) $r['id'] ?>" data-req-state="<?= e($state) ?>">
       <a href="<?= e(url('/stories/' . $sid)) ?>" class="relative h-20 w-16 shrink-0 overflow-hidden rounded-xl bg-surface-container">
         <img src="<?= e(cover_url($storyOf($r))) ?>" alt="" class="h-full w-full object-cover" loading="lazy">
       </a>
@@ -145,7 +146,7 @@ $empty = [
         <?php if ($state === 'requested'): ?>
         <p class="text-[12px] leading-4 text-on-surface-variant">운영팀이 확인한 뒤 만들어 드려요</p>
         <?php elseif ($state === 'making'): ?>
-        <p class="text-[12px] leading-4 text-on-surface-variant">가족 목소리로 녹음하고 있어요. 완성되면 메일로 알려 드려요</p>
+        <p class="text-[12px] leading-4 text-on-surface-variant">가족 목소리로 녹음하고 있어요. 다 되면 완성으로 바뀌고 메일로도 알려 드려요</p>
         <?php elseif ($state === 'failed'): ?>
         <p class="text-[12px] leading-4 text-on-surface-variant">만드는 중에 문제가 생겨 운영팀이 확인하고 있어요</p>
         <?php elseif ($state === 'rejected'): ?>

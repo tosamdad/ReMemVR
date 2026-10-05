@@ -164,15 +164,45 @@ class StoryRequests
             $open++;
         }
 
+        $auto = self::autoApprove();
+        $approved = 0;
         if ($created) {
             Jobs::log(null, 'voice_profile', (int) $voices[0]['id'], 'info', "회원이 '" . $story['title'] . "' 생성을 요청했습니다 (" . count($created) . '건).');
             self::notifyAdmin($userId, $story, $created);
-            if (setting('request.auto_approve', false) && ElevenLabs::ready()) {
-                self::approve($created, null);
+            if ($auto) {
+                $approved = (int) self::approve($created, null)['approved'];
             }
         }
 
-        return ['created' => $created, 'skipped' => $skipped];
+        // auto: 관리자 확인 없이 바로 만드는 설정인지, approved: 그래서 바로 생성을 시작한 요청 수
+        return ['created' => $created, 'skipped' => $skipped, 'auto' => $auto, 'approved' => $approved];
+    }
+
+    /** 요청하면 관리자 확인 없이 바로 만드는 설정인가(설정 request.auto_approve, ElevenLabs 키 필요) */
+    public static function autoApprove(): bool
+    {
+        return (bool) setting('request.auto_approve', false) && ElevenLabs::ready();
+    }
+
+    /**
+     * 회원 본인 요청들의 지금 진행 단계. 화면이 만드는 중인 요청을 지켜보다 바뀌면 다시 그린다.
+     * 반환: [요청 id => requested | making | done | failed | rejected | canceled] (남의 요청, 없는 id 는 빠진다)
+     */
+    public static function statesFor(int $userId, array $ids): array
+    {
+        $ids = array_slice(array_values(array_unique(array_filter(array_map('intval', $ids)))), 0, 100);
+        if (!$ids) {
+            return [];
+        }
+        $out = [];
+        foreach (db_all(
+            self::SELECT . ' WHERE r.user_id = ? AND r.id IN (' . implode(', ', array_fill(0, count($ids), '?')) . ')',
+            array_merge([$userId], $ids)
+        ) as $r) {
+            $out[(string) (int) $r['id']] = self::state($r);
+        }
+
+        return $out;
     }
 
     /** 회원이 확인 대기 중인 요청을 거둔다. */

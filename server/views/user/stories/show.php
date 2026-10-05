@@ -1,12 +1,15 @@
 <?php
 /**
  * 동화 상세: 표지, 소개, 가족 목소리별 상태.
- * 완성된 목소리는 바로 듣고, 아직 없는 목소리는 골라서 생성 요청을 보낸다(관리자가 확인한 뒤 만든다).
+ * 완성된 목소리는 바로 듣고, 아직 없는 목소리는 골라서 생성 요청을 보낸다.
+ * 설정 request.auto_approve 가 켜져 있으면 요청하자마자 만들고, 꺼져 있으면 관리자가 확인한 뒤 만든다.
+ * 확인 대기, 만드는 중인 요청은 app.js 가 몇 초마다 확인해 완성 등으로 바뀌면 화면을 다시 그린다(data-req-id).
  * @var array $story
  * @var string $durationLabel
  * @var array $voices StoryRequests::voiceStates()
  * @var bool $completed
  * @var string|null $resumeUrl 듣다 만 위치(이어 듣기)
+ * @var bool $autoApprove 요청하면 관리자 확인 없이 바로 만드는지
  */
 use App\Services\StoryRequests;
 
@@ -90,7 +93,7 @@ $summary = trim((string) $story['summary']);
           $pick = in_array($state, ['none', 'rejected'], true);
           $look = isset($stateLook[$state]) ? $stateLook[$state] : null;
       ?>
-      <li class="card flex items-center gap-3 p-4">
+      <li class="card flex items-center gap-3 p-4"<?= $req && in_array($state, ['requested', 'making', 'done', 'failed'], true) ? ' data-req-id="' . (int) $req['id'] . '" data-req-state="' . e($state) . '"' : '' ?>>
         <?php if ($pick): ?>
         <label class="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
           <input type="checkbox" name="voice_ids[]" value="<?= (int) $vid ?>" class="h-5 w-5 shrink-0 rounded border-outline text-primary focus:ring-primary/30" data-voice-pick>
@@ -111,6 +114,8 @@ $summary = trim((string) $story['summary']);
             <span class="mt-1 block text-[12px] leading-4 text-error break-keep"><?= e($req['reject_reason']) ?> · 다시 요청할 수 있어요</span>
             <?php elseif ($state === 'requested'): ?>
             <span class="mt-1 block text-[12px] leading-4 text-on-surface-variant">운영팀이 확인하고 있어요</span>
+            <?php elseif ($state === 'making'): ?>
+            <span class="mt-1 block text-[12px] leading-4 text-on-surface-variant">가족 목소리로 녹음하고 있어요. 다 되면 완성으로 바뀌어요</span>
             <?php elseif ($state === 'failed'): ?>
             <span class="mt-1 block text-[12px] leading-4 text-on-surface-variant">만드는 중에 문제가 생겨 운영팀이 확인하고 있어요</span>
             <?php elseif ($state === 'unready'): ?>
@@ -134,7 +139,9 @@ $summary = trim((string) $story['summary']);
     <button type="submit" class="btn-primary w-full rounded-full" data-request-btn disabled>
       <span class="material-symbols-outlined">library_add</span><span data-request-label>목소리를 골라 주세요</span>
     </button>
-    <p class="text-center text-label-sm font-label-sm text-on-surface-variant">요청하면 운영팀이 확인한 뒤 만들어 드려요. 완성되면 내 동화에 나타나고 메일로 알려 드려요.</p>
+    <p class="text-center text-label-sm font-label-sm text-on-surface-variant"><?= $autoApprove
+        ? '요청하면 바로 만들기 시작해요. 다 만들어지면 이 화면과 내 동화에서 완성으로 바뀌고 메일로도 알려 드려요.'
+        : '요청하면 운영팀이 확인한 뒤 만들어 드려요. 완성되면 내 동화에 나타나고 메일로 알려 드려요.' ?></p>
     <?php endif; ?>
   </form>
   <?php foreach ($voices as $v): if ($v['state'] === 'requested' && $v['request']): ?>

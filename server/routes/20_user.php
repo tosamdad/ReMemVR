@@ -21,6 +21,7 @@ $router->post('/stories/{id:\d+}/request', [StoryController::class, 'request']);
 // 내 동화: 생성 요청 목록(만드는 중, 완성, 반려)과 완성 동화 듣기
 $router->get('/library', [LibraryController::class, 'index']);
 $router->post('/library/requests/{id:\d+}/cancel', [LibraryController::class, 'cancel']);
+$router->get('/api/requests/status', [LibraryController::class, 'status']);
 
 // 플레이리스트: 완성 동화를 담아 차례로, 반복으로, 랜덤으로 듣기
 $router->get('/playlists', [PlaylistController::class, 'index']);
