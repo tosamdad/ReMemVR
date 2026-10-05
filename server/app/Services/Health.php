@@ -122,6 +122,11 @@ class Health
             $out['ms'] = (int) $r['ms'];
             if ($r['ok']) {
                 $out['message'] = config('providers_fake') ? '개발 모드(가짜 응답)' : '정상';
+                // 키는 맞아도 요금제에 목소리 복제가 없으면 가족 목소리를 만들 수 없다.
+                if (isset($r['can_clone']) && $r['can_clone'] === false) {
+                    $out['ok'] = false;
+                    $out['message'] = '요금제(' . (string) $r['tier'] . ')에 목소리 복제가 없어 가족 목소리를 만들 수 없습니다. Starter 이상 필요';
+                }
                 $out['credits'] = [
                     'used' => (int) $r['used'],
                     'limit' => (int) $r['limit'],

@@ -303,7 +303,7 @@ $okChip = static function ($ok, string $yes = '정상', string $no = '확인 필
             <?= $input('voice.max_sample_seconds', '최대 녹음 길이', '', ['suffix' => '초']) ?>
           </div>
           <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <?= $toggle('voice.auto_clone_on_submit', '목소리 제출 즉시 자동 승인', '관리자 검토 없이 바로 ElevenLabs 목소리를 만듭니다(비용 주의).') ?>
+            <?= $toggle('voice.auto_clone_on_submit', '목소리 제출 즉시 자동 생성', '회원이 녹음을 제출하면 관리자 검토 없이 바로 ElevenLabs 목소리를 만듭니다(기본 켬, 목소리 생성은 크레딧을 쓰지 않습니다). 끄면 관리자가 확인한 뒤 만듭니다.') ?>
             <?= $toggle('request.auto_approve', '동화 생성 요청 자동 승인', '회원이 요청하면 관리자 확인 없이 바로 동화를 만듭니다(비용 주의).') ?>
           </div>
           <div class="grid grid-cols-1 gap-5 md:grid-cols-4">

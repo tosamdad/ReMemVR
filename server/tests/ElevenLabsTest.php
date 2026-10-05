@@ -77,6 +77,14 @@ test('API 오류를 한글 메시지로 바꾼다', function () {
     assert_contains('목소리를 찾을 수 없습니다', ElevenLabs::errorMessage($r(400, ['detail' => ['status' => 'voice_not_found']])));
     assert_contains('네트워크 오류', ElevenLabs::errorMessage(['status' => 0, 'headers' => [], 'body' => '', 'error' => 'timeout']));
     assert_contains('서버 오류(503)', ElevenLabs::errorMessage($r(503, 'busy')));
+    // 키는 맞지만 요금제에 목소리 복제가 없는 경우는 키 오류로 보이면 안 된다.
+    $plan = ElevenLabs::errorMessage($r(401, ['detail' => ['status' => 'can_not_use_instant_voice_cloning', 'message' => 'Your subscription has no access to use instant voice cloning, please upgrade.']]));
+    assert_contains('Starter 이상', $plan);
+    assert_true(strpos($plan, 'API 키가 올바르지') === false, $plan);
+    $other = ElevenLabs::errorMessage($r(401, ['detail' => ['status' => 'some_new_reason', 'message' => 'Something else']]));
+    assert_contains('some_new_reason', $other);
+    assert_contains('Something else', $other);
+    assert_contains('요금제나 결제', ElevenLabs::errorMessage($r(402, ['detail' => ['message' => 'Payment required']])));
 });
 
 test('가짜 합성: 16kHz WAV, 글자당 75ms, 글자별 정렬', function () {

@@ -104,7 +104,7 @@ $dot = [
       <span class="material-symbols-outlined animate-pulse text-primary">graphic_eq</span>
       <div class="space-y-1">
         <p class="font-label-lg text-label-lg text-on-surface">AI가 목소리를 배우고 있어요</p>
-        <p class="text-[14px] leading-5 text-on-surface-variant">화면을 닫아도 계속 만들어요. 준비가 끝나면 메일로 알려 드릴게요.</p>
+        <p class="text-[14px] leading-5 text-on-surface-variant">보통 1분 안에 끝나요. 준비되면 이 화면이 바로 바뀌고, 화면을 닫아도 계속 만들어요.</p>
       </div>
     </section>
   <?php elseif (in_array($status, ['completed', 'processing'], true)): ?>

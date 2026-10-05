@@ -448,12 +448,12 @@ class ElevenLabs
 
     /**
      * 구독 사용량(글자 크레딧).
-     * @return array ['ok', 'used', 'limit', 'reset_at'(Y-m-d H:i:s), 'tier', 'error', 'ms']
+     * @return array ['ok', 'used', 'limit', 'reset_at'(Y-m-d H:i:s), 'tier', 'can_clone'(목소리 복제 가능 요금제인지, 모르면 null), 'error', 'ms']
      */
     public static function subscription(): array
     {
         $started = microtime(true);
-        $out = ['ok' => false, 'used' => 0, 'limit' => 0, 'reset_at' => null, 'tier' => null, 'error' => null, 'ms' => 0];
+        $out = ['ok' => false, 'used' => 0, 'limit' => 0, 'reset_at' => null, 'tier' => null, 'can_clone' => null, 'error' => null, 'ms' => 0];
         if (!self::ready()) {
             $out['error'] = 'ElevenLabs API 키가 등록되지 않았습니다.';
 
@@ -465,6 +465,7 @@ class ElevenLabs
             $out['limit'] = 100000;
             $out['reset_at'] = date('Y-m-01 00:00:00', strtotime('first day of next month'));
             $out['tier'] = 'fake';
+            $out['can_clone'] = true;
             $out['ms'] = self::elapsed($started);
 
             return $out;
@@ -485,6 +486,8 @@ class ElevenLabs
         $out['limit'] = (int) $data['character_limit'];
         $out['reset_at'] = !empty($data['next_character_count_reset_unix']) ? date('Y-m-d H:i:s', (int) $data['next_character_count_reset_unix']) : null;
         $out['tier'] = isset($data['tier']) ? (string) $data['tier'] : null;
+        // 요금제에 목소리 복제가 포함되어 있는지(무료 요금제는 false)
+        $out['can_clone'] = isset($data['can_use_instant_voice_cloning']) ? (bool) $data['can_use_instant_voice_cloning'] : null;
 
         return $out;
     }
@@ -678,13 +681,25 @@ class ElevenLabs
             'missing_permissions' => 'ElevenLabs API 키에 필요한 권한이 없습니다(키 권한 설정 확인).',
             'voice_limit_reached' => 'ElevenLabs 계정의 목소리 개수 한도에 도달했습니다. 쓰지 않는 목소리를 정리해 주세요.',
             'max_character_limit_exceeded' => '한 번에 합성할 수 있는 글자 수를 넘었습니다.',
-            'detected_unusual_activity' => 'ElevenLabs 가 비정상 사용을 감지해 요청을 막았습니다. 계정 상태를 확인해 주세요.',
+            'detected_unusual_activity' => 'ElevenLabs 가 비정상 사용을 감지해 요청을 막았습니다. 무료 요금제는 호스팅 서버에서 쓸 수 없는 경우가 많아 유료 요금제(Starter 이상)가 필요합니다.',
+            'can_not_use_instant_voice_cloning' => 'ElevenLabs 요금제에 목소리 복제(Instant Voice Cloning)가 없습니다. Starter 이상 요금제로 바꿔야 목소리를 만들 수 있습니다.',
+            'subscription_required' => 'ElevenLabs 유료 요금제가 필요한 기능입니다. Starter 이상 요금제로 바꿔 주세요.',
+            'payment_required' => 'ElevenLabs 결제가 확인되지 않았습니다. 요금제 결제 상태를 확인해 주세요.',
+            'voice_add_edit_limit_reached' => 'ElevenLabs 이번 달 목소리 추가 횟수 한도에 도달했습니다. 다음 달에 다시 시도하거나 요금제를 올려 주세요.',
         ];
         if ($code !== null && isset($map[$code])) {
             return $map[$code];
         }
-        if ($status === 401) {
-            return 'ElevenLabs API 키가 올바르지 않습니다.';
+        // 요금제에 없는 기능, 결제 문제처럼 키는 맞지만 거절된 경우가 있으므로 ElevenLabs 의 설명을 그대로 붙인다.
+        if ($status === 401 || $status === 403) {
+            if ($code === null && $detail === '') {
+                return $status === 401 ? 'ElevenLabs API 키가 올바르지 않습니다.' : 'ElevenLabs API 키에 필요한 권한이 없습니다(키 권한 설정 확인).';
+            }
+
+            return 'ElevenLabs 가 요청을 거절했습니다(' . $status . ($code !== null ? ', ' . $code : '') . ')' . ($detail !== '' ? ': ' . $detail : '.');
+        }
+        if ($status === 402) {
+            return 'ElevenLabs 요금제나 결제 문제로 요청이 거절되었습니다' . ($detail !== '' ? ': ' . $detail : '.');
         }
         if ($status === 429) {
             return 'ElevenLabs 요청 한도 또는 크레딧 한도를 넘었습니다. 잠시 후 다시 시도합니다.';
@@ -696,7 +711,7 @@ class ElevenLabs
             return 'ElevenLabs 로 보낸 파일이 너무 큽니다. 샘플 길이나 개수를 줄여 주세요.';
         }
         if ($status === 400 || $status === 422) {
-            return 'ElevenLabs 요청이 거절되었습니다' . ($detail !== '' ? ': ' . $detail : '.');
+            return 'ElevenLabs 요청이 거절되었습니다' . ($code !== null ? '(' . $code . ')' : '') . ($detail !== '' ? ': ' . $detail : '.');
         }
         if ($status >= 500) {
             return 'ElevenLabs 서버 오류(' . $status . ')입니다. 잠시 후 다시 시도합니다.';

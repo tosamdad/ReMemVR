@@ -20,7 +20,7 @@ $chip = 'inline-flex cursor-pointer select-none items-center gap-1.5 rounded-ful
     <li class="h-px flex-1 bg-outline-variant" aria-hidden="true"></li>
     <li class="flex items-center gap-1.5 rounded-full bg-surface-container px-3 py-1.5 text-on-surface-variant"><span class="material-symbols-outlined text-[16px]">mic</span>녹음</li>
     <li class="h-px flex-1 bg-outline-variant" aria-hidden="true"></li>
-    <li class="flex items-center gap-1.5 rounded-full bg-surface-container px-3 py-1.5 text-on-surface-variant"><span class="material-symbols-outlined text-[16px]">send</span>제출</li>
+    <li class="flex items-center gap-1.5 rounded-full bg-surface-container px-3 py-1.5 text-on-surface-variant"><span class="material-symbols-outlined text-[16px]">task_alt</span>완료</li>
   </ol>
 
   <!-- 미리 보기 카드 -->

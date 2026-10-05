@@ -1,7 +1,8 @@
 <?php
 /**
- * 안내된 녹음 화면: 1 준비(안내, 마이크 확인) → 2 녹음(대본 3개, 파일로 올리기) → 3 확인 & 제출(동의).
- * 변수: $voice, $scripts, $samples, $minSec, $recSec, $maxSec, $maxUpload(한 번에 올릴 수 있는 바이트)
+ * 안내된 녹음 화면: 1 준비(안내, 마이크 확인) → 2 녹음(대본 3개, 파일로 올리기) → 3 완료(동의).
+ * 변수: $voice, $scripts, $samples, $minSec, $recSec, $maxSec, $maxUpload(한 번에 올릴 수 있는 바이트),
+ *       $auto(완료하면 관리자 검토 없이 바로 목소리를 만드는지)
  * 녹음, 저장, 삭제는 voice-lab.js 가 RMRecorder 와 /api/voice-lab/{id}/samples 로 처리한다.
  */
 $pid = (int) $voice['id'];
@@ -39,7 +40,8 @@ $data = [
     'samples' => $samples,
 ];
 $uploadMb = rtrim(rtrim(number_format($maxUpload / 1048576, 1), '0'), '.');
-$stepTabs = [1 => ['준비', 'tune'], 2 => ['녹음', 'mic'], 3 => ['확인 & 제출', 'send']];
+$auto = !empty($auto);
+$stepTabs = [1 => ['준비', 'tune'], 2 => ['녹음', 'mic'], 3 => ['완료', 'task_alt']];
 ?>
 <script type="application/json" id="vl-record-data"><?= json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) ?></script>
 <div class="space-y-6" data-vl-record>
@@ -262,19 +264,21 @@ $stepTabs = [1 => ['준비', 'tune'], 2 => ['녹음', 'mic'], 3 => ['확인 & �
       <p class="text-[14px] leading-5 text-on-surface-variant">아직 저장한 녹음이 없어요.<br>대본을 읽고 저장하면 여기에 모여요.</p>
     </div>
     <button type="button" class="btn-secondary w-full rounded-full" data-goto="3" data-next-step hidden>
-      다음: 확인 & 제출<span class="material-symbols-outlined">arrow_forward</span>
+      다음: 완료하기<span class="material-symbols-outlined">arrow_forward</span>
     </button>
   </section>
 
-  <!-- 3단계: 확인 & 제출 -->
+  <!-- 3단계: 완료 -->
   <section class="space-y-5" data-step="3"<?= $step === 3 ? '' : ' hidden' ?>>
     <form method="post" action="<?= e(url('/voice-lab/' . $pid . '/submit')) ?>" class="card space-y-5 p-6" data-submit-form>
       <?= csrf_field() ?>
       <div class="flex items-start gap-3">
         <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-container/40 text-primary"><span class="material-symbols-outlined">verified_user</span></span>
         <div>
-          <h2 class="font-headline-md text-[20px] font-bold leading-7 text-on-surface">제출하기 전에</h2>
-          <p class="text-[14px] leading-5 text-on-surface-variant">운영팀이 녹음 상태를 확인한 뒤 AI 목소리를 만들고, 무료 동화를 이 목소리로 미리 준비해 둘게요.</p>
+          <h2 class="font-headline-md text-[20px] font-bold leading-7 text-on-surface">녹음 완료하기</h2>
+          <p class="text-[14px] leading-5 text-on-surface-variant"><?= $auto
+              ? '완료를 누르면 바로 AI가 이 녹음으로 목소리를 만들어요. 보통 1분 안에 준비되고, 그다음 동화를 골라 이 목소리로 들을 수 있어요.'
+              : '운영팀이 녹음 상태를 확인한 뒤 AI 목소리를 만들어요. 준비되면 동화를 골라 이 목소리로 들을 수 있어요.' ?></p>
         </div>
       </div>
       <label class="flex cursor-pointer items-start gap-3 rounded-2xl bg-surface-container-low p-4">
@@ -286,7 +290,7 @@ $stepTabs = [1 => ['준비', 'tune'], 2 => ['녹음', 'mic'], 3 => ['확인 & �
       </a>
       <?php if (errors('consent')): ?><p class="field-error"><?= e(errors('consent')) ?></p><?php endif; ?>
       <button type="submit" class="btn-primary w-full rounded-full" data-submit-btn disabled>
-        <span class="material-symbols-outlined">send</span>목소리 제출하기
+        <span class="material-symbols-outlined"><?= $auto ? 'task_alt' : 'send' ?></span><?= $auto ? '완료하고 목소리 만들기' : '목소리 제출하기' ?>
       </button>
       <p class="text-center text-label-sm text-on-surface-variant" data-submit-hint></p>
     </form>

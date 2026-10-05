@@ -1,0 +1,73 @@
+# 실서버 목소리 생성(ElevenLabs) 점검. 배포 없이 서버 안에서 직접 확인한다.
+# Actions 탭 → Voice Check → Run workflow 로만 실행한다(자동 실행 없음).
+# 1) .github/ops/voice-check.php 를 웹 루트의 _ops/ 에 임의 이름으로 올린다
+# 2) 토큰을 붙여 호출한다. inspect 는 상태만 보고, clone_test 는 실제 샘플로 목소리를 만들고
+#    짧은 문장(10자 정도)을 읽힌 뒤 만든 목소리를 지운다(목소리 생성은 크레딧을 쓰지 않는다)
+# 3) 점검 파일은 성공 여부와 관계없이 지운다
+name: Voice Check
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 점검 방식
+        type: choice
+        options: [inspect, clone_test]
+        default: inspect
+      profile_id:
+        description: clone_test 에 쓸 목소리 번호(비우면 가장 최근 실패한 목소리)
+        type: string
+        default: ''
+
+concurrency:
+  group: voice-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FTP_SERVER: ${{ secrets.FTP_SERVER }}
+      FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+      FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+      OPS_TOKEN: ${{ secrets.OPS_TOKEN }}
+      SITE_URL: ${{ secrets.SITE_URL }}
+      WEB_DIR: ${{ vars.FTP_WEB_DIR || '/www/' }}
+      FTP_PORT: ${{ vars.FTP_PORT || '21' }}
+      MODE: ${{ inputs.mode || 'inspect' }}
+      PROFILE_ID: ${{ inputs.profile_id || '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 접속정보 확인
+        run: |
+          for name in FTP_SERVER FTP_USERNAME FTP_PASSWORD OPS_TOKEN SITE_URL; do
+            if [ -z "${!name}" ]; then echo "::error::$name Secret 이 없다."; exit 1; fi
+          done
+          clean=$(printf '%s' "$OPS_TOKEN" | tr -d '[:space:]')
+          echo "::add-mask::$clean"; echo "OPS_TOKEN=$clean" >> "$GITHUB_ENV"
+          umask 077
+          printf 'user = "%s:%s"\n' "$FTP_USERNAME" "$FTP_PASSWORD" > "$RUNNER_TEMP/ftp.cfg"
+          echo "CHECK_NAME=voicecheck-$(openssl rand -hex 8).php" >> "$GITHUB_ENV"
+
+      - name: 점검 파일 업로드
+        run: |
+          php -l .github/ops/voice-check.php
+          curl -sS --max-time 60 -K "$RUNNER_TEMP/ftp.cfg" \
+            -T .github/ops/voice-check.php "ftp://$FTP_SERVER:$FTP_PORT/%2F${WEB_DIR#/}_ops/$CHECK_NAME"
+
+      - name: 점검 실행 (${{ env.MODE }})
+        run: |
+          code=$(curl -sS --max-time 200 -o out.json -w '%{http_code}' -X POST \
+            -H "X-Ops-Token: $OPS_TOKEN" --data-urlencode "mode=$MODE" --data-urlencode "profile_id=$PROFILE_ID" \
+            "${SITE_URL%/}/_ops/$CHECK_NAME" || echo 000)
+          echo "HTTP $code"
+          cat out.json; echo
+          [ "$code" = "200" ]
+
+      - name: 점검 파일 삭제
+        if: always() && env.CHECK_NAME != ''
+        run: |
+          curl -sS --max-time 30 -K "$RUNNER_TEMP/ftp.cfg" -o /dev/null --list-only "ftp://$FTP_SERVER:$FTP_PORT/%2F" \
+            -Q "*DELE ${WEB_DIR%/}/_ops/$CHECK_NAME" -v 2>&1 | grep -E '^[<>] (DELE|2|5)' || true

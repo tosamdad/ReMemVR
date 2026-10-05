@@ -162,6 +162,48 @@ test('제출은 녹음 길이를 확인하고 검토 대기로 바꾼다', funct
     });
 });
 
+test('자동 생성이 켜져 있으면 제출하자마자 관리자 검토 없이 목소리 생성 작업을 등록한다', function () {
+    voice_test_tx(function () {
+        Settings::set('notify.admin_email', 'ops@example.com');
+        Settings::forget('voice.auto_clone_on_submit');
+        assert_true(VoiceService::autoClone(), '자동 생성 기본값은 켬');
+        $t = voice_test_profile();
+        $pid = $t['profile_id'];
+        voice_test_sample($pid, 45000, 'good');
+        voice_test_sample($pid, 30000, 'good');
+        VoiceService::submit($pid);
+
+        $row = db_one('SELECT status, processed_by, sample_total_ms FROM voice_profiles WHERE id = ?', [$pid]);
+        assert_same('cloning', $row['status']);
+        assert_same(null, $row['processed_by'], '관리자 없이 자동 승인');
+        assert_same(75000, (int) $row['sample_total_ms']);
+        $jobs = db_all("SELECT type, status FROM jobs WHERE ref_type = 'voice_profile' AND ref_id = ? ORDER BY id", [$pid]);
+        assert_same([['type' => 'voice_clone', 'status' => 'pending']], $jobs, '검토 요청 메일 없이 목소리 생성 작업만 등록');
+        $log = (string) db_value("SELECT GROUP_CONCAT(message SEPARATOR '|') FROM job_logs WHERE ref_type = 'voice_profile' AND ref_id = ?", [$pid]);
+        assert_contains('자동 승인', $log);
+    });
+});
+
+test('목소리 생성이 끝내 실패하면 실패로 바꾸고 운영 메일로 알린다', function () {
+    voice_test_tx(function () {
+        Settings::set('notify.admin_email', 'ops@example.com');
+        $t = voice_test_profile(['status' => 'cloning']);
+        $pid = $t['profile_id'];
+        $jobId = Jobs::enqueue('voice_clone', ['profile_id' => $pid], ['ref_type' => 'voice_profile', 'ref_id' => $pid, 'max_attempts' => 1]);
+        $job = db_one('SELECT * FROM jobs WHERE id = ?', [$jobId]);
+        $m = new ReflectionMethod(Worker::class, 'onFailure');
+        $m->setAccessible(true);
+        $m->invoke(null, $job, ['profile_id' => $pid], 'ElevenLabs 목소리 생성 실패: 요금제에 목소리 복제가 없습니다.', ['final' => true, 'delay' => 0, 'attempts' => 1, 'max_attempts' => 1]);
+
+        assert_same('failed', db_value('SELECT status FROM voice_profiles WHERE id = ?', [$pid]));
+        $mail = db_one("SELECT payload FROM jobs WHERE type = 'mail' AND ref_type = 'voice_profile' AND ref_id = ?", [$pid]);
+        assert_true($mail !== null, '실패 알림 메일 작업이 없다');
+        $payload = json_decode($mail['payload'], true);
+        assert_same('ops@example.com', $payload['to']);
+        assert_contains('요금제에 목소리 복제가 없습니다', $payload['text']);
+    });
+});
+
 test('승인은 상태와 샘플을 확인하고 voice_clone 작업을 등록한다', function () {
     voice_test_tx(function () {
         $t = voice_test_profile(['status' => 'draft']);
