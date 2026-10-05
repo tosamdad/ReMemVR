@@ -145,6 +145,7 @@ class VoiceLabController
             'maxSec' => (int) setting('voice.max_sample_seconds', 300),
             'maxUpload' => self::uploadLimit(),
             'user' => $user,
+            'auto' => VoiceService::autoClone(),
         ]);
     }
 
@@ -309,7 +310,7 @@ class VoiceLabController
 
     // ───────────────────────── 제출, 이름, 삭제(폼) ─────────────────────────
 
-    /** POST /voice-lab/{id}/submit: 동의를 기록하고 검토를 요청한다. */
+    /** POST /voice-lab/{id}/submit: 동의를 기록하고 제출한다(자동 생성이 켜져 있으면 바로 목소리 만들기 시작). */
     public function submit(string $id): void
     {
         require_user();
@@ -340,7 +341,10 @@ class VoiceLabController
             flash('error', $e->getMessage());
             redirect($back);
         }
-        flash('success', '목소리를 제출했어요! 검토가 끝나면 바로 목소리 만들기를 시작할게요.');
+        $now = (string) db_value('SELECT status FROM voice_profiles WHERE id = ?', [$pid]);
+        flash('success', $now === 'cloning'
+            ? '녹음 완료! 지금 AI가 목소리를 만들고 있어요. 잠시 뒤 준비되면 바로 동화를 고를 수 있어요.'
+            : '목소리를 제출했어요! 확인이 끝나면 바로 목소리 만들기를 시작할게요.');
         redirect('/voice-lab/' . $pid);
     }
 
@@ -520,17 +524,24 @@ class VoiceLabController
      * 상태 단계: 녹음 완료 → 검토 → 목소리 생성 → 동화 준비 → 완료.
      * 각 단계 state: done | current | error | todo
      */
-    public static function timeline(array $voice): array
+    public static function timeline(array $voice, ?bool $review = null): array
     {
-        $steps = [
-            ['key' => 'record', 'label' => '녹음 완료', 'icon' => 'mic'],
-            ['key' => 'review', 'label' => '검토', 'icon' => 'fact_check'],
-            ['key' => 'clone', 'label' => '목소리 생성', 'icon' => 'graphic_eq'],
-            ['key' => 'done', 'label' => '준비 완료', 'icon' => 'celebration'],
-        ];
         $status = (string) $voice['status'];
+        // 자동 생성이면 검토 단계가 없다. 다만 관리자 검토 중이거나 반려된 목소리는 검토 단계를 보여 준다.
+        if ($review === null) {
+            $review = !VoiceService::autoClone() || in_array($status, ['pending', 'rejected'], true);
+        }
+        $steps = [['key' => 'record', 'label' => '녹음 완료', 'icon' => 'mic']];
+        if ($review) {
+            $steps[] = ['key' => 'review', 'label' => '검토', 'icon' => 'fact_check'];
+        }
+        $steps[] = ['key' => 'clone', 'label' => '목소리 생성', 'icon' => 'graphic_eq'];
+        $steps[] = ['key' => 'done', 'label' => '준비 완료', 'icon' => 'celebration'];
         $map = ['draft' => 0, 'pending' => 1, 'rejected' => 1, 'cloning' => 2, 'processing' => 3, 'completed' => 3, 'failed' => 2];
         $current = isset($map[$status]) ? $map[$status] : 0;
+        if (!$review && $current > 0) {
+            $current--;
+        }
         foreach ($steps as $i => $s) {
             if ($i < $current || (in_array($status, ['completed', 'processing'], true) && $i === $current)) {
                 $state = 'done';

@@ -93,9 +93,9 @@ test('진행 단계는 상태에 맞춰 강조된다', function () {
     $states = function (array $voice) {
         return array_map(function ($s) {
             return $s['state'];
-        }, VL::timeline($voice));
+        }, VL::timeline($voice, true));
     };
-    // 녹음 → 검토 → 목소리 생성 → 준비 완료. 동화는 목소리가 준비된 뒤 회원이 골라 요청한다.
+    // 관리자 검토를 거칠 때: 녹음 → 검토 → 목소리 생성 → 준비 완료. 동화는 목소리가 준비된 뒤 회원이 골라 요청한다.
     assert_same(['current', 'todo', 'todo', 'todo'], $states(['status' => 'draft']));
     assert_same(['done', 'current', 'todo', 'todo'], $states(['status' => 'pending']));
     assert_same(['done', 'error', 'todo', 'todo'], $states(['status' => 'rejected']));
@@ -103,6 +103,17 @@ test('진행 단계는 상태에 맞춰 강조된다', function () {
     assert_same(['done', 'done', 'done', 'done'], $states(['status' => 'processing']));
     assert_same(['done', 'done', 'done', 'done'], $states(['status' => 'completed']));
     assert_same(['done', 'done', 'error', 'todo'], $states(['status' => 'failed', 'provider_voice_id' => '']));
+
+    // 자동 생성(기본)일 때: 녹음 → 목소리 생성 → 준비 완료.
+    $auto = function (array $voice) {
+        return array_map(function ($s) {
+            return $s['key'] . ':' . $s['state'];
+        }, VL::timeline($voice, false));
+    };
+    assert_same(['record:current', 'clone:todo', 'done:todo'], $auto(['status' => 'draft']));
+    assert_same(['record:done', 'clone:current', 'done:todo'], $auto(['status' => 'cloning']));
+    assert_same(['record:done', 'clone:done', 'done:done'], $auto(['status' => 'completed']));
+    assert_same(['record:done', 'clone:error', 'done:todo'], $auto(['status' => 'failed']));
 });
 
 test('php.ini 크기 표기와 업로드 한도', function () {

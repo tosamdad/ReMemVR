@@ -113,6 +113,8 @@
 - users(회원), children(자녀: birth_date, gender, avatar), user_social_accounts, password_resets
 - voice_profiles(가족 목소리). status 흐름:
     draft(녹음 중) → pending(검토 대기, 사용자가 동의하고 제출) → cloning(ElevenLabs 목소리 생성 중) → completed(준비됨)
+    운영 설정 voice.auto_clone_on_submit(기본 켬, 0005)이면 제출하자마자 자동 승인되어 바로 cloning 으로 간다(관리자 검토 없음).
+    녹음 샘플은 하나로 합치지 않고 모두 ElevenLabs 즉시 목소리 복제(IVC)에 함께 보낸다(여러 파일을 받는다). 끝내 실패하면 운영 알림 메일을 보낸다.
     목소리가 준비되어도 동화를 한꺼번에 만들지 않는다. 동화는 회원이 골라 요청하고 관리자가 생성을 시작한 것만 만든다(story_requests).
     processing 은 예전 일괄 생성 방식의 상태로, 0004 에서 completed 로 옮겼고 지금은 쓰지 않는다.
     rejected(반려, 재녹음 필요), failed(생성 실패). 삭제는 deleted_at(소프트 삭제) + ElevenLabs 목소리 삭제 작업

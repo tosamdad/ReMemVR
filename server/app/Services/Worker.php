@@ -526,6 +526,7 @@ class Worker
                     'UPDATE voice_profiles SET status = ? WHERE id = ? AND status = ? AND deleted_at IS NULL',
                     ['failed', $pid, 'cloning']
                 );
+                self::mailAdminCloneFailed($pid, $message);
             }
 
             return;
@@ -764,6 +765,24 @@ class Worker
     }
 
     /** 목소리 프로필 기준 처리 콘솔 기록 */
+    /** 목소리 생성이 끝내 실패하면 운영 알림 메일 주소로 알린다(자동 생성은 관리자가 지켜보지 않으므로). */
+    private static function mailAdminCloneFailed(int $pid, string $message): void
+    {
+        $to = trim((string) setting('notify.admin_email', ''));
+        if ($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)) {
+            return;
+        }
+        $label = (string) db_value('SELECT label FROM voice_profiles WHERE id = ?', [$pid]);
+        Jobs::enqueue('mail', [
+            'to' => $to,
+            'subject' => '[ReMemVR] 목소리 생성 실패: ' . ($label !== '' ? $label : '#' . $pid),
+            'text' => "가족 목소리를 ElevenLabs 에서 만들지 못했습니다.\n\n"
+                . '목소리: ' . $label . ' (#' . $pid . ")\n"
+                . '오류: ' . $message . "\n\n"
+                . '원인을 해결한 뒤 관리자 화면에서 다시 생성할 수 있습니다: ' . absolute_url('/admin/voices/' . $pid) . "\n",
+        ], ['priority' => 6, 'ref_type' => 'voice_profile', 'ref_id' => $pid]);
+    }
+
     private static function plog(array $job, int $pid, string $level, string $message): void
     {
         Jobs::log((int) $job['id'], 'voice_profile', $pid ?: null, $level, $message);

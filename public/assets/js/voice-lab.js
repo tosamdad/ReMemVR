@@ -81,7 +81,9 @@
     var anyWorking = cards.some(function (c) { return WORKING.test(c.getAttribute('data-status')); });
     if (!anyWorking) return;
     var busy = false;
-    var timer = setInterval(poll, 10000);
+    // 목소리 복제는 보통 1분 안에 끝나므로 그동안은 더 자주 확인한다.
+    var cloning = cards.some(function (c) { return c.getAttribute('data-status') === 'cloning'; });
+    var timer = setInterval(poll, cloning ? 4000 : 10000);
 
     async function poll() {
       if (document.hidden || busy) return;
@@ -432,17 +434,17 @@
       el.totalBar.classList.toggle('bg-primary', totalMs < data.minMs);
       var hint, icon = 'info';
       if (!samples.length) {
-        hint = '최소 ' + secText(data.minMs / 1000) + ' 이상 녹음하면 제출할 수 있어요.';
+        hint = '최소 ' + secText(data.minMs / 1000) + ' 이상 녹음하면 완료할 수 있어요.';
       } else if (totalMs < data.minMs && unknownCount > 0) {
-        hint = '길이를 알 수 없는 파일이 ' + unknownCount + '개 있어요. 제출하면 검토할 때 확인할게요.';
+        hint = '길이를 알 수 없는 파일이 ' + unknownCount + '개 있어요. 완료하면 운영팀이 확인한 뒤 만들어요.';
       } else if (totalMs < data.minMs) {
-        hint = '제출하려면 ' + secText(Math.ceil((data.minMs - totalMs) / 1000)) + ' 더 녹음해 주세요.';
+        hint = '완료하려면 ' + secText(Math.ceil((data.minMs - totalMs) / 1000)) + ' 더 녹음해 주세요.';
       } else if (totalMs < data.recMs) {
         icon = 'check_circle';
-        hint = '제출할 수 있어요! ' + secText(data.recMs / 1000) + '까지 녹음하면 더 닮은 목소리가 돼요.';
+        hint = '완료할 수 있어요! ' + secText(data.recMs / 1000) + '까지 녹음하면 더 닮은 목소리가 돼요.';
       } else {
         icon = 'celebration';
-        hint = '충분히 녹음했어요. 이제 제출해 주세요.';
+        hint = '충분히 녹음했어요. 이제 완료해 주세요.';
       }
       el.totalHint.innerHTML = '<span class="material-symbols-outlined text-[18px] ' + (icon === 'info' ? 'text-outline' : 'text-secondary') + '">' + icon + '</span><span>' + RM.escapeHtml(hint) + '</span>';
       updateSubmit();
@@ -453,9 +455,9 @@
       var ok = canSubmit();
       el.submitBtn.disabled = !(ok && el.consent.checked);
       if (!ok) {
-        el.submitHint.textContent = samples.length ? '최소 ' + secText(data.minMs / 1000) + '을 채우면 제출할 수 있어요.' : '먼저 대본을 녹음해 주세요.';
+        el.submitHint.textContent = samples.length ? '최소 ' + secText(data.minMs / 1000) + '을 채우면 완료할 수 있어요.' : '먼저 대본을 녹음해 주세요.';
       } else {
-        el.submitHint.textContent = el.consent.checked ? '' : '위 내용에 동의하면 제출할 수 있어요.';
+        el.submitHint.textContent = el.consent.checked ? '' : '위 내용에 동의하면 완료할 수 있어요.';
       }
     }
 
@@ -463,7 +465,7 @@
     el.submitForm.addEventListener('submit', function (e) {
       if (el.submitBtn.disabled) { e.preventDefault(); return; }
       el.submitBtn.disabled = true;
-      el.submitBtn.lastChild.textContent = '제출하는 중...';
+      el.submitBtn.lastChild.textContent = '보내는 중...';
     });
 
     // ── 저장한 녹음 목록 ──
@@ -700,17 +702,22 @@
       el.save.disabled = true;
       var label = el.save.lastChild;
       label.textContent = '저장 중...';
+      var wasReady = canSubmit();
       try {
         await upload(take);
-        RM.toast('녹음을 저장했어요.', 'success');
         discardTake();
         var next = nextScriptKey();
-        if (next) {
+        if (!wasReady && canSubmit()) {
+          // 최소 길이(1분)를 막 넘겼으면 바로 완료 단계로 보낸다. 더 녹음하고 싶으면 녹음 탭으로 돌아가면 된다.
+          RM.toast('최소 녹음 시간을 채웠어요! 동의하고 완료를 누르면 바로 목소리를 만들어요.', 'success');
+          setStep(3, true);
+        } else if (next) {
+          RM.toast('녹음을 저장했어요.', 'success');
           selectScript(next);
           var panel = $('[data-script-panel="' + next + '"]', root);
           if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
         } else if (canSubmit()) {
-          RM.toast('대본을 모두 녹음했어요! 이제 확인 & 제출로 넘어가 볼까요?', 'info');
+          RM.toast('대본을 모두 녹음했어요! 이제 완료로 넘어가 볼까요?', 'info');
           el.nextStep.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
       } catch (err) {

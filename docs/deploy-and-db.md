@@ -112,6 +112,7 @@ server/migrations/ 에 다음 번호로 새 파일을 만든다. 파일 이름�
 
 확인된 서버 환경(2026-10-04 접속 점검): PHP 8.4, Apache 모듈 방식, open_basedir 제한 없음, MariaDB 10.6, 홈 폴더 쓰기 가능.
 접속정보가 맞는지는 Actions → Connection Check → Run workflow 로 언제든 다시 확인할 수 있다. 점검 파일은 끝나면 지워진다.
+목소리 생성(ElevenLabs)이 실패하면 Actions → Voice Check → Run workflow 로 서버 안에서 원인을 확인한다. inspect 는 요금제(목소리 복제 가능 여부), 최근 목소리와 샘플 파일, 생성 작업 오류를 보여 주고, clone_test 는 실제 샘플로 목소리를 하나 만들고 10자 정도 읽혀 본 뒤 바로 지운다(목소리 생성은 크레딧을 쓰지 않고, 읽기는 10크레딧 안팎). DB 는 바꾸지 않으며 점검 파일은 끝나면 지워진다.
 
 5-1. 서버 파일(녹음, 생성 오디오) 보관
 

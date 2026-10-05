@@ -7,6 +7,7 @@ use App\Core\Text;
 /**
  * 가족 목소리의 상태 흐름을 다룬다.
  *   draft → pending(제출) → cloning(승인, voice_clone 작업) → completed(목소리 준비됨)
+ *   자동 생성(voice.auto_clone_on_submit, 기본 켬)이면 제출하자마자 승인되어 바로 cloning 으로 간다.
  *   rejected(반려), failed(생성 실패). 삭제는 소프트 삭제 + voice_delete 작업.
  * 목소리가 준비되어도 동화를 한꺼번에 만들지 않는다. 회원이 동화마다 생성 요청을 하고
  * 관리자가 생성을 시작하면(StoryRequests::approve) queueStories 로 그 동화만 만든다.
@@ -20,7 +21,10 @@ class VoiceService
 
     // ───────────────────────── 사용자 제출 ─────────────────────────
 
-    /** 사용자 제출(draft|rejected → pending). 샘플 길이, 품질 등급을 다시 계산하고 관리자에게 알린다. */
+    /**
+     * 사용자 제출(draft|rejected → pending). 샘플 길이, 품질 등급을 다시 계산한다.
+     * 자동 생성이 켜져 있으면(기본) 바로 승인해 cloning 으로 넘기고, 아니면 관리자에게 알리고 검토를 기다린다.
+     */
     public static function submit(int $profileId): void
     {
         $profile = self::find($profileId);
@@ -43,6 +47,19 @@ class VoiceService
         );
         Jobs::log(null, 'voice_profile', $profileId, 'info', '사용자가 목소리 생성을 요청했습니다 (샘플 ' . $summary['count'] . '개, 총 ' . Worker::koDuration($summary['total_ms']) . ').');
 
+        // 자동 생성(기본): 관리자 검토 없이 바로 ElevenLabs 목소리를 만든다.
+        // 길이를 모르는 샘플이 섞여 있으면 최소 길이를 확인할 수 없으므로 관리자 검토로 넘긴다.
+        if (self::autoClone() && $summary['all_measured']) {
+            try {
+                self::approve($profileId, null);
+
+                return;
+            } catch (\RuntimeException $e) {
+                // 자동 생성을 시작하지 못하면 관리자 검토 대기로 남긴다.
+                Jobs::log(null, 'voice_profile', $profileId, 'warn', '자동 생성 시작 실패: ' . $e->getMessage());
+            }
+        }
+
         $adminEmail = trim((string) setting('notify.admin_email', ''));
         if ($adminEmail !== '' && filter_var($adminEmail, FILTER_VALIDATE_EMAIL)) {
             $user = db_one('SELECT name, email FROM users WHERE id = ?', [(int) $profile['user_id']]);
@@ -58,17 +75,13 @@ class VoiceService
                 'text' => $text,
             ], ['priority' => 6, 'ref_type' => 'voice_profile', 'ref_id' => $profileId]);
         }
+        Worker::kick();
+    }
 
-        if (setting('voice.auto_clone_on_submit', false) && ElevenLabs::ready()) {
-            try {
-                self::approve($profileId, null);
-            } catch (\RuntimeException $e) {
-                // 자동 승인에 실패하면 관리자 검토 대기로 남긴다.
-                Jobs::log(null, 'voice_profile', $profileId, 'warn', '자동 승인 실패: ' . $e->getMessage());
-            }
-        } else {
-            Worker::kick();
-        }
+    /** 제출하면 관리자 검토 없이 바로 목소리를 만드는지(운영 설정, 기본 켬. ElevenLabs 키가 있어야 한다) */
+    public static function autoClone(): bool
+    {
+        return (bool) setting('voice.auto_clone_on_submit', true) && ElevenLabs::ready();
     }
 
     // ───────────────────────── 관리자 승인, 반려 ─────────────────────────
