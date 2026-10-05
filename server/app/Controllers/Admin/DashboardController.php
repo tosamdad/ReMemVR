@@ -81,6 +81,9 @@ class DashboardController
             'cost.budget' => $c['budget'] > 0 ? '(' . fmt_krw($c['budget']) . ')' : '(미설정)',
             'cost.credits' => fmt_number($c['credits_today']) . ' 크레딧',
             'cost.unit' => '크레딧당 ₩' . fmt_number($c['krw_per_credit'], 2),
+            'cost.cycle' => $c['cycle'] ? fmt_number($c['cycle']['used']) . ' / ' . fmt_number($c['cycle']['limit']) . ' 크레딧' : '-',
+            'cost.cycle_note' => $c['cycle'] ? self::cycleNote($c['cycle']) : '구독 정보를 불러오지 못했습니다',
+            'cost.source' => self::costSource($c),
             'queue.total' => fmt_number($d['queue']['total']) . '건 검토 필요',
             'latency.avg' => $lat['avg_ms'] === null ? '오늘 답변 없음' : DashboardStats::koLatency($lat['avg_ms']),
             'approvable' => fmt_number($d['approvable']),
@@ -88,13 +91,47 @@ class DashboardController
         ];
     }
 
+    /** 이번 결제 주기 설명: 사용률, 요금제, 갱신일 */
+    private static function cycleNote(array $cycle): string
+    {
+        $parts = [fmt_number($cycle['percent'], 1) . '% 사용'];
+        if (!empty($cycle['tier'])) {
+            $parts[] = ucfirst((string) $cycle['tier']) . ' 요금제';
+        }
+        if (!empty($cycle['reset_at'])) {
+            $parts[] = date('n월 j일', strtotime((string) $cycle['reset_at'])) . ' 갱신';
+        }
+
+        return implode(' · ', $parts);
+    }
+
+    /** 비용 카드 아래 근거 문구 */
+    private static function costSource(array $c): string
+    {
+        $unit = '크레딧당 ₩' . fmt_number($c['krw_per_credit'], 2);
+        if ($c['source'] === 'elevenlabs') {
+            $at = $c['checked_at'] ? date('H:i', strtotime((string) $c['checked_at'])) : '';
+            $text = 'ElevenLabs 실제 사용량 기준(' . $at . ' 조회, 오늘 0시부터), 원화는 설정 단가(' . $unit . ')로 환산.';
+            if ((int) $c['internal_credits'] !== (int) $c['credits_today']) {
+                $text .= ' 서버 기록 추정은 ' . fmt_number($c['internal_credits']) . ' 크레딧.';
+            }
+
+            return $text;
+        }
+        $why = $c['usage_error'] ? ' ElevenLabs 사용량 조회 실패: ' . str_limit((string) $c['usage_error'], 80) : '';
+
+        return '서버 기록 추정치(' . $unit . ', 오늘 0시부터).' . $why;
+    }
+
     /** 막대 너비(%) */
     public static function widths(array $d): array
     {
         $pct = $d['cost']['percent'];
+        $cycle = $d['cost']['cycle'];
 
         return [
             'cost.percent' => $pct === null ? 0 : max(0, min(100, (int) $pct)),
+            'cost.cycle' => $cycle ? max(0, min(100, (float) $cycle['percent'])) : 0,
         ];
     }
 }

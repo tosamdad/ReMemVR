@@ -5,6 +5,7 @@ use App\Core\Auth;
 use App\Core\Request;
 use App\Services\Playlists;
 use App\Services\StoryRequests;
+use App\Services\VoiceService;
 
 /**
  * 내 동화: 회원이 보낸 동화 생성 요청 목록.
@@ -34,7 +35,7 @@ class LibraryController
         }
 
         $readyVoices = (int) db_value(
-            "SELECT COUNT(*) FROM voice_profiles WHERE user_id = ? AND deleted_at IS NULL AND status = 'completed' AND provider_voice_id IS NOT NULL AND provider_voice_id <> ''",
+            'SELECT COUNT(*) FROM voice_profiles vp WHERE vp.user_id = ? AND vp.deleted_at IS NULL AND ' . VoiceService::readySql('vp'),
             [$userId]
         );
         $anyVoices = (int) db_value('SELECT COUNT(*) FROM voice_profiles WHERE user_id = ? AND deleted_at IS NULL', [$userId]);

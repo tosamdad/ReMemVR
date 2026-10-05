@@ -122,6 +122,14 @@
     목소리가 준비되어도 동화를 한꺼번에 만들지 않는다. 동화는 회원이 골라 요청하고 관리자가 생성을 시작한 것만 만든다(story_requests).
     processing 은 예전 일괄 생성 방식의 상태로, 0004 에서 completed 로 옮겼고 지금은 쓰지 않는다.
     rejected(반려, 재녹음 필요), failed(생성 실패). 삭제는 deleted_at(소프트 삭제) + ElevenLabs 목소리 삭제 작업
+    ElevenLabs 목소리 자리(0006): 요금제마다 만들어 둘 수 있는 목소리 수가 정해져 있다(Starter 10, 설정 elevenlabs.voice_slot_limit, 0 이면 관리 안 함).
+    새 목소리를 만들 자리가 없으면 삭제된 목소리, 그다음 provider_last_used_at(동화, 안내 음성, 답 합성, 생성 시각)이 가장 오래된 목소리를
+    ElevenLabs 에서만 지운다(provider_voice_id NULL, provider_released_at 기록, status 는 completed 그대로). 대기, 진행 중 작업이 있는 목소리는 고르지 않는다.
+    녹음과 만든 동화 오디오, 안내 음성은 남기므로 재생은 그대로 된다. 자리를 비운 목소리도 동화를 요청할 수 있고(VoiceService::readySql),
+    생성을 시작하면 voice_clone {restore:true}(우선순위 1)로 남은 녹음으로 다시 만든 뒤 동화를 만든다(이미 만든 동화는 다시 만들지 않는다).
+    비울 목소리가 모두 작업 중이면 RetryLater 로 시도 횟수를 쓰지 않고 미룬다(Jobs::postpone, 등록 뒤 24시간까지).
+    ElevenLabs 가 목소리 개수 한도(voice_limit_reached)를 알려 오면 한 자리를 더 비우고 한 번 더 시도한다.
+    자리를 비운 목소리로 아이가 질문하면 답은 기기 음성으로 읽는다(재생 중에 목소리를 다시 만들지 않는다).
     stability, similarity_boost, style, speaker_boost: 관리자가 조율하는 합성 파라미터(NULL 이면 설정 기본값)
     batch_status: none | queued | running | done | partial | failed (이 목소리로 생성을 시작한 요청 동화의 진행)
 - voice_samples(목소리 샘플: 길이, snr_db, peak_db, noise_db, clip_count, quality_grade 는 브라우저에서 측정해 보낸다)
@@ -199,6 +207,10 @@ sentence_timings JSON 형식(story_audios)
     Usage::krw(float $usd): float,  Usage::elevenlabsCreditRatio(string $model): float,  Usage::summary(string $from, string $to): array
     Health::status(bool $fresh = false): array   ['gemini'=>[ok, ms, message], 'elevenlabs'=>[ok, ms, message, credits], 'storage'=>[...], 'db'=>[...], 'worker'=>[...]]
         결과는 설정 health.cache 에 300초 보관한다(관리자 설정 화면에서 고치는 항목이 아니다). Health::allOk(): bool
+    DashboardStats::providerUsage(bool $fetch = true): ?array   ElevenLabs 실제 사용량(오늘 크레딧 GET /v1/usage/character-stats,
+        이번 결제 주기 사용량과 한도 GET /v1/user/subscription). 설정 elevenlabs.usage_cache 에 120초 보관한다.
+        대시보드 비용 카드와 관리자 머리글의 금일 API 비용은 이 값(크레딧 × 설정 단가) + 그 밖의 API 기록으로 계산하고,
+        조회에 실패하면 서버 기록 추정치(api_usage_logs)와 실패 이유를 보여 준다.
 
     ElevenLabs::addVoice(string $name, array $files, string $description = '', array $usage = [])   usage: user_id, ref_type, ref_id
     ElevenLabs::synthesize(string $voiceId, string $text, array $opts = [])   opts 에 timeout(초, 기본 180), chunk_chars(긴 글 분할 길이)도 받는다

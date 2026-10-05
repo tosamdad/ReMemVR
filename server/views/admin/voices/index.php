@@ -4,6 +4,7 @@
  * 변수: rows, total, page, pages, filters, counts, kpi, estimate, detail(?array), elReady
  */
 use App\Services\DashboardStats;
+use App\Services\VoiceService;
 
 layout('admin/layout', ['title' => '목소리 생성 관리', 'active' => 'voices']);
 
@@ -48,6 +49,8 @@ $tabs = [
 $storyCount = (int) $estimate['stories'];
 $ready = $kpi['readiness'];
 $selId = $detail ? (int) $detail['voice']['id'] : 0;
+$slotLimit = VoiceService::slotLimit();
+$slotsUsed = VoiceService::slotsUsed();
 $from = ($page - 1) * 20 + 1;
 $to = min($total, $page * 20);
 ?>
@@ -66,7 +69,7 @@ $to = min($total, $page * 20);
       <div class="flex flex-col">
         <span class="font-label-sm text-label-sm uppercase tracking-wider text-on-surface-variant">ElevenLabs 생성 중</span>
         <span class="mt-1 font-headline-lg text-headline-lg font-bold text-primary"><?= fmt_number($kpi['cloning']) ?><span class="ml-1 font-body-md text-body-md font-normal text-on-surface-variant">건</span></span>
-        <span class="mt-0.5 font-label-sm text-label-sm text-on-surface-variant">Instant Voice Clone</span>
+        <span class="mt-0.5 font-label-sm text-label-sm text-on-surface-variant" title="자리가 다 차면 가장 오래 쓰지 않은 목소리의 자리를 비우고, 그 목소리로 새 동화를 만들 때 녹음으로 다시 만듭니다."><?= $slotLimit > 0 ? 'ElevenLabs 자리 ' . fmt_number($slotsUsed) . ' / ' . fmt_number($slotLimit) . '개 사용' : 'Instant Voice Clone' ?></span>
       </div>
       <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary-fixed text-on-primary-fixed"><span class="material-symbols-outlined text-[26px]">neurology</span></div>
     </div>
@@ -168,6 +171,7 @@ $to = min($total, $page * 20);
                 $child = $r['child'];
                 $age = $child ? child_age($child) : null;
                 $hasVoice = (string) $r['provider_voice_id'] !== '';
+                $released = !$hasVoice && VoiceService::isReleased($r);
                 $name = $r['user_name'] . ' (' . $r['label'] . ')';
                 $detailUrl = $pageUrl('/admin/voices/' . $id, ['page' => $page > 1 ? $page : null, 'keep' => isset($filters['keep']) ? $filters['keep'] : null]);
                 $contact = (string) $r['user_phone'] !== '' ? mask_phone($r['user_phone']) : mask_email($r['user_email']);
@@ -214,6 +218,10 @@ $to = min($total, $page * 20);
                     <span class="w-fit whitespace-nowrap rounded-md <?= $r['status'] === 'completed' ? 'bg-surface-container-high text-on-surface' : 'bg-primary-container text-on-primary-container' ?> px-2.5 py-1 font-label-sm text-label-sm font-bold" title="ElevenLabs voice_id(가림)"><?= e(DashboardStats::maskVoiceId($r['provider_voice_id'])) ?></span>
                     <span class="mt-1.5 font-label-sm text-label-sm text-on-surface-variant">복제 완료 (IVC)</span>
                     <?php if ($r['cloned_at']): ?><span class="font-label-sm text-label-sm text-on-surface-variant/80"><?= e(date('m.d H:i', strtotime($r['cloned_at']))) ?></span><?php endif; ?>
+                    <?php elseif ($released): ?>
+                    <span class="flex w-fit items-center gap-1 rounded-md bg-surface-container-highest px-2.5 py-1 font-label-sm text-label-sm text-on-surface-variant" title="ElevenLabs 목소리 자리가 모자라 가장 오래 쓰지 않은 이 목소리를 ElevenLabs 에서만 지웠습니다. 녹음과 만든 동화는 그대로이고, 이 목소리로 새 동화를 만들 때 녹음으로 다시 만듭니다."><span class="material-symbols-outlined text-[14px]">event_seat</span>자리 비움</span>
+                    <span class="mt-1.5 font-label-sm text-label-sm text-on-surface-variant">새 동화 생성 때 다시 만듦</span>
+                    <span class="font-label-sm text-label-sm text-on-surface-variant/80"><?= e(date('m.d H:i', strtotime($r['provider_released_at']))) ?></span>
                     <?php elseif ($r['status'] === 'cloning'): ?>
                     <span class="flex w-fit items-center gap-1 rounded-md bg-primary-fixed px-2.5 py-1 font-label-sm text-label-sm text-on-primary-fixed-variant"><span class="material-symbols-outlined animate-spin text-[14px]">progress_activity</span>생성 중</span>
                     <span class="mt-1.5 font-label-sm text-label-sm text-on-surface-variant">ElevenLabs 응답 대기</span>

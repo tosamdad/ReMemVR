@@ -40,6 +40,8 @@ class Settings
         'elevenlabs.remove_background_noise' => true,
         'elevenlabs.usd_per_1k_credits' => 0.30,
         'elevenlabs.flash_credit_ratio' => 0.5,
+        // ElevenLabs 에 만들어 둘 수 있는 목소리 수(Starter 10). 다 차면 가장 오래 안 쓴 목소리의 자리를 비운다. 0 이면 관리하지 않는다.
+        'elevenlabs.voice_slot_limit' => 10,
 
         // Gemini
         'gemini.model' => 'gemini-2.5-flash',

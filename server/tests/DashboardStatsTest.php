@@ -100,3 +100,50 @@ test('상태별 건수와 목록 KPI 를 읽어 온다', function () {
     $ready = $kpi['readiness'];
     assert_true($ready['percent'] === null || ($ready['percent'] >= 0 && $ready['percent'] <= 100), '준비율은 0~100%');
 });
+
+test('ElevenLabs 실제 사용량을 받아 두었으면 비용과 크레딧을 그 값으로 보여 준다', function () {
+    if (!App\Services\ElevenLabs::ready()) {
+        skip_test('ElevenLabs 키(또는 가짜 모드)가 없다');
+    }
+    $pdo = test_db();
+    $pdo->beginTransaction();
+    try {
+        App\Core\Settings::set('elevenlabs.usd_per_1k_credits', 0.30);
+        App\Core\Settings::set('cost.usd_krw', 1400);
+        App\Core\Settings::set(DashboardStats::USAGE_CACHE_KEY, [
+            'day' => date('Y-m-d'), 'ts' => time(), 'checked_at' => now(),
+            'today_ok' => true, 'today_credits' => 882, 'today_error' => null,
+            'cycle_ok' => true, 'cycle_used' => 882, 'cycle_limit' => 40000, 'reset_at' => '2026-11-04 09:00:00', 'tier' => 'starter',
+        ]);
+        $c = DashboardStats::costKpis(0);
+        assert_same('elevenlabs', $c['source']);
+        assert_same(882, $c['credits_today']);
+        $other = (float) db_value("SELECT COALESCE(SUM(cost_krw), 0) FROM api_usage_logs WHERE provider <> 'elevenlabs' AND created_at >= ?", [date('Y-m-d 00:00:00')]);
+        assert_same(round($other + 882 * 0.42, 2), round($c['today'], 2));
+        assert_same(40000, $c['cycle']['limit']);
+        assert_same(2.2, $c['cycle']['percent']);
+        $s = App\Controllers\Admin\DashboardController::stats(['voices' => ['pending' => 0, 'in_progress' => 0, 'approved_today' => 0], 'plays' => ['total' => 0, 'voice_share' => null],
+            'interactions' => ['total' => 0, 'per_story' => null, 'qa_enabled' => false, 'max_questions' => 0], 'cost' => $c, 'latency' => ['avg_ms' => null],
+            'queue' => ['total' => 0], 'approvable' => 0, 'generated_at' => now()]);
+        assert_same('882 / 40,000 크레딧', $s['cost.cycle']);
+        assert_contains('Starter 요금제', $s['cost.cycle_note']);
+        assert_contains('11월 4일 갱신', $s['cost.cycle_note']);
+        assert_contains('ElevenLabs 실제 사용량 기준', $s['cost.source']);
+
+        // 사용량 조회가 실패하면 서버 기록 추정치와 실패 이유를 보여 준다.
+        App\Core\Settings::set(DashboardStats::USAGE_CACHE_KEY, [
+            'day' => date('Y-m-d'), 'ts' => time(), 'checked_at' => now(),
+            'today_ok' => false, 'today_credits' => 0, 'today_error' => 'ElevenLabs API 키에 필요한 권한이 없습니다.',
+            'cycle_ok' => false, 'cycle_used' => 0, 'cycle_limit' => 0, 'reset_at' => null, 'tier' => null,
+        ]);
+        $c = DashboardStats::costKpis(0);
+        assert_same('internal', $c['source']);
+        assert_same(null, $c['cycle']);
+        assert_same(DashboardStats::internalCreditsToday(), $c['credits_today']);
+    } finally {
+        $pdo->rollBack();
+        $prop = new ReflectionProperty(App\Core\Settings::class, 'cache');
+        $prop->setAccessible(true);
+        $prop->setValue(null, null);
+    }
+});

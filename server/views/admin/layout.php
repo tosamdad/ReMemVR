@@ -16,7 +16,8 @@ try {
     $counts['voices'] = (int) db_value("SELECT COUNT(*) FROM voice_profiles WHERE status = 'pending' AND deleted_at IS NULL");
     $counts['requests'] = (int) db_value("SELECT COUNT(*) FROM story_requests WHERE status = 'requested'");
     $counts['inquiries'] = (int) db_value("SELECT COUNT(*) FROM inquiries WHERE status = 'open'");
-    $todayCost = (float) db_value('SELECT COALESCE(SUM(cost_krw), 0) FROM api_usage_logs WHERE created_at >= CURDATE()');
+    // ElevenLabs 실제 사용량(대시보드가 2분마다 받아 둔 값)으로 계산한다. 받아 둔 값이 없으면 서버 기록 추정치.
+    $todayCost = \App\Services\DashboardStats::todayCostKrw(false);
 } catch (Throwable $e) {
     app_log('error', '관리자 레이아웃 집계 실패: ' . $e->getMessage());
 }
@@ -101,7 +102,7 @@ $navLink = static function (array $item, string $active): string {
       <div class="flex min-w-0 items-center gap-3 lg:gap-6">
         <button type="button" class="flex h-10 w-10 items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container-high lg:hidden" data-admin-menu-open aria-label="메뉴"><span class="material-symbols-outlined">menu</span></button>
         <div class="hidden items-center gap-2.5 rounded-full bg-surface-container-low px-3 py-1.5 sm:flex"><span class="h-2 w-2 rounded-full <?= $statusDot ?>"></span><span class="truncate font-label-sm text-label-sm text-on-surface"><?= e($statusText) ?></span></div>
-        <div class="hidden items-center gap-2 rounded-full bg-surface-container-low px-3 py-1.5 md:flex"><span class="material-symbols-outlined text-[18px] text-secondary">monetization_on</span><span class="font-label-sm text-label-sm text-on-surface-variant">금일 예상 API 비용:</span><span class="font-label-md text-label-md font-bold text-secondary"><?= e(fmt_krw($todayCost)) ?></span></div>
+        <div class="hidden items-center gap-2 rounded-full bg-surface-container-low px-3 py-1.5 md:flex"><span class="material-symbols-outlined text-[18px] text-secondary">monetization_on</span><span class="font-label-sm text-label-sm text-on-surface-variant">금일 API 비용:</span><span class="font-label-md text-label-md font-bold text-secondary"><?= e(fmt_krw($todayCost)) ?></span></div>
       </div>
       <div class="flex items-center gap-3 lg:gap-4">
         <a href="<?= e(url('/admin/inquiries')) ?>" class="relative flex h-10 w-10 items-center justify-center rounded-full text-on-surface-variant transition-colors hover:bg-surface-container-high" aria-label="알림"><span class="material-symbols-outlined text-[20px]">notifications</span><?php if ($counts['voices'] + $counts['requests'] + $counts['inquiries'] > 0): ?><span class="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-error"></span><?php endif; ?></a>

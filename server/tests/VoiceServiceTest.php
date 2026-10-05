@@ -467,3 +467,124 @@ test('가짜 API 로 목소리 승인, 동화 생성 요청, 생성 시작, 완�
         }
     });
 });
+
+/** 다른 목소리가 ElevenLabs 자리 계산에 섞이지 않도록 트랜잭션 안에서 숨긴다(되돌릴 때 원래대로). */
+function voice_test_hide_slots(): void
+{
+    db_exec("UPDATE voice_profiles SET provider_deleted_at = NOW() WHERE provider_voice_id IS NOT NULL AND provider_voice_id <> '' AND provider_deleted_at IS NULL");
+}
+
+test('ElevenLabs 목소리 자리가 다 차면 가장 오래 쓰지 않은 목소리의 자리를 비운다(작업 중인 목소리는 건너뜀)', function () {
+    voice_test_tx(function () {
+        voice_test_hide_slots();
+        Settings::set('elevenlabs.voice_slot_limit', 3);
+        $make = function (string $label, string $usedAt) {
+            $t = voice_test_profile(['status' => 'completed', 'label' => $label, 'provider_voice_id' => 'fake_' . bin2hex(random_bytes(6)), 'cloned_at' => $usedAt]);
+            db_exec('UPDATE voice_profiles SET provider_last_used_at = ? WHERE id = ?', [$usedAt, $t['profile_id']]);
+
+            return $t['profile_id'];
+        };
+        $oldest = $make('할머니', '2026-01-01 10:00:00');
+        $older = $make('아빠', '2026-02-01 10:00:00');
+        $recent = $make('엄마', '2026-09-01 10:00:00');
+        $new = voice_test_profile(['status' => 'cloning', 'label' => '삼촌'])['profile_id'];
+        assert_same(3, VoiceService::slotsUsed());
+
+        // 가장 오래된 목소리는 동화를 만드는 중이라 건너뛰고, 그다음으로 오래된 목소리의 자리를 비운다.
+        Jobs::enqueue('story_tts', ['profile_id' => $oldest, 'story_id' => 1], ['ref_type' => 'voice_profile', 'ref_id' => $oldest]);
+        assert_same([$older], VoiceService::ensureSlot($new));
+        $p = db_one('SELECT * FROM voice_profiles WHERE id = ?', [$older]);
+        assert_same(null, $p['provider_voice_id']);
+        assert_same('completed', $p['status']);
+        assert_true($p['provider_released_at'] !== null, 'provider_released_at 이 없다');
+        assert_true(VoiceService::isReleased($p), '자리 비움으로 보이지 않는다');
+        assert_same(2, VoiceService::slotsUsed());
+
+        // 자리가 남으면 비우지 않는다.
+        assert_same([], VoiceService::ensureSlot($new));
+        assert_same($recent, (int) db_value("SELECT id FROM voice_profiles WHERE id = ? AND provider_voice_id <> ''", [$recent]));
+
+        // 자리 비운 목소리도 동화를 요청할 수 있는 목소리로 센다.
+        assert_same(1, (int) db_value('SELECT COUNT(*) FROM voice_profiles vp WHERE vp.id = ? AND ' . VoiceService::readySql('vp'), [$older]));
+
+        // 모두 작업 중이면 기다린다(시도 횟수를 쓰지 않는 RetryLater).
+        Settings::set('elevenlabs.voice_slot_limit', 1);
+        Jobs::enqueue('voice_clips', ['profile_id' => $recent], ['ref_type' => 'voice_profile', 'ref_id' => $recent]);
+        $thrown = null;
+        try {
+            VoiceService::ensureSlot($new);
+        } catch (App\Services\RetryLater $e) {
+            $thrown = $e;
+        }
+        assert_true($thrown !== null, 'RetryLater 가 나지 않았다');
+    });
+});
+
+test('자리를 비운 목소리로 새 동화를 만들면 녹음으로 다시 만들고, 만든 동화와 안내 음성은 그대로 둔다', function () {
+    if (!config('providers_fake') || !class_exists('App\\Services\\FakeAudio')) {
+        skip_test('providers_fake 설정이 꺼져 있다');
+    }
+    voice_test_tx(function () {
+        voice_test_hide_slots();
+        Settings::set('elevenlabs.voice_slot_limit', 1);
+        $drain = function () {
+            for ($i = 0; $i < 40; $i++) {
+                $due = (int) db_value("SELECT COUNT(*) FROM jobs WHERE status IN ('pending', 'running') AND available_at <= NOW() AND ref_type = 'voice_profile' AND ref_id IN (" . implode(', ', array_map('intval', $GLOBALS['__voice_test_profiles'])) . ')');
+                if ($due === 0) {
+                    break;
+                }
+                $r = Worker::run(60);
+                if (!empty($r['locked'])) {
+                    usleep(300000);
+                }
+            }
+        };
+        $a = voice_test_profile(['status' => 'pending', 'label' => '엄마']);
+        voice_test_sample($a['profile_id'], 70000);
+        $s1 = voice_test_story();
+        $s2 = voice_test_story(['두 번째 동화 첫 문장이에요.', '두 번째 동화 끝이에요.']);
+        VoiceService::approve($a['profile_id'], null);
+        $drain();
+        $res = StoryRequests::create($a['user_id'], $s1, [$a['profile_id']]);
+        StoryRequests::approve($res['created'], null);
+        $drain();
+        $first = db_one('SELECT * FROM story_audios WHERE story_id = ? AND voice_profile_id = ?', [$s1, $a['profile_id']]);
+        assert_same('completed', $first['status']);
+        $clipCount = (int) db_value("SELECT COUNT(*) FROM voice_clips WHERE voice_profile_id = ? AND status = 'completed'", [$a['profile_id']]);
+        assert_true($clipCount > 0, '안내 음성이 없다');
+
+        // 다른 회원의 목소리가 만들어지면 자리가 하나뿐이라 엄마 목소리의 자리를 비운다.
+        $b = voice_test_profile(['status' => 'pending', 'label' => '아빠']);
+        voice_test_sample($b['profile_id'], 70000);
+        VoiceService::approve($b['profile_id'], null);
+        $drain();
+        $pa = db_one('SELECT * FROM voice_profiles WHERE id = ?', [$a['profile_id']]);
+        assert_true(VoiceService::isReleased($pa), '엄마 목소리 자리를 비우지 않았다');
+        assert_true((string) db_value('SELECT provider_voice_id FROM voice_profiles WHERE id = ?', [$b['profile_id']]) !== '', '아빠 목소리가 없다');
+        // 만든 동화는 그대로 재생할 수 있다.
+        assert_true(Storage::exists($first['file_path']), '만든 동화 파일이 사라졌다');
+        assert_same('done', StoryRequests::state(StoryRequests::latestFor($a['user_id'], $s1, $a['profile_id'])));
+
+        // 엄마 목소리로 새 동화를 요청하고 생성을 시작하면 다시 만들고(아빠 자리를 비움) 동화를 만든다.
+        $res = StoryRequests::create($a['user_id'], $s2, [$a['profile_id']]);
+        assert_same(1, count($res['created']), json_encode($res['skipped'], JSON_UNESCAPED_UNICODE));
+        $ok = StoryRequests::approve($res['created'], null);
+        assert_same(1, $ok['approved'], json_encode($ok['errors'], JSON_UNESCAPED_UNICODE));
+        assert_same(1, (int) db_value("SELECT COUNT(*) FROM jobs WHERE type = 'voice_clone' AND status = 'pending' AND ref_id = ?", [$a['profile_id']]));
+        $drain();
+        $pa = db_one('SELECT * FROM voice_profiles WHERE id = ?', [$a['profile_id']]);
+        assert_true(strpos((string) $pa['provider_voice_id'], 'fake_') === 0, '다시 만들지 않았다');
+        assert_same(null, $pa['provider_released_at']);
+        assert_same('completed', $pa['status']);
+        assert_true(VoiceService::isReleased(db_one('SELECT * FROM voice_profiles WHERE id = ?', [$b['profile_id']])), '아빠 목소리 자리를 비우지 않았다');
+        assert_same('done', StoryRequests::state(StoryRequests::latestFor($a['user_id'], $s2, $a['profile_id'])));
+        // 첫 동화는 다시 만들지 않았고 안내 음성도 그대로다.
+        $again = db_one('SELECT * FROM story_audios WHERE story_id = ? AND voice_profile_id = ?', [$s1, $a['profile_id']]);
+        assert_same($first['generated_at'], $again['generated_at']);
+        assert_same($clipCount, (int) db_value("SELECT COUNT(*) FROM voice_clips WHERE voice_profile_id = ? AND status = 'completed'", [$a['profile_id']]));
+        $failed = db_all("SELECT type, last_error FROM jobs WHERE ref_type = 'voice_profile' AND ref_id IN (?, ?) AND status = 'failed'", [$a['profile_id'], $b['profile_id']]);
+        assert_same([], $failed, '실패한 작업');
+        $log = implode("\n", array_column(Jobs::latestLogs('voice_profile', $a['profile_id']), 'message'));
+        assert_contains('ElevenLabs 목소리 다시 만들기 완료', $log);
+    });
+});

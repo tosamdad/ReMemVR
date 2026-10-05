@@ -129,6 +129,22 @@ class Worker
                     throw new \DomainException('알 수 없는 작업 종류: ' . $job['type']);
             }
             Jobs::complete($id);
+        } catch (RetryLater $e) {
+            // 기다리면 되는 일(목소리 자리 등): 시도 횟수를 쓰지 않고 미룬다. 너무 오래 기다린 작업은 보통의 실패로 처리한다.
+            if (Jobs::postpone($id, $e->seconds, $e->getMessage())) {
+                $pid = isset($payload['profile_id']) ? (int) $payload['profile_id'] : 0;
+                // 같은 이유로 계속 미룰 때는 처음 한 번만 기록한다.
+                if ($pid && (string) $job['last_error'] !== $e->getMessage()) {
+                    self::plog($job, $pid, 'info', $e->getMessage());
+                }
+            } else {
+                $result = Jobs::fail($id, $e->getMessage(), false);
+                try {
+                    self::onFailure($job, $payload, $e->getMessage(), $result);
+                } catch (\Throwable $e2) {
+                    app_log('error', '작업 실패 후처리 오류: ' . $e2->getMessage(), ['job' => $id]);
+                }
+            }
         } catch (\Throwable $e) {
             // DomainException 은 다시 해도 같은 결과인 오류(대상 없음 등)이므로 재시도하지 않는다.
             $retry = !($e instanceof \DomainException);
@@ -147,10 +163,14 @@ class Worker
 
     // ───────────────────────── 작업별 처리 ─────────────────────────
 
-    /** voice_clone {profile_id}: 샘플을 ElevenLabs 에 올려 목소리를 만들고 동화 생성을 등록한다. */
+    /**
+     * voice_clone {profile_id, restore?}: 샘플을 ElevenLabs 에 올려 목소리를 만들고 동화 생성을 등록한다.
+     * restore 는 자리를 비웠던(준비됨) 목소리를 남겨 둔 녹음으로 다시 만드는 경우다. 이미 만든 동화와 안내 음성은 그대로 둔다.
+     */
     private static function handleVoiceClone(array $job, array $payload): void
     {
         $pid = isset($payload['profile_id']) ? (int) $payload['profile_id'] : 0;
+        $restore = !empty($payload['restore']);
         $profile = $pid ? db_one('SELECT * FROM voice_profiles WHERE id = ?', [$pid]) : null;
         if (!$profile || $profile['deleted_at'] !== null) {
             self::plog($job, $pid, 'warn', '삭제된 목소리라서 생성을 건너뜁니다.');
@@ -158,13 +178,23 @@ class Worker
             return;
         }
         $hasVoice = (string) $profile['provider_voice_id'] !== '';
-        // 반려되었거나 다른 상태로 바뀐 요청은 처리하지 않는다(재시도 중 이미 목소리를 만든 경우는 이어서 진행).
-        if ($profile['status'] !== 'cloning' && !($hasVoice && in_array($profile['status'], ['processing', 'completed'], true))) {
+        if ($restore) {
+            if ($hasVoice || !VoiceService::isReleased($profile)) {
+                // 그 사이 다시 만들어졌거나 다른 상태로 바뀌었다.
+                if ($hasVoice) {
+                    VoiceService::queueStories($pid, null, false);
+                }
+
+                return;
+            }
+        } elseif ($profile['status'] !== 'cloning' && !($hasVoice && in_array($profile['status'], ['processing', 'completed'], true))) {
+            // 반려되었거나 다른 상태로 바뀐 요청은 처리하지 않는다(재시도 중 이미 목소리를 만든 경우는 이어서 진행).
             self::plog($job, $pid, 'warn', '목소리 상태가 "' . voice_status_label((string) $profile['status']) . '"(으)로 바뀌어 생성을 건너뜁니다.');
 
             return;
         }
-        self::plog($job, $pid, 'info', '목소리 생성 작업 시작 (시도 ' . (int) $job['attempts'] . '/' . (int) $job['max_attempts'] . ')');
+        self::plog($job, $pid, 'info', ($restore ? '자리를 비웠던 목소리 다시 만들기 시작' : '목소리 생성 작업 시작')
+            . ' (시도 ' . (int) $job['attempts'] . '/' . (int) $job['max_attempts'] . ')');
 
         $created = false;
         if (!$hasVoice) {
@@ -190,18 +220,28 @@ class Worker
             if (!$files) {
                 throw new \DomainException('업로드할 샘플 파일이 없습니다.');
             }
+
+            // ElevenLabs 목소리 자리가 다 찼으면 가장 오래 쓰지 않은 목소리의 자리를 비운다.
+            VoiceService::ensureSlot($pid);
             self::plog($job, $pid, 'info', '샘플 ' . count($files) . '개(총 ' . self::koDuration($totalMs) . ') 업로드');
 
             $name = '르멤버 ' . $profile['label'] . ' #' . $pid;
             $description = '르멤버 가족 목소리 프로필 #' . $pid . ' (' . $profile['label'] . ')';
-            $res = ElevenLabs::addVoice($name, $files, $description, [
+            $usage = [
                 'user_id' => (int) $profile['user_id'],
                 'ref_type' => 'voice_profile',
                 'ref_id' => $pid,
-            ]);
+            ];
+            $res = ElevenLabs::addVoice($name, $files, $description, $usage);
+            if (empty($res['ok']) && !empty($res['voice_limit'])) {
+                // 계정에 우리가 모르는 목소리가 있어 한도에 먼저 걸린 경우: 한 자리를 더 비우고 한 번만 다시 시도한다.
+                self::plog($job, $pid, 'warn', 'ElevenLabs 목소리 개수 한도에 걸려 한 자리를 더 비우고 다시 시도합니다.');
+                VoiceService::ensureSlot($pid, true);
+                $res = ElevenLabs::addVoice($name, $files, $description, $usage);
+            }
             if (empty($res['ok']) || empty($res['voice_id'])) {
-                // 키 권한, 요금제처럼 다시 해도 같은 오류는 재시도하지 않는다.
-                if (!empty($res['permanent'])) {
+                // 키 권한, 요금제처럼 다시 해도 같은 오류는 재시도하지 않는다(목소리 개수 한도는 자리가 나면 되므로 재시도).
+                if (!empty($res['permanent']) && empty($res['voice_limit'])) {
                     throw new \DomainException('ElevenLabs 목소리 생성 실패: ' . self::errorText($res));
                 }
                 throw new \RuntimeException('ElevenLabs 목소리 생성 실패: ' . self::errorText($res));
@@ -210,18 +250,28 @@ class Worker
 
             // 처리하는 동안 삭제나 반려가 되었으면 방금 만든 목소리를 바로 지운다.
             $now = db_one('SELECT status, deleted_at FROM voice_profiles WHERE id = ?', [$pid]);
-            if (!$now || $now['deleted_at'] !== null || $now['status'] !== 'cloning') {
+            if (!$now || $now['deleted_at'] !== null || $now['status'] !== ($restore ? 'completed' : 'cloning')) {
                 ElevenLabs::deleteVoice($voiceId);
                 self::plog($job, $pid, 'warn', '처리 중 목소리가 삭제되거나 반려되어 만든 목소리를 지웠습니다.');
 
                 return;
             }
             db_exec(
-                'UPDATE voice_profiles SET provider_voice_id = ?, cloned_at = NOW(), status = ? WHERE id = ?',
+                'UPDATE voice_profiles SET provider_voice_id = ?, cloned_at = NOW(), status = ?, provider_released_at = NULL, provider_last_used_at = NOW() WHERE id = ?',
                 [$voiceId, 'completed', $pid]
             );
             $created = true;
-            self::plog($job, $pid, 'info', 'ElevenLabs 목소리 생성 완료: ' . self::shortId($voiceId) . self::tookText(isset($res['ms']) ? (int) $res['ms'] : 0));
+            self::plog($job, $pid, 'info', ($restore ? 'ElevenLabs 목소리 다시 만들기 완료: ' : 'ElevenLabs 목소리 생성 완료: ')
+                . self::shortId($voiceId) . self::tookText(isset($res['ms']) ? (int) $res['ms'] : 0));
+
+            if ($restore) {
+                // 같은 녹음으로 다시 만든 목소리라 만든 동화와 안내 음성은 그대로 쓰고, 기다리는 동화만 이어서 만든다.
+                $count = VoiceService::queueStories($pid, null, false);
+                self::plog($job, $pid, 'info', $count > 0 ? '기다리던 동화 ' . $count . '편 이어서 생성' : '기다리던 동화 없음');
+                VoiceService::refresh($pid);
+
+                return;
+            }
 
             // 새 목소리이므로 이전 목소리로 만든 짧은 음성은 지운다.
             foreach (db_all('SELECT id, file_path FROM voice_clips WHERE voice_profile_id = ?', [$pid]) as $clip) {
@@ -260,6 +310,10 @@ class Worker
             return;
         }
         if ((string) $profile['provider_voice_id'] === '') {
+            if (VoiceService::isReleased($profile)) {
+                // 자리를 비운 목소리: 다시 만들기가 끝날 때까지 기다린다.
+                self::waitRestore($pid);
+            }
             throw new \DomainException('ElevenLabs 목소리가 아직 없습니다.');
         }
         $story = db_one('SELECT * FROM stories WHERE id = ? AND status = ? AND deleted_at IS NULL', [$sid, 'published']);
@@ -323,6 +377,7 @@ class Worker
         if (empty($res['ok']) || !isset($res['audio']) || (string) $res['audio'] === '') {
             throw new \RuntimeException('음성 합성 실패: ' . self::errorText($res));
         }
+        VoiceService::touch($pid);
 
         $ext = self::cleanExt(isset($res['ext']) ? (string) $res['ext'] : '', isset($res['mime']) ? (string) $res['mime'] : '');
         $rel = 'story-audio/' . $pid . '/' . $sid . '-' . substr($hash, 0, 8) . '.' . $ext;
@@ -371,6 +426,10 @@ class Worker
             return;
         }
         if ((string) $profile['provider_voice_id'] === '') {
+            if (VoiceService::isReleased($profile)) {
+                // 자리를 비운 목소리는 안내 음성을 새로 만들지 않는다(만들어 둔 것은 그대로 쓴다).
+                return;
+            }
             throw new \DomainException('ElevenLabs 목소리가 아직 없습니다.');
         }
 
@@ -785,6 +844,26 @@ class Worker
                 . '오류: ' . $message . "\n\n"
                 . '원인을 해결한 뒤 관리자 화면에서 다시 생성할 수 있습니다: ' . absolute_url('/admin/voices/' . $pid) . "\n",
         ], ['priority' => 6, 'ref_type' => 'voice_profile', 'ref_id' => $pid]);
+    }
+
+    /**
+     * 자리를 비운 목소리로 동화를 만들려는 작업: 다시 만들기 작업이 대기, 진행 중이면 미루고(RetryLater),
+     * 없으면 새로 등록하고 미룬다. 다시 만들기가 이미 실패로 끝났으면 DomainException.
+     */
+    private static function waitRestore(int $pid): void
+    {
+        $last = db_one(
+            "SELECT status, last_error FROM jobs WHERE type = 'voice_clone' AND ref_type = 'voice_profile' AND ref_id = ?
+              AND created_at >= (SELECT provider_released_at FROM voice_profiles WHERE id = ?) ORDER BY id DESC LIMIT 1",
+            [$pid, $pid]
+        );
+        if ($last && $last['status'] === 'failed') {
+            throw new \DomainException('자리를 비웠던 목소리를 다시 만들지 못했습니다: ' . (string) $last['last_error']);
+        }
+        if (!$last || !in_array($last['status'], ['pending', 'running'], true)) {
+            VoiceService::restore($pid);
+        }
+        throw new RetryLater('목소리를 녹음으로 다시 만드는 중이라 동화 생성을 잠시 기다립니다.', 30);
     }
 
     private static function plog(array $job, int $pid, string $level, string $message): void

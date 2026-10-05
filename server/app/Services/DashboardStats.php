@@ -107,8 +107,122 @@ class DashboardStats
      */
     public static function costKpis(int $interactionsToday): array
     {
-        $today = Usage::todayCostKrw();
         $budget = (float) setting('cost.daily_budget_krw', 27000);
+        $krwPerCredit = self::krwPerCredit();
+        $usage = self::providerUsage(true);
+        $actual = $usage !== null && !empty($usage['today_ok']);
+        $internal = self::internalCreditsToday();
+        $credits = $actual ? (int) $usage['today_credits'] : $internal;
+        $today = self::todayCostKrw(false, $usage);
+        $cycle = null;
+        if ($usage !== null && !empty($usage['cycle_ok']) && (int) $usage['cycle_limit'] > 0) {
+            $cycle = [
+                'used' => (int) $usage['cycle_used'],
+                'limit' => (int) $usage['cycle_limit'],
+                'percent' => round(min(100, (int) $usage['cycle_used'] * 100 / (int) $usage['cycle_limit']), 1),
+                'reset_at' => $usage['reset_at'],
+                'tier' => $usage['tier'],
+            ];
+        }
+
+        return [
+            'today' => $today,
+            'budget' => $budget,
+            'percent' => $budget > 0 ? (int) round($today * 100 / $budget) : null,
+            'per_interaction' => $interactionsToday > 0 ? round($today / $interactionsToday, 1) : null,
+            'credits_today' => $credits,
+            'internal_credits' => $internal,
+            'krw_per_credit' => $krwPerCredit,
+            'source' => $actual ? 'elevenlabs' : 'internal',
+            'usage_error' => $usage !== null && !$actual ? (string) $usage['today_error'] : null,
+            'checked_at' => $usage !== null ? $usage['checked_at'] : null,
+            'cycle' => $cycle,
+        ];
+    }
+
+    const USAGE_CACHE_KEY = 'elevenlabs.usage_cache';
+
+    /** ElevenLabs 사용량을 다시 묻는 간격(초). 대시보드는 30초마다 갱신하지만 API 는 이 간격으로만 부른다. */
+    const USAGE_CACHE_SECONDS = 120;
+
+    /** 크레딧 1개의 원화 환산값(설정 단가) */
+    public static function krwPerCredit(): float
+    {
+        return Usage::krw((float) setting('elevenlabs.usd_per_1k_credits', 0.30) / 1000);
+    }
+
+    /**
+     * ElevenLabs 가 알려 준 실제 사용량(오늘 크레딧, 이번 결제 주기 사용량과 한도). 2분 동안 보관한다.
+     * $fetch 가 false 면 API 를 부르지 않고 오늘 보관한 값만 돌려준다(관리자 화면 공통 머리글용).
+     * 반환: null(키 없음 또는 보관 값 없음) 또는
+     *   ['today_ok', 'today_credits', 'today_error', 'cycle_ok', 'cycle_used', 'cycle_limit', 'reset_at', 'tier', 'checked_at']
+     */
+    public static function providerUsage(bool $fetch = true): ?array
+    {
+        if (!ElevenLabs::ready()) {
+            return null;
+        }
+        $day = date('Y-m-d');
+        $cached = setting(self::USAGE_CACHE_KEY);
+        $valid = is_array($cached) && isset($cached['day'], $cached['ts']) && $cached['day'] === $day;
+        if ($valid && (!$fetch || time() - (int) $cached['ts'] < self::USAGE_CACHE_SECONDS)) {
+            return $cached;
+        }
+        if (!$fetch) {
+            return null;
+        }
+        $today = ElevenLabs::usageCredits(strtotime('today'), time());
+        $sub = ElevenLabs::subscription();
+        $data = [
+            'day' => $day,
+            'ts' => time(),
+            'checked_at' => now(),
+            'today_ok' => (bool) $today['ok'],
+            'today_credits' => (int) $today['credits'],
+            'today_error' => $today['ok'] ? null : (string) $today['error'],
+            'cycle_ok' => (bool) $sub['ok'],
+            'cycle_used' => (int) $sub['used'],
+            'cycle_limit' => (int) $sub['limit'],
+            'reset_at' => $sub['reset_at'],
+            'tier' => $sub['tier'],
+        ];
+        try {
+            \App\Core\Settings::set(self::USAGE_CACHE_KEY, $data);
+        } catch (\Throwable $e) {
+            app_log('error', 'ElevenLabs 사용량 보관 실패: ' . $e->getMessage());
+        }
+
+        return $data;
+    }
+
+    /**
+     * 오늘 API 비용(원). ElevenLabs 는 실제 사용 크레딧 × 설정 단가, 그 밖의 API(Gemini)는 우리 기록.
+     * ElevenLabs 사용량을 모르면 우리 기록(추정치)을 그대로 쓴다.
+     */
+    public static function todayCostKrw(bool $fetch = false, ?array $usage = null): float
+    {
+        if ($usage === null) {
+            $usage = self::providerUsage($fetch);
+        }
+        if ($usage === null || empty($usage['today_ok'])) {
+            return Usage::todayCostKrw();
+        }
+        $other = 0.0;
+        try {
+            $other = (float) db_value(
+                "SELECT COALESCE(SUM(cost_krw), 0) FROM api_usage_logs WHERE provider <> 'elevenlabs' AND created_at >= ?",
+                [date('Y-m-d 00:00:00')]
+            );
+        } catch (\Throwable $e) {
+            app_log('error', '오늘 비용 집계 실패: ' . $e->getMessage());
+        }
+
+        return $other + (int) $usage['today_credits'] * self::krwPerCredit();
+    }
+
+    /** 우리 기록으로 계산한 오늘 크레딧(글자 수 × 모델 비율). ElevenLabs 실제 값과 견주는 데 쓴다. */
+    public static function internalCreditsToday(): int
+    {
         $credits = 0;
         try {
             $credits = (int) round((float) db_value(
@@ -121,14 +235,7 @@ class DashboardStats
             app_log('error', '오늘 크레딧 집계 실패: ' . $e->getMessage());
         }
 
-        return [
-            'today' => $today,
-            'budget' => $budget,
-            'percent' => $budget > 0 ? (int) round($today * 100 / $budget) : null,
-            'per_interaction' => $interactionsToday > 0 ? round($today / $interactionsToday, 1) : null,
-            'credits_today' => $credits,
-            'krw_per_credit' => Usage::krw((float) setting('elevenlabs.usd_per_1k_credits', 0.30) / 1000),
-        ];
+        return $credits;
     }
 
     /** 일괄 승인 대상(대기 중이며 품질 등급이 좋음, 보통) */

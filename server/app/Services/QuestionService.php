@@ -195,6 +195,7 @@ class QuestionService
                 ]);
                 $extra['tts_ms'] = $tts['ms'];
                 if ($tts['ok']) {
+                    VoiceService::touch((int) $profile['id']);
                     $rel = 'answers/' . date('Ym') . '/' . Storage::randomName($tts['ext']);
                     Storage::put($rel, $tts['audio']);
                     $extra['answer_audio_path'] = $rel;
