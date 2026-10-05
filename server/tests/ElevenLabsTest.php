@@ -87,6 +87,19 @@ test('API 오류를 한글 메시지로 바꾼다', function () {
     assert_contains('요금제나 결제', ElevenLabs::errorMessage($r(402, ['detail' => ['message' => 'Payment required']])));
 });
 
+test('키 권한, 요금제 오류는 다시 시도하지 않을 오류로 본다', function () {
+    $r = function (int $status, $body) {
+        return ['status' => $status, 'headers' => [], 'body' => is_string($body) ? $body : json_encode($body), 'error' => null];
+    };
+    assert_true(ElevenLabs::isPermanent($r(401, ['detail' => ['status' => 'missing_permissions', 'message' => 'missing voices_write']])), '권한 없음');
+    assert_true(ElevenLabs::isPermanent($r(402, '')), '결제');
+    assert_true(ElevenLabs::isPermanent($r(422, ['detail' => [['msg' => 'bad file']]])), '잘못된 요청');
+    assert_true(!ElevenLabs::isPermanent($r(429, ['detail' => ['status' => 'too_many_concurrent_requests']])), '동시 요청 한도는 다시 시도');
+    assert_true(!ElevenLabs::isPermanent($r(400, ['detail' => ['status' => 'system_busy']])), '바쁨은 다시 시도');
+    assert_true(!ElevenLabs::isPermanent($r(503, 'busy')), '서버 오류는 다시 시도');
+    assert_true(!ElevenLabs::isPermanent(['status' => 0, 'headers' => [], 'body' => '', 'error' => 'timeout']), '네트워크 오류는 다시 시도');
+});
+
 test('가짜 합성: 16kHz WAV, 글자당 75ms, 글자별 정렬', function () {
     el_require_fake();
     $text = '달님, 안녕? 오늘도 고마워요.';

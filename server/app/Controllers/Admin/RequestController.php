@@ -34,7 +34,11 @@ class RequestController
         'canceled' => 'bg-surface-container-high text-outline',
     ];
 
-    /** GET /admin/requests (?status, q, voice, page) */
+    /**
+     * GET /admin/requests (?status, q, voice, page, keep)
+     * keep: 이미 화면에 떠 있던 요청 번호(쉼표). 상태가 바뀌어 지금 탭 조건에 맞지 않아도 목록에 남겨
+     * 생성을 시작하거나 완성되어도 줄이 사라지지 않고 상태만 바뀌어 보이게 한다.
+     */
     public function index(): string
     {
         require_admin();
@@ -73,8 +77,17 @@ class RequestController
             $counts[$key] = (int) db_value('SELECT COUNT(*)' . $from . ' WHERE ' . $base . ' AND ' . $cond, $params);
         }
 
-        $listWhere = $base . ($tab === 'all' ? '' : ' AND ' . StoryRequests::stateWhere($tab));
+        $keep = keep_ids(Request::str('keep'));
+        $listWhere = $base;
         $total = $counts[$tab];
+        if ($tab !== 'all') {
+            $cond = StoryRequests::stateWhere($tab);
+            if ($keep) {
+                $cond = '(' . $cond . ' OR r.id IN (' . implode(', ', $keep) . '))';
+                $total = (int) db_value('SELECT COUNT(*)' . $from . ' WHERE ' . $base . ' AND ' . $cond, $params);
+            }
+            $listWhere .= ' AND ' . $cond;
+        }
         $pages = max(1, (int) ceil($total / self::PER_PAGE));
         $page = min($pages, max(1, Request::int('page', 1)));
         // 확인 대기와 생성 중은 오래된 요청부터, 나머지는 최근 순
@@ -101,6 +114,7 @@ class RequestController
             'tab' => $tab,
             'counts' => $counts,
             'filters' => ['q' => $q, 'voice' => $voice ? (int) $voice['id'] : 0],
+            'keepIds' => $keep,
             'voice' => $voice,
             'page' => $page,
             'pages' => $pages,
@@ -116,26 +130,25 @@ class RequestController
         $raw = input('ids', []);
         $ids = array_values(array_filter(array_map('intval', is_array($raw) ? $raw : [$raw])));
         if (!$ids) {
-            flash('error', '생성할 요청을 하나 이상 고르세요.');
-            redirect_back('/admin/requests');
+            self::finish('error', '생성할 요청을 하나 이상 고르세요.', $ids);
+
+            return;
         }
         try {
             $res = StoryRequests::approve($ids, (int) $admin['id']);
         } catch (\RuntimeException $e) {
-            flash('error', $e->getMessage());
-            redirect_back('/admin/requests');
+            self::finish('error', $e->getMessage(), $ids);
 
             return;
         }
         admin_audit('request.approve', 'story_request', count($ids) === 1 ? $ids[0] : null, ['ids' => $ids, 'approved' => $res['approved']]);
         if ($res['approved'] > 0) {
             Worker::kick();
-            flash('success', '요청 ' . $res['approved'] . '건의 동화 생성을 시작했습니다. 완성되면 회원에게 메일로 알립니다.'
-                . ($res['errors'] ? ' 건너뜀: ' . implode(' / ', array_slice($res['errors'], 0, 3)) : ''));
+            self::finish('success', '요청 ' . $res['approved'] . '건의 동화 생성을 시작했습니다. 완성되면 회원에게 메일로 알립니다.'
+                . ($res['errors'] ? ' 건너뜀: ' . implode(' / ', array_slice($res['errors'], 0, 3)) : ''), $ids);
         } else {
-            flash('error', $res['errors'] ? implode(' / ', array_slice($res['errors'], 0, 3)) : '생성할 수 있는 요청이 없습니다.');
+            self::finish('error', $res['errors'] ? implode(' / ', array_slice($res['errors'], 0, 3)) : '생성할 수 있는 요청이 없습니다.', $ids);
         }
-        redirect_back('/admin/requests');
     }
 
     /** POST /admin/requests/{id}/reject (reason) */
@@ -146,13 +159,31 @@ class RequestController
         try {
             StoryRequests::reject((int) $id, (int) $admin['id'], $reason);
         } catch (\RuntimeException $e) {
-            flash('error', $e->getMessage());
-            redirect_back('/admin/requests');
+            self::finish('error', $e->getMessage(), [(int) $id]);
 
             return;
         }
         admin_audit('request.reject', 'story_request', (int) $id, ['reason' => mb_substr($reason, 0, 255)]);
-        flash('success', StoryRequests::reqId($id) . ' 요청을 반려했습니다. 회원의 내 동화 화면에 사유가 보입니다.');
-        redirect_back('/admin/requests');
+        self::finish('success', StoryRequests::reqId($id) . ' 요청을 반려했습니다. 회원의 내 동화 화면에 사유가 보입니다.', [(int) $id]);
+    }
+
+    /**
+     * 처리 결과: 화면에서 fetch 로 보냈으면 JSON(목록은 화면이 제자리에서 바꾼다),
+     * 폼 제출이면 알림을 남기고, 처리한 요청이 목록에서 사라지지 않게 keep 을 붙여 직전 목록으로 돌아간다.
+     */
+    private static function finish(string $type, string $message, array $ids): void
+    {
+        if (Request::wantsJson()) {
+            if ($type === 'error') {
+                json_error($message, 422);
+
+                return;
+            }
+            json_response(['ok' => true, 'type' => $type, 'message' => $message, 'ids' => array_values(array_map('intval', $ids))]);
+
+            return;
+        }
+        flash($type, $message);
+        redirect_back_keep($ids, '/admin/requests', '/admin/requests');
     }
 }

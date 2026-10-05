@@ -79,6 +79,8 @@ class DashboardController
             'cost.percent' => $c['percent'] === null ? '한도 미설정' : $c['percent'] . '% 소진',
             'cost.per_interaction' => $c['per_interaction'] === null ? '-' : '₩' . fmt_number($c['per_interaction'], 1),
             'cost.budget' => $c['budget'] > 0 ? '(' . fmt_krw($c['budget']) . ')' : '(미설정)',
+            'cost.credits' => fmt_number($c['credits_today']) . ' 크레딧',
+            'cost.unit' => '크레딧당 ₩' . fmt_number($c['krw_per_credit'], 2),
             'queue.total' => fmt_number($d['queue']['total']) . '건 검토 필요',
             'latency.avg' => $lat['avg_ms'] === null ? '오늘 답변 없음' : DashboardStats::koLatency($lat['avg_ms']),
             'approvable' => fmt_number($d['approvable']),

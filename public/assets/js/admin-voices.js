@@ -244,136 +244,228 @@
     }
   });
 
-  // ───────────────────────── 파라미터 ─────────────────────────
+  // ───────────────────────── 상세 패널(파라미터, 파형, 처리 콘솔) ─────────────────────────
+  // 상세 패널을 새 내용으로 바꾼 뒤에도 다시 부를 수 있게 함수로 묶는다.
 
-  document.querySelectorAll('[data-range]').forEach(function (input) {
-    var out = document.querySelector('[data-range-value="' + input.getAttribute('data-range') + '"]');
-    input.addEventListener('input', function () { if (out) out.textContent = Number(input.value).toFixed(2); });
-  });
+  var stopConsole = function () {};
 
-  // ───────────────────────── 샘플 파형 ─────────────────────────
+  function initDetail(scope) {
+    stopConsole();
+    stopConsole = function () {};
+    if (!scope) return;
 
-  var wave = document.querySelector('[data-waveform][data-src]');
-  if (wave) {
-    var note = wave.querySelector('[data-waveform-note]');
-    var Ctx = window.AudioContext || window.webkitAudioContext;
-    var fail = function () { if (note) note.textContent = '파형을 그릴 수 없는 형식입니다'; };
-    if (!Ctx || !window.fetch) fail();
-    else {
-      fetch(wave.getAttribute('data-src'), { credentials: 'same-origin' })
-        .then(function (r) { if (!r.ok) throw new Error('load'); return r.arrayBuffer(); })
-        .then(function (buf) {
-          var ctx = new Ctx();
-          return new Promise(function (resolve, reject) {
-            var p = ctx.decodeAudioData(buf, resolve, reject);
-            if (p && p.then) p.then(resolve, reject);
-          }).then(function (decoded) { if (ctx.close) ctx.close(); return decoded; });
-        })
-        .then(function (decoded) {
-          var data = decoded.getChannelData(0);
-          var n = 32, step = Math.max(1, Math.floor(data.length / n));
-          var peaks = [], max = 0;
-          for (var i = 0; i < n; i++) {
-            var p = 0;
-            for (var j = i * step, end = Math.min(data.length, (i + 1) * step); j < end; j += 4) {
-              var a = Math.abs(data[j]);
-              if (a > p) p = a;
+    // ───────────────────────── 파라미터 ─────────────────────────
+
+    scope.querySelectorAll('[data-range]').forEach(function (input) {
+      var out = scope.querySelector('[data-range-value="' + input.getAttribute('data-range') + '"]');
+      input.addEventListener('input', function () { if (out) out.textContent = Number(input.value).toFixed(2); });
+    });
+
+    // ───────────────────────── 샘플 파형 ─────────────────────────
+
+    var wave = scope.querySelector('[data-waveform][data-src]');
+    if (wave) {
+      var note = wave.querySelector('[data-waveform-note]');
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      var fail = function () { if (note) note.textContent = '파형을 그릴 수 없는 형식입니다'; };
+      if (!Ctx || !window.fetch) fail();
+      else {
+        fetch(wave.getAttribute('data-src'), { credentials: 'same-origin' })
+          .then(function (r) { if (!r.ok) throw new Error('load'); return r.arrayBuffer(); })
+          .then(function (buf) {
+            var ctx = new Ctx();
+            return new Promise(function (resolve, reject) {
+              var p = ctx.decodeAudioData(buf, resolve, reject);
+              if (p && p.then) p.then(resolve, reject);
+            }).then(function (decoded) { if (ctx.close) ctx.close(); return decoded; });
+          })
+          .then(function (decoded) {
+            var data = decoded.getChannelData(0);
+            var n = 32, step = Math.max(1, Math.floor(data.length / n));
+            var peaks = [], max = 0;
+            for (var i = 0; i < n; i++) {
+              var p = 0;
+              for (var j = i * step, end = Math.min(data.length, (i + 1) * step); j < end; j += 4) {
+                var a = Math.abs(data[j]);
+                if (a > p) p = a;
+              }
+              peaks.push(p);
+              if (p > max) max = p;
             }
-            peaks.push(p);
-            if (p > max) max = p;
+            var html = '<div class="absolute inset-x-0 top-1/2 h-px bg-surface-variant"></div>';
+            peaks.forEach(function (p) {
+              var h = max > 0 ? Math.max(6, Math.round(p / max * 100)) : 6;
+              var cls = p >= 0.98 ? 'bg-error' : (p / (max || 1) < 0.15 ? 'bg-primary/40' : 'bg-primary');
+              html += '<div class="relative flex-1 rounded-t ' + cls + '" style="height:' + h + '%" title="최대 음량 ' + Math.round(p * 100) + '%"></div>';
+            });
+            wave.innerHTML = html;
+          })
+          .catch(fail);
+      }
+    }
+
+    // ───────────────────────── 처리 콘솔 ─────────────────────────
+
+    var con = scope.querySelector('[data-console]');
+    if (con) {
+      var after = parseInt(con.getAttribute('data-after') || '0', 10);
+      var active = con.getAttribute('data-active') === '1';
+      var url = con.getAttribute('data-logs-url');
+      var levelCls = { info: 'text-inverse-on-surface/85', warn: 'text-secondary-fixed', error: 'text-error-container' };
+      var chipCls = {
+        pending: ['대기 중', 'bg-secondary-container text-on-secondary-container'],
+        cloning: ['모델 생성 중', 'bg-primary-fixed text-on-primary-fixed-variant'],
+        processing: ['오디오 생성 중', 'bg-primary-fixed text-on-primary-fixed-variant'],
+        completed: ['전체 완료', 'bg-surface-container-high text-on-surface-variant'],
+        rejected: ['반려', 'bg-error-container text-on-error-container'],
+        failed: ['실패', 'bg-error-container text-on-error-container']
+      };
+      var lastStatus = null;
+      var pollTimer = null, tickTimer = null;
+
+      var append = function (logs) {
+        if (!logs.length) return;
+        var empty = con.querySelector('[data-console-empty]');
+        if (empty) empty.remove();
+        var nearBottom = con.scrollHeight - con.scrollTop - con.clientHeight < 40;
+        logs.forEach(function (l) {
+          var s = document.createElement('span');
+          s.className = levelCls[l.level] || levelCls.info;
+          s.textContent = '[' + l.time + '] ' + l.message;
+          con.appendChild(s);
+          after = Math.max(after, l.id);
+        });
+        if (nearBottom) con.scrollTop = con.scrollHeight;
+      };
+      var setLive = function (data) {
+        var p = data.progress || {};
+        var prog = document.querySelector('[data-live-progress]');
+        if (prog) prog.textContent = (p.completed || 0) + ' / ' + (p.total || 0) + '편 완료';
+        var pct = document.querySelector('[data-live-percent]');
+        if (pct) pct.textContent = (p.percent || 0) + '%';
+        var bar = document.querySelector('[data-live-bar]');
+        if (bar) bar.style.width = (p.percent || 0) + '%';
+        var st = document.querySelector('[data-live-status]');
+        var c = chipCls[data.status];
+        if (st && c) st.innerHTML = '<span class="whitespace-nowrap rounded-full px-2 py-0.5 font-label-sm text-label-sm ' + c[1] + '">' + c[0] + '</span>';
+        con.setAttribute('data-active', data.active ? '1' : '0');
+        var dot = document.querySelector('[data-console-dot]');
+        if (dot) {
+          dot.classList.toggle('animate-pulse', !!data.active);
+          dot.classList.toggle('bg-primary', !!data.active);
+          dot.classList.toggle('bg-outline-variant', !data.active);
+        }
+      };
+      var poll = function () {
+        if (document.hidden) return;
+        RM.api(url + '?after=' + after).then(function (data) {
+          append(data.logs || []);
+          setLive(data);
+          if (lastStatus !== null && lastStatus !== data.status) RM.toast('상태가 바뀌었습니다: ' + data.status_label, 'info');
+          lastStatus = data.status;
+          if (!data.active) {
+            stopPolling();
+            var note = document.querySelector('[data-console-note]');
+            if (note) note.textContent = '작업이 끝났습니다. 화면을 최신 상태로 바꿉니다.';
+            softRefresh();
           }
-          var html = '<div class="absolute inset-x-0 top-1/2 h-px bg-surface-variant"></div>';
-          peaks.forEach(function (p) {
-            var h = max > 0 ? Math.max(6, Math.round(p / max * 100)) : 6;
-            var cls = p >= 0.98 ? 'bg-error' : (p / (max || 1) < 0.15 ? 'bg-primary/40' : 'bg-primary');
-            html += '<div class="relative flex-1 rounded-t ' + cls + '" style="height:' + h + '%" title="최대 음량 ' + Math.round(p * 100) + '%"></div>';
-          });
-          wave.innerHTML = html;
-        })
-        .catch(fail);
+        }).catch(function () {});
+      };
+      var stopPolling = function () {
+        if (pollTimer) clearInterval(pollTimer);
+        if (tickTimer) clearInterval(tickTimer);
+        pollTimer = tickTimer = null;
+      };
+      stopConsole = stopPolling;
+      con.scrollTop = con.scrollHeight;
+      if (active) {
+        pollTimer = setInterval(poll, 3000);
+        // 생성 중일 때는 작업 처리기를 더 자주 돌려 진행을 앞당긴다(기본 45초 주기에 더해).
+        tickTimer = setInterval(function () {
+          if (!document.hidden && window.RMAdmin) window.RMAdmin.tickWorker();
+        }, 10000);
+        if (window.RMAdmin) setTimeout(function () { window.RMAdmin.tickWorker(); }, 1500);
+      }
     }
   }
+  initDetail(document.querySelector('[data-soft="detail"]') || document);
 
-  // ───────────────────────── 처리 콘솔 ─────────────────────────
+  // ───────────────────────── 화면 자동 갱신 ─────────────────────────
+  // 목록이나 상세 패널에 생성 중인 목소리가 있으면 4초마다 상태만 확인하고,
+  // 바뀌면 같은 주소를 다시 받아 KPI, 상태 탭, 표, 상세 패널만 새 내용으로 바꾼다(페이지를 다시 열지 않는다).
 
-  var con = document.querySelector('[data-console]');
-  if (con) {
-    var after = parseInt(con.getAttribute('data-after') || '0', 10);
-    var active = con.getAttribute('data-active') === '1';
-    var url = con.getAttribute('data-logs-url');
-    var levelCls = { info: 'text-inverse-on-surface/85', warn: 'text-secondary-fixed', error: 'text-error-container' };
-    var chipCls = {
-      pending: ['대기 중', 'bg-secondary-container text-on-secondary-container'],
-      cloning: ['모델 생성 중', 'bg-primary-fixed text-on-primary-fixed-variant'],
-      processing: ['오디오 생성 중', 'bg-primary-fixed text-on-primary-fixed-variant'],
-      completed: ['전체 완료', 'bg-surface-container-high text-on-surface-variant'],
-      rejected: ['반려', 'bg-error-container text-on-error-container'],
-      failed: ['실패', 'bg-error-container text-on-error-container']
-    };
-    var lastStatus = null;
-    var pollTimer = null, tickTimer = null;
+  var ACTIVE = /^(cloning|processing)$/;
+  var BATCH_ACTIVE = /^(queued|running)$/;
+  var softBusy = false;
+  var softPending = false;
 
-    var append = function (logs) {
-      if (!logs.length) return;
-      var empty = con.querySelector('[data-console-empty]');
-      if (empty) empty.remove();
-      var nearBottom = con.scrollHeight - con.scrollTop - con.clientHeight < 40;
-      logs.forEach(function (l) {
-        var s = document.createElement('span');
-        s.className = levelCls[l.level] || levelCls.info;
-        s.textContent = '[' + l.time + '] ' + l.message;
-        con.appendChild(s);
-        after = Math.max(after, l.id);
-      });
-      if (nearBottom) con.scrollTop = con.scrollHeight;
-    };
-    var setLive = function (data) {
-      var p = data.progress || {};
-      var prog = document.querySelector('[data-live-progress]');
-      if (prog) prog.textContent = (p.completed || 0) + ' / ' + (p.total || 0) + '편 완료';
-      var pct = document.querySelector('[data-live-percent]');
-      if (pct) pct.textContent = (p.percent || 0) + '%';
-      var bar = document.querySelector('[data-live-bar]');
-      if (bar) bar.style.width = (p.percent || 0) + '%';
-      var st = document.querySelector('[data-live-status]');
-      var c = chipCls[data.status];
-      if (st && c) st.innerHTML = '<span class="whitespace-nowrap rounded-full px-2 py-0.5 font-label-sm text-label-sm ' + c[1] + '">' + c[0] + '</span>';
-      con.setAttribute('data-active', data.active ? '1' : '0');
-      var dot = document.querySelector('[data-console-dot]');
-      if (dot) {
-        dot.classList.toggle('animate-pulse', !!data.active);
-        dot.classList.toggle('bg-primary', !!data.active);
-        dot.classList.toggle('bg-outline-variant', !data.active);
-      }
-    };
-    var poll = function () {
-      if (document.hidden) return;
-      RM.api(url + '?after=' + after).then(function (data) {
-        append(data.logs || []);
-        setLive(data);
-        if (lastStatus !== null && lastStatus !== data.status) RM.toast('상태가 바뀌었습니다: ' + data.status_label, 'info');
-        lastStatus = data.status;
-        if (!data.active) {
-          stopPolling();
-          var note = document.querySelector('[data-console-note]');
-          if (note) note.innerHTML = '작업이 끝났습니다. <a href="' + esc(location.href) + '" class="font-bold text-primary hover:underline">새로 고침</a>하면 최신 상태가 표시됩니다.';
-        }
-      }).catch(function () {});
-    };
-    var stopPolling = function () {
-      if (pollTimer) clearInterval(pollTimer);
-      if (tickTimer) clearInterval(tickTimer);
-      pollTimer = tickTimer = null;
-    };
-    con.scrollTop = con.scrollHeight;
-    if (active) {
-      pollTimer = setInterval(poll, 3000);
-      // 생성 중일 때는 작업 처리기를 더 자주 돌려 진행을 앞당긴다(기본 45초 주기에 더해).
-      tickTimer = setInterval(function () {
-        if (!document.hidden && window.RMAdmin) window.RMAdmin.tickWorker();
-      }, 10000);
-      if (window.RMAdmin) setTimeout(function () { window.RMAdmin.tickWorker(); }, 1500);
+  function watched() {
+    var out = {};
+    document.querySelectorAll('[data-voice-row], [data-voice-detail]').forEach(function (el) {
+      var id = el.getAttribute('data-voice-row') || el.getAttribute('data-voice-id');
+      if (id) out[id] = { status: el.getAttribute('data-status') || '', batch: el.getAttribute('data-batch') || '' };
+    });
+    return out;
+  }
+  function anyActive(map) {
+    return Object.keys(map).some(function (id) { return ACTIVE.test(map[id].status) || BATCH_ACTIVE.test(map[id].batch); });
+  }
+  // 샘플을 듣는 중이거나 창, 입력칸을 쓰는 중이면 바꾸지 않고 다음 차례로 미룬다.
+  function userBusy() {
+    if (current || document.querySelector('dialog[open], [data-rm-dialog]')) return true;
+    var a = document.activeElement;
+    return !!(a && a !== document.body && a.matches && a.matches('input, textarea, select'));
+  }
+
+  function softRefresh() {
+    if (softBusy || userBusy()) { softPending = true; return; }
+    softBusy = true;
+    softPending = false;
+    // 화면에 떠 있는 목소리를 keep 으로 넘겨, 상태가 바뀌어 지금 탭 조건에 맞지 않아도 줄이 남게 한다.
+    var u = new URL(location.href);
+    var shown = Array.prototype.map.call(document.querySelectorAll('[data-voice-row]'), function (tr) { return tr.getAttribute('data-voice-row'); });
+    if (u.searchParams.get('status') && shown.length) {
+      var keep = (u.searchParams.get('keep') || '').split(',').concat(shown)
+        .filter(function (v, i, a) { return /^\d+$/.test(v) && a.indexOf(v) === i; }).slice(-100);
+      u.searchParams.set('keep', keep.join(','));
     }
+    fetch(u.toString(), { credentials: 'same-origin', headers: { 'Accept': 'text/html' } })
+      .then(function (r) { if (!r.ok) throw new Error('load'); return r.text(); })
+      .then(function (html) {
+        if (userBusy()) { softPending = true; return; }
+        var doc = new DOMParser().parseFromString(html, 'text/html');
+        document.querySelectorAll('[data-soft]').forEach(function (region) {
+          var key = region.getAttribute('data-soft');
+          var next = doc.querySelector('[data-soft="' + key + '"]');
+          if (!next || next.innerHTML === region.innerHTML) return;
+          region.innerHTML = next.innerHTML;
+          if (key === 'detail') initDetail(region);
+        });
+        try { history.replaceState(null, '', u.pathname + u.search); } catch (e) {}
+      })
+      .catch(function () {})
+      .finally(function () { softBusy = false; });
+  }
+
+  if (document.querySelector('[data-soft="list"], [data-soft="detail"]')) {
+    var lastTick = 0;
+    setInterval(function () {
+      if (document.hidden) return;
+      if (softPending) { softRefresh(); return; }
+      var map = watched();
+      var ids = Object.keys(map);
+      if (!ids.length || !anyActive(map)) return;
+      // 생성 중에는 작업 처리기도 조금 더 자주 돌린다(기본 45초 주기에 더해).
+      if (window.RMAdmin && Date.now() - lastTick > 12000) { lastTick = Date.now(); window.RMAdmin.tickWorker(); }
+      RM.api('/admin/api/voices/status?ids=' + ids.join(',')).then(function (data) {
+        var items = data.items || {};
+        var changed = ids.some(function (id) {
+          var it = items[id];
+          return !it || it.status !== map[id].status || it.batch_status !== map[id].batch;
+        });
+        if (changed) softRefresh();
+      }).catch(function () {});
+    }, 4000);
   }
 
   window.RMVoices = {

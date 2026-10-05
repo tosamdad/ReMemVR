@@ -51,8 +51,10 @@ class VoiceController
             array_merge($params, [self::PER_PAGE, ($page - 1) * self::PER_PAGE])
         );
         $rows = DashboardStats::enrich($rows);
+        $reasons = VoiceService::failReasons(array_column($rows, 'id'));
         foreach ($rows as &$r) {
             $r['progress'] = VoiceService::progress((int) $r['id']);
+            $r['fail_reason'] = isset($reasons[(int) $r['id']]) ? $reasons[(int) $r['id']] : null;
         }
         unset($r);
 
@@ -93,6 +95,8 @@ class VoiceController
             return null;
         }
         $voice = DashboardStats::enrich([$row])[0];
+        $reasons = VoiceService::failReasons([$id]);
+        $voice['fail_reason'] = isset($reasons[$id]) ? $reasons[$id] : null;
         $samples = db_all('SELECT * FROM voice_samples WHERE voice_profile_id = ? ORDER BY id', [$id]);
 
         // 회원이 이 목소리로 요청한 동화(취소 제외)
@@ -326,6 +330,36 @@ class VoiceController
         ];
     }
 
+    /**
+     * GET /admin/api/voices/status?ids=1,2,3 : 화면에 떠 있는 목소리들의 지금 상태.
+     * 목록과 상세 패널이 생성 중일 때 몇 초마다 불러, 상태가 바뀌면 화면을 새 상태로 바꾼다.
+     */
+    public function statuses(): array
+    {
+        require_admin();
+        $raw = (string) Request::query('ids', '');
+        $ids = array_slice(array_values(array_unique(array_filter(array_map('intval', explode(',', $raw))))), 0, 100);
+        $items = [];
+        if ($ids) {
+            $rows = db_all(
+                'SELECT id, status, batch_status, provider_voice_id, deleted_at FROM voice_profiles WHERE id IN ('
+                . implode(', ', array_fill(0, count($ids), '?')) . ')',
+                $ids
+            );
+            foreach ($rows as $r) {
+                $items[(string) $r['id']] = [
+                    'status' => $r['deleted_at'] !== null ? 'deleted' : (string) $r['status'],
+                    'batch_status' => (string) $r['batch_status'],
+                    'has_voice' => (string) $r['provider_voice_id'] !== '',
+                    'active' => $r['deleted_at'] === null
+                        && (in_array($r['status'], ['cloning', 'processing'], true) || in_array($r['batch_status'], ['queued', 'running'], true)),
+                ];
+            }
+        }
+
+        return ['ok' => true, 'items' => (object) $items];
+    }
+
     /** GET /admin/api/voices/{id}/audios : 이 목소리로 만든 동화 오디오(캐시 파일) 목록 */
     public function audios(string $id): array
     {
@@ -392,6 +426,8 @@ class VoiceController
             'from' => $isDate($from) ? $from : '',
             'to' => $isDate($to) ? $to : '',
             'grade' => in_array($grade, ['good', 'fair', 'poor'], true) ? $grade : '',
+            // 방금 처리했거나 화면에 떠 있던 목소리: 상태 탭 조건과 관계없이 목록에 남긴다.
+            'keep' => implode(',', keep_ids(is_string(Request::query('keep', '')) ? (string) Request::query('keep', '') : '')),
         ];
     }
 
@@ -401,7 +437,8 @@ class VoiceController
         $where = ["vp.deleted_at IS NULL", "vp.status <> 'draft'"];
         $params = [];
         if ($f['status'] !== '') {
-            $where[] = 'vp.status = ?';
+            $keep = isset($f['keep']) ? keep_ids((string) $f['keep']) : [];
+            $where[] = $keep ? '(vp.status = ? OR vp.id IN (' . implode(', ', $keep) . '))' : 'vp.status = ?';
             $params[] = $f['status'];
         }
         if ($f['grade'] !== '') {
@@ -485,6 +522,10 @@ class VoiceController
             return ['ok' => true, 'type' => $type, 'message' => $message];
         }
         flash($type, $message);
+        // 목록에서 처리한 목소리는 상태가 바뀌어도 지금 탭에서 사라지지 않게 남긴다.
+        if (preg_match('#^/admin/voices/(\d+)$#', $fallback, $m)) {
+            redirect_back_keep([(int) $m[1]], '/admin/voices', $fallback);
+        }
         redirect_back($fallback);
 
         return null;

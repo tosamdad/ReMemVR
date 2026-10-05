@@ -139,6 +139,52 @@ class VoiceService
         Worker::kick();
     }
 
+    /**
+     * 회원이 실패한 목소리를 다시 만든다(failed → cloning). 목소리 만들기는 크레딧을 쓰지 않는다.
+     * 다시 만들 수 없으면 RuntimeException(회원에게 보여 줄 문구).
+     */
+    public static function retryByUser(int $profileId): void
+    {
+        $profile = self::find($profileId);
+        if ($profile['status'] !== 'failed') {
+            throw new \RuntimeException('지금은 다시 만들 수 없어요. (현재 상태: ' . voice_status_label((string) $profile['status']) . ')');
+        }
+        if (!ElevenLabs::ready()) {
+            throw new \RuntimeException('지금은 목소리를 만들 수 없어요. 잠시 뒤 다시 시도하거나 문의해 주세요.');
+        }
+        Jobs::log(null, 'voice_profile', $profileId, 'info', '회원이 목소리 다시 만들기를 눌렀습니다.');
+        self::approve($profileId, null);
+    }
+
+    /**
+     * 실패한 목소리의 마지막 실패 사유(목소리 생성 작업의 마지막 오류). [목소리 id => 문구]
+     * 실패 상태가 아닌 목소리는 넣지 않는다.
+     */
+    public static function failReasons(array $profileIds): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $profileIds))));
+        if (!$ids) {
+            return [];
+        }
+        $rows = db_all(
+            "SELECT j.ref_id, j.last_error FROM jobs j
+               JOIN voice_profiles vp ON vp.id = j.ref_id AND vp.status = 'failed'
+              WHERE j.type = 'voice_clone' AND j.ref_type = 'voice_profile' AND j.status = 'failed'
+                AND j.ref_id IN (" . implode(', ', array_fill(0, count($ids), '?')) . ')
+              ORDER BY j.id DESC',
+            $ids
+        );
+        $out = [];
+        foreach ($rows as $r) {
+            $pid = (int) $r['ref_id'];
+            if (!isset($out[$pid]) && trim((string) $r['last_error']) !== '') {
+                $out[$pid] = trim((string) $r['last_error']);
+            }
+        }
+
+        return $out;
+    }
+
     /** 반려: 사유를 남기고 사용자에게 재녹음 안내 메일을 보낸다. */
     public static function reject(int $profileId, ?int $adminId, string $reason): void
     {

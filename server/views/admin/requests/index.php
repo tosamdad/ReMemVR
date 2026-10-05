@@ -1,7 +1,8 @@
 <?php
 /**
- * 동화 생성 요청 목록. 변수: rows, tab, counts, filters(q, voice), voice, page, pages, total, elReady
+ * 동화 생성 요청 목록. 변수: rows, tab, counts, filters(q, voice), keepIds(남겨 둘 요청 번호), voice, page, pages, total, elReady
  * 확인 대기, 생성 실패, 반려 요청은 골라서 한 번에 생성을 시작할 수 있다.
+ * 생성 시작, 반려는 화면에서 바로 보내고, 목록은 줄을 그대로 둔 채 상태만 바꾼다(data-soft 영역을 새 내용으로 교체).
  */
 use App\Controllers\Admin\RequestController;
 use App\Services\MemberStats;
@@ -27,7 +28,7 @@ foreach ($rows as $r) {
 }
 ?>
 <div class="flex w-full flex-col gap-6" data-requests>
-  <div class="flex flex-col gap-5 rounded-xl bg-surface-container-lowest p-6 shadow-sm">
+  <div class="flex flex-col gap-5 rounded-xl bg-surface-container-lowest p-6 shadow-sm" data-soft="head">
     <div class="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
       <div class="flex flex-col gap-1.5">
         <div class="flex items-center gap-3">
@@ -82,20 +83,22 @@ foreach ($rows as $r) {
         <?php if ($voice): ?><span class="a-chip bg-primary-fixed text-primary">목소리: <?= e($voice['label']) ?> #<?= (int) $voice['id'] ?></span><?php endif; ?>
         <?php if ($filtered): ?><a href="<?= e(url('/admin/requests', $tab === 'requested' ? [] : ['status' => $tab])) ?>" class="font-label-sm text-label-sm text-primary hover:underline">조건 지우기</a><?php endif; ?>
       </form>
+      <div data-soft="bulk">
       <?php if ($anySelectable): ?>
-      <form method="post" action="<?= e(url('/admin/requests/approve')) ?>" id="req-bulk" class="flex items-center gap-3" data-confirm="고른 요청의 동화 생성을 시작할까요? ElevenLabs 크레딧이 사용됩니다.">
+      <form method="post" action="<?= e(url('/admin/requests/approve')) ?>" id="req-bulk" class="flex items-center gap-3" data-confirm="고른 요청의 동화 생성을 시작할까요? ElevenLabs 크레딧이 사용됩니다." data-confirm-ok="생성 시작" data-ajax data-req-form>
         <?= csrf_field() ?>
         <span class="font-label-sm text-label-sm text-on-surface-variant" data-bulk-info>고른 요청 없음</span>
         <button type="submit" class="a-btn-primary" data-bulk-btn disabled<?= $elReady ? '' : ' title="ElevenLabs API 키가 필요합니다"' ?>><span class="material-symbols-outlined text-[18px]">play_circle</span>고른 요청 생성 시작</button>
       </form>
       <?php endif; ?>
+      </div>
     </div>
 
     <div class="relative overflow-x-auto">
       <table class="w-full border-collapse text-left">
         <thead>
           <tr class="bg-surface-container-low font-label-md text-label-md text-on-surface-variant">
-            <th class="w-10 rounded-l-lg px-3 py-3">
+            <th class="w-10 rounded-l-lg px-3 py-3" data-soft="checkall">
               <?php if ($anySelectable): ?><input type="checkbox" class="rounded border-outline-variant text-primary focus:ring-primary/30" data-check-all aria-label="전체 고르기"><?php endif; ?>
             </th>
             <th class="whitespace-nowrap px-3 py-3">번호</th>
@@ -107,7 +110,7 @@ foreach ($rows as $r) {
             <th class="whitespace-nowrap rounded-r-lg px-3 py-3 text-right">처리</th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-surface-container-high font-body-md text-body-md text-on-surface">
+        <tbody class="divide-y divide-surface-container-high font-body-md text-body-md text-on-surface" data-soft="rows">
           <?php if (!$rows): ?>
           <tr><td colspan="8" class="px-3 py-14 text-center">
             <span class="material-symbols-outlined text-[36px] text-outline"><?= $tab === 'requested' && !$filtered ? 'task_alt' : 'inbox' ?></span>
@@ -128,7 +131,7 @@ foreach ($rows as $r) {
               $voiceOk = !$r['voice_deleted_at'] && (int) $r['voice_has_provider'] && $r['voice_status'] === 'completed';
               $chip = isset(RequestController::CHIPS[$state]) ? RequestController::CHIPS[$state] : 'bg-surface-container-high text-on-surface-variant';
           ?>
-          <tr class="align-top transition-colors hover:bg-surface-container-low/70">
+          <tr class="align-top transition-colors hover:bg-surface-container-low/70" data-req-row="<?= $rid ?>" data-state="<?= e($state) ?>">
             <td class="px-3 py-4">
               <?php if ($canStart): ?>
               <input type="checkbox" name="ids[]" value="<?= $rid ?>" form="req-bulk" class="rounded border-outline-variant text-primary focus:ring-primary/30" data-req-check data-chars="<?= (int) $r['story_chars'] ?>" aria-label="<?= e(StoryRequests::reqId($rid)) ?> 고르기"<?= $voiceOk ? '' : ' disabled' ?>>
@@ -169,7 +172,7 @@ foreach ($rows as $r) {
             <td class="px-3 py-4 text-right">
               <div class="flex flex-wrap items-start justify-end gap-2">
                 <?php if ($canStart): ?>
-                <form method="post" action="<?= e(url('/admin/requests/approve')) ?>" data-confirm="'<?= e($r['story_title']) ?>'을(를) <?= e($r['voice_label']) ?> 목소리로 만들까요? 약 <?= e(fmt_number((int) $r['story_chars'])) ?>자 분량의 크레딧이 쓰입니다.">
+                <form method="post" action="<?= e(url('/admin/requests/approve')) ?>" data-confirm="'<?= e($r['story_title']) ?>'을(를) <?= e($r['voice_label']) ?> 목소리로 만들까요? 약 <?= e(fmt_number((int) $r['story_chars'])) ?>자 분량의 크레딧이 쓰입니다." data-confirm-ok="<?= $state === 'requested' ? '생성 시작' : '다시 생성' ?>" data-ajax data-req-form>
                   <?= csrf_field() ?>
                   <input type="hidden" name="ids[]" value="<?= $rid ?>">
                   <button type="submit" class="a-btn-primary !px-3 !py-1.5"<?= $voiceOk && $elReady ? '' : ' disabled' ?>><?= $state === 'requested' ? '생성 시작' : '다시 생성' ?></button>
@@ -178,7 +181,7 @@ foreach ($rows as $r) {
                 <?php if (in_array($state, ['requested', 'failed'], true)): ?>
                 <details class="relative">
                   <summary class="a-btn-tonal !px-3 !py-1.5 cursor-pointer list-none [&::-webkit-details-marker]:hidden">반려</summary>
-                  <form method="post" action="<?= e(url('/admin/requests/' . $rid . '/reject')) ?>" class="absolute right-0 z-10 mt-2 flex w-72 flex-col gap-2 rounded-xl bg-surface-container-lowest p-4 text-left shadow-lg ring-1 ring-surface-container-high">
+                  <form method="post" action="<?= e(url('/admin/requests/' . $rid . '/reject')) ?>" class="absolute right-0 z-10 mt-2 flex w-72 flex-col gap-2 rounded-xl bg-surface-container-lowest p-4 text-left shadow-lg ring-1 ring-surface-container-high" data-ajax data-req-form>
                     <?= csrf_field() ?>
                     <label class="font-label-sm text-label-sm text-on-surface-variant" for="reason-<?= $rid ?>">반려 사유 (회원에게 보입니다)</label>
                     <textarea id="reason-<?= $rid ?>" name="reason" rows="3" maxlength="255" required class="a-input" placeholder="예: 목소리 상태 확인이 필요해 잠시 보류합니다."></textarea>
@@ -197,7 +200,7 @@ foreach ($rows as $r) {
       </table>
     </div>
 
-    <div class="flex flex-col items-center justify-between gap-4 sm:flex-row">
+    <div class="flex flex-col items-center justify-between gap-4 sm:flex-row" data-soft="foot">
       <span class="font-label-md text-label-md text-on-surface-variant"><?= $total ? e(fmt_number($total)) . '건 중 ' . $from . ' - ' . $to . ' 표시 중' : '표시할 요청 없음' ?></span>
       <?php if ($pages > 1): ?>
       <?= partial('admin/members/_pager', ['page' => $page, 'pages' => $pages, 'base' => '/admin/requests', 'query' => $query]) ?>
@@ -209,28 +212,92 @@ foreach ($rows as $r) {
 <script>
 (function () {
   var root = document.querySelector('[data-requests]');
-  if (!root) return;
-  var all = root.querySelector('[data-check-all]');
-  var checks = Array.prototype.slice.call(root.querySelectorAll('[data-req-check]'));
-  var info = root.querySelector('[data-bulk-info]');
-  var btn = root.querySelector('[data-bulk-btn]');
+  if (!root || !window.RM) return;
   var ready = <?= $elReady ? 'true' : 'false' ?>;
+
+  // ── 고르기(목록을 바꿔도 동작하도록 위임) ──
+  function checks() { return Array.prototype.slice.call(root.querySelectorAll('[data-req-check]')); }
   function update() {
-    var picked = checks.filter(function (c) { return c.checked; });
+    var all = root.querySelector('[data-check-all]');
+    var info = root.querySelector('[data-bulk-info]');
+    var btn = root.querySelector('[data-bulk-btn]');
+    var list = checks();
+    var picked = list.filter(function (c) { return c.checked; });
     var chars = picked.reduce(function (a, c) { return a + Number(c.getAttribute('data-chars') || 0); }, 0);
     if (info) info.textContent = picked.length ? picked.length + '건 · 약 ' + chars.toLocaleString('ko-KR') + '자' : '고른 요청 없음';
     if (btn) btn.disabled = !ready || picked.length === 0;
     if (all) {
-      var usable = checks.filter(function (c) { return !c.disabled; });
+      var usable = list.filter(function (c) { return !c.disabled; });
       all.checked = usable.length > 0 && picked.length === usable.length;
     }
   }
-  checks.forEach(function (c) { c.addEventListener('change', update); });
-  if (all) all.addEventListener('change', function () {
-    checks.forEach(function (c) { if (!c.disabled) c.checked = all.checked; });
-    update();
+  root.addEventListener('change', function (e) {
+    if (e.target.matches('[data-check-all]')) {
+      checks().forEach(function (c) { if (!c.disabled) c.checked = e.target.checked; });
+    }
+    if (e.target.matches('[data-check-all], [data-req-check]')) update();
   });
   update();
+
+  // ── 목록을 제자리에서 새로 고치기 ──
+  // 화면에 떠 있는 요청 번호를 keep 으로 넘겨, 상태가 바뀌어 지금 탭 조건에 맞지 않아도 줄이 남게 한다.
+  var busy = false, pending = false;
+  function shownIds() {
+    return Array.prototype.map.call(root.querySelectorAll('[data-req-row]'), function (tr) { return tr.getAttribute('data-req-row'); });
+  }
+  function keepUrl(extra) {
+    var u = new URL(location.href);
+    var ids = shownIds().concat(extra || []);
+    var old = (u.searchParams.get('keep') || '').split(',');
+    var all = old.concat(ids).map(String).filter(function (v, i, a) { return /^\d+$/.test(v) && a.indexOf(v) === i; }).slice(-100);
+    if (all.length) u.searchParams.set('keep', all.join(',')); else u.searchParams.delete('keep');
+    return u;
+  }
+  function userBusy() {
+    if (document.querySelector('[data-rm-dialog]') || root.querySelector('details[open]')) return true;
+    var a = document.activeElement;
+    return !!(a && a !== document.body && root.contains(a) && a.matches('input[type="search"], textarea'));
+  }
+  function refresh(extra) {
+    if (busy || userBusy()) { pending = true; return; }
+    busy = true;
+    pending = false;
+    var u = keepUrl(extra);
+    // 선택해 둔 체크 상태는 그대로 살린다.
+    var picked = checks().filter(function (c) { return c.checked; }).map(function (c) { return c.value; });
+    fetch(u.toString(), { credentials: 'same-origin', headers: { 'Accept': 'text/html' } })
+      .then(function (r) { if (!r.ok) throw new Error('load'); return r.text(); })
+      .then(function (html) {
+        var doc = new DOMParser().parseFromString(html, 'text/html');
+        root.querySelectorAll('[data-soft]').forEach(function (region) {
+          var next = doc.querySelector('[data-soft="' + region.getAttribute('data-soft') + '"]');
+          if (next && next.innerHTML !== region.innerHTML) region.innerHTML = next.innerHTML;
+        });
+        checks().forEach(function (c) { if (picked.indexOf(c.value) >= 0 && !c.disabled) c.checked = true; });
+        update();
+        try { history.replaceState(null, '', u.pathname + u.search); } catch (e) {}
+      })
+      .catch(function () {})
+      .finally(function () { busy = false; });
+  }
+
+  // 생성 시작, 반려를 보낸 뒤에는 그 줄의 상태만 바꾼다.
+  root.addEventListener('rm:success', function (e) {
+    var form = e.target;
+    var d = form.closest('details');
+    if (d) d.open = false;
+    refresh((e.detail && e.detail.ids) || []);
+  });
+
+  // 생성 중인 요청이 있으면 5초마다 상태를 확인한다(작업 처리기도 함께 돌린다).
+  var lastTick = 0;
+  setInterval(function () {
+    if (document.hidden) return;
+    if (pending) { refresh(); return; }
+    if (!root.querySelector('[data-req-row][data-state="making"]')) return;
+    if (window.RMAdmin && Date.now() - lastTick > 12000) { lastTick = Date.now(); window.RMAdmin.tickWorker(); }
+    refresh();
+  }, 5000);
 })();
 </script>
 <?php endsection(); ?>

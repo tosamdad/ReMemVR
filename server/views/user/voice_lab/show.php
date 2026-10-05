@@ -85,10 +85,14 @@ $dot = [
       <div class="flex items-start gap-3">
         <span class="material-symbols-outlined">error</span>
         <div class="space-y-1">
-          <p class="font-label-lg text-label-lg">생성 실패, 문의해 주세요</p>
-          <p class="text-[14px] leading-5">목소리를 만드는 중에 문제가 생겼어요. 1:1 문의로 알려 주시면 빠르게 확인해 드릴게요.</p>
+          <p class="font-label-lg text-label-lg">목소리를 만들지 못했어요</p>
+          <p class="text-[14px] leading-5">잠깐 문제가 생겼어요. 녹음은 그대로 있으니 다시 만들기를 눌러 주세요. 계속 안 되면 1:1 문의로 알려 주세요.</p>
         </div>
       </div>
+      <form method="post" action="<?= e(url('/voice-lab/' . $pid . '/retry')) ?>" data-confirm="녹음한 목소리로 다시 만들어 볼까요?" data-confirm-ok="다시 만들기" data-confirm-danger="0">
+        <?= csrf_field() ?>
+        <button type="submit" class="btn-primary w-full rounded-full"><span class="material-symbols-outlined">refresh</span>다시 만들기</button>
+      </form>
       <a href="<?= e(url('/settings/support')) ?>" class="btn-ghost w-full rounded-full border-2 border-on-error-container/30 text-on-error-container"><span class="material-symbols-outlined">support_agent</span>문의하기</a>
     </section>
   <?php elseif ($status === 'pending'): ?>

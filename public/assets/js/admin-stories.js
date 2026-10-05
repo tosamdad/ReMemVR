@@ -185,12 +185,12 @@
   if (tbody) {
     $$('[data-row]', tbody).forEach(bindRow);
     renumber();
-    tbody.addEventListener('click', function (e) {
+    tbody.addEventListener('click', async function (e) {
       var row = e.target.closest('[data-row]');
       if (!row) return;
       if (e.target.closest('[data-row-delete]')) {
         var text = ($('[data-content]', row) || {}).value || '';
-        if (text.trim() && !window.confirm('이 문장 행을 삭제할까요? 저장해야 반영됩니다.')) return;
+        if (text.trim() && !(await RM.confirm('이 문장 행을 삭제할까요? 저장해야 반영됩니다.', { ok: '삭제' }))) return;
         row.remove();
         renumber();
         markDirty();
@@ -229,7 +229,7 @@
       var body = ($('[data-split-body]') || {}).value || '';
       if (!body.trim()) { RM.toast('나눌 본문을 붙여 넣어 주세요.', 'info'); return; }
       var existing = $$('[data-row]', tbody).filter(function (r) { return (($('[data-content]', r) || {}).value || '').trim() !== ''; });
-      if (mode === 'replace' && existing.length && !window.confirm('지금 표의 문장 ' + existing.length + '개를 나눈 결과로 바꿀까요? 키워드와 타임코드도 지워집니다.')) return;
+      if (mode === 'replace' && existing.length && !(await RM.confirm('지금 표의 문장 ' + existing.length + '개를 나눈 결과로 바꿀까요? 키워드와 타임코드도 지워집니다.', { ok: '바꾸기', danger: true }))) return;
       b.disabled = true;
       try {
         var res = await RM.api('/admin/stories/split', { method: 'POST', body: { body: body } });
@@ -404,11 +404,15 @@
   });
   var tcBtn = $('[data-timecode-btn]');
   if (tcBtn) tcBtn.addEventListener('click', function (e) {
-    if (dirty && !window.confirm('저장하지 않은 변경사항이 있습니다. 타임코드를 가져오면 지금 편집한 내용은 사라집니다. 계속할까요?')) {
-      e.preventDefault();
-      return;
-    }
-    dirty = false;
+    if (tcBtn._rmConfirmed) { tcBtn._rmConfirmed = false; dirty = false; return; }
+    if (!dirty) return;
+    e.preventDefault();
+    RM.confirm('저장하지 않은 변경사항이 있습니다. 타임코드를 가져오면 지금 편집한 내용은 사라집니다. 계속할까요?', { ok: '계속', danger: true }).then(function (ok) {
+      if (!ok) return;
+      dirty = false;
+      tcBtn._rmConfirmed = true;
+      tcBtn.click();
+    });
   });
   var delForm = document.getElementById('story-delete-form');
   if (delForm) delForm.addEventListener('submit', function () { dirty = false; });

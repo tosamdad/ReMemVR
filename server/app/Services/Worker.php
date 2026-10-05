@@ -200,6 +200,10 @@ class Worker
                 'ref_id' => $pid,
             ]);
             if (empty($res['ok']) || empty($res['voice_id'])) {
+                // 키 권한, 요금제처럼 다시 해도 같은 오류는 재시도하지 않는다.
+                if (!empty($res['permanent'])) {
+                    throw new \DomainException('ElevenLabs 목소리 생성 실패: ' . self::errorText($res));
+                }
                 throw new \RuntimeException('ElevenLabs 목소리 생성 실패: ' . self::errorText($res));
             }
             $voiceId = (string) $res['voice_id'];

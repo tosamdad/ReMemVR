@@ -106,9 +106,10 @@ $c = $d['cost'];
         <div class="h-full rounded-full <?= $w['cost.percent'] >= 90 ? 'bg-error' : 'bg-secondary-container' ?> transition-all duration-500" style="width: <?= (int) $w['cost.percent'] ?>%" data-stat-width="cost.percent"></div>
       </div>
       <div class="mt-3 flex flex-wrap items-center justify-between gap-2 text-on-surface-variant">
-        <span class="font-label-sm text-label-sm">건당 평균 <strong class="text-on-surface" data-stat="cost.per_interaction"><?= e($s['cost.per_interaction']) ?></strong></span>
+        <span class="font-label-sm text-label-sm">오늘 합성 <strong class="text-on-surface" data-stat="cost.credits"><?= e($s['cost.credits']) ?></strong></span>
         <span class="font-label-sm text-label-sm text-on-surface-variant">안전 한도 <span data-stat="cost.budget"><?= e($s['cost.budget']) ?></span></span>
       </div>
+      <p class="mt-1 font-label-sm text-[11px] leading-4 text-on-surface-variant/80"><a href="<?= e(url('/admin/settings')) ?>" class="hover:underline">설정 단가</a> 기준 추정치(<span data-stat="cost.unit"><?= e($s['cost.unit']) ?></span>, 오늘 0시부터). 요금제 결제액과 다를 수 있습니다.</p>
     </div>
   </div>
 

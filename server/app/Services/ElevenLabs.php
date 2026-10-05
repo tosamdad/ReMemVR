@@ -50,7 +50,7 @@ class ElevenLabs
     {
         $started = microtime(true);
         $name = trim($name) !== '' ? mb_substr(trim($name), 0, 100) : '르멤버 목소리';
-        $result = ['ok' => false, 'voice_id' => null, 'error' => null, 'ms' => 0];
+        $result = ['ok' => false, 'voice_id' => null, 'error' => null, 'ms' => 0, 'permanent' => false];
 
         if (!self::ready()) {
             $result['error'] = 'ElevenLabs API 키가 등록되지 않았습니다.';
@@ -109,6 +109,7 @@ class ElevenLabs
             $result['voice_id'] = (string) $data['voice_id'];
         } else {
             $result['error'] = self::errorMessage($res);
+            $result['permanent'] = self::isPermanent($res);
         }
         self::logClone($usage, $result);
 
@@ -650,6 +651,21 @@ class ElevenLabs
         }
 
         return null;
+    }
+
+    /**
+     * 다시 시도해도 같은 결과인 오류인가(키 권한, 요금제, 결제, 잘못된 요청).
+     * 이런 오류는 작업 처리기가 재시도하지 않고 바로 실패로 끝내 관리자와 회원이 빨리 알 수 있게 한다.
+     */
+    public static function isPermanent(array $res): bool
+    {
+        $status = (int) $res['status'];
+        $code = self::detailStatus(HttpClient::json($res));
+        if (in_array($code, ['too_many_concurrent_requests', 'system_busy'], true)) {
+            return false;
+        }
+
+        return in_array($status, [400, 401, 402, 403, 413, 422], true);
     }
 
     /** API 오류를 관리자가 이해할 수 있는 한글 메시지로 바꾼다(API 키는 절대 넣지 않는다). */

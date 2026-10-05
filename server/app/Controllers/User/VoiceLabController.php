@@ -348,6 +348,22 @@ class VoiceLabController
         redirect('/voice-lab/' . $pid);
     }
 
+    /** POST /voice-lab/{id}/retry: 만들지 못한 목소리를 다시 만든다(녹음은 그대로 쓴다). */
+    public function retry(string $id): void
+    {
+        require_user();
+        $voice = $this->profile((int) $id);
+        $pid = (int) $voice['id'];
+        try {
+            VoiceService::retryByUser($pid);
+        } catch (\RuntimeException $e) {
+            flash('error', $e->getMessage());
+            redirect('/voice-lab/' . $pid);
+        }
+        flash('success', '목소리를 다시 만들고 있어요. 잠시 뒤 준비되면 이 화면이 바로 바뀌어요.');
+        redirect('/voice-lab/' . $pid);
+    }
+
     /** POST /voice-lab/{id}/rename */
     public function rename(string $id): void
     {
