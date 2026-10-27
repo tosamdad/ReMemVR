@@ -270,11 +270,102 @@ class VoiceService
         if ($profile['status'] !== 'failed') {
             throw new \RuntimeException('지금은 다시 만들 수 없어요. (현재 상태: ' . voice_status_label((string) $profile['status']) . ')');
         }
+        Jobs::log(null, 'voice_profile', $profileId, 'info', '회원이 목소리 다시 만들기를 눌렀습니다.');
+        self::regenerate($profileId);
+    }
+
+    /** 녹음을 고치고 다시 생성할 수 있는 상태(준비됨, 실패) */
+    const REVISABLE = ['completed', 'processing', 'failed'];
+
+    /**
+     * 목소리를 만든 뒤 녹음을 더하거나 지웠는지(다시 생성해야 새 녹음이 목소리에 반영된다).
+     * 실패한 목소리는 다시 만들기 버튼이 따로 있으므로 준비된 목소리만 본다.
+     */
+    public static function samplesChanged(array $profile): bool
+    {
+        return in_array((string) $profile['status'], ['completed', 'processing'], true)
+            && !empty($profile['samples_changed_at']);
+    }
+
+    /** 회원이 녹음을 더하거나 지웠다고 기록한다(준비됨, 실패 상태에서만 의미가 있다). */
+    public static function markSamplesChanged(int $profileId): void
+    {
+        db_exec(
+            "UPDATE voice_profiles SET samples_changed_at = NOW() WHERE id = ? AND status IN ('completed', 'processing', 'failed')",
+            [$profileId]
+        );
+    }
+
+    /**
+     * 지금 남아 있는 녹음으로 ElevenLabs 목소리를 새로 만든다(준비됨|실패 → cloning).
+     * 예전 ElevenLabs 목소리는 지우고, 이미 만든 동화 오디오는 그대로 둔다(keep_stories).
+     * 다시 만들 수 없으면 RuntimeException(회원에게 보여 줄 문구).
+     */
+    public static function regenerate(int $profileId): void
+    {
+        $profile = self::find($profileId);
+        if (!in_array((string) $profile['status'], self::REVISABLE, true)) {
+            throw new \RuntimeException('지금은 다시 생성할 수 없어요. (현재 상태: ' . voice_status_label((string) $profile['status']) . ')');
+        }
         if (!ElevenLabs::ready()) {
             throw new \RuntimeException('지금은 목소리를 만들 수 없어요. 잠시 뒤 다시 시도하거나 문의해 주세요.');
         }
-        Jobs::log(null, 'voice_profile', $profileId, 'info', '회원이 목소리 다시 만들기를 눌렀습니다.');
-        self::approve($profileId, null);
+        $summary = self::sampleSummary($profileId);
+        if ($summary['count'] === 0) {
+            throw new \RuntimeException('녹음이 없어요. 먼저 녹음을 더해 주세요.');
+        }
+        $minSec = (int) setting('voice.min_sample_seconds', 60);
+        if ($summary['all_measured'] && $minSec > 0 && $summary['total_ms'] < $minSec * 1000) {
+            throw new \RuntimeException('녹음이 모두 합쳐 ' . self::minText($minSec) . ' 이상이어야 다시 생성할 수 있어요. (지금 ' . self::minText((int) floor($summary['total_ms'] / 1000)) . ')');
+        }
+        if (self::storiesBusy($profileId)) {
+            throw new \RuntimeException('지금 이 목소리로 동화를 만들고 있어요. 동화가 완성된 뒤 다시 생성해 주세요.');
+        }
+
+        $oldVoice = (string) $profile['provider_voice_id'];
+        if ($oldVoice !== '') {
+            Jobs::enqueue('voice_delete', [
+                'profile_id' => $profileId,
+                'provider_voice_id' => $oldVoice,
+                'provider_only' => true,
+            ], ['priority' => 3, 'ref_type' => 'voice_profile', 'ref_id' => $profileId]);
+        }
+        // cloned_at 은 남겨 둔다(처음 준비 알림 메일을 다시 보내지 않는다). 생성이 끝나면 새 시각으로 바뀐다.
+        db_exec(
+            'UPDATE voice_profiles SET status = ?, provider_voice_id = NULL, provider_released_at = NULL, samples_changed_at = NULL,
+                reject_reason = NULL, processed_at = NOW(), sample_total_ms = ?, quality_grade = COALESCE(?, quality_grade) WHERE id = ?',
+            ['cloning', $summary['total_ms'], $summary['grade'], $profileId]
+        );
+        Jobs::cancelPending('voice_profile', $profileId, ['voice_clone', 'voice_clips']);
+        Jobs::enqueue('voice_clone', ['profile_id' => $profileId, 'keep_stories' => true], [
+            'priority' => 1, 'ref_type' => 'voice_profile', 'ref_id' => $profileId,
+        ]);
+        Jobs::log(null, 'voice_profile', $profileId, 'info', '회원이 녹음 ' . $summary['count'] . '개(총 ' . Worker::koDuration($summary['total_ms'])
+            . ')로 목소리 다시 생성을 요청했습니다. 이미 만든 동화는 그대로 둡니다.');
+        Worker::kick();
+    }
+
+    /** 이 목소리로 동화 오디오를 만드는 중인지(대기, 진행 중 작업 또는 합성 중인 오디오) */
+    public static function storiesBusy(int $profileId): bool
+    {
+        $jobs = (int) db_value(
+            "SELECT COUNT(*) FROM jobs WHERE ref_type = 'voice_profile' AND ref_id = ? AND type = 'story_tts' AND status IN ('pending', 'running')",
+            [$profileId]
+        );
+        if ($jobs > 0) {
+            return true;
+        }
+
+        return (int) db_value("SELECT COUNT(*) FROM story_audios WHERE voice_profile_id = ? AND status = 'processing'", [$profileId]) > 0;
+    }
+
+    /** 90 → "1분 30초", 45 → "45초" */
+    private static function minText(int $sec): string
+    {
+        $m = intdiv(max(0, $sec), 60);
+        $s = max(0, $sec) % 60;
+
+        return $m > 0 ? $m . '분' . ($s > 0 ? ' ' . $s . '초' : '') : $s . '초';
     }
 
     /**

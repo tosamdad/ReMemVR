@@ -15,6 +15,7 @@ $router->get('/voice-lab/{id:\d+}', [VoiceLabController::class, 'show']);
 $router->get('/voice-lab/{id:\d+}/record', [VoiceLabController::class, 'record']);
 $router->post('/voice-lab/{id:\d+}/submit', [VoiceLabController::class, 'submit']);
 $router->post('/voice-lab/{id:\d+}/retry', [VoiceLabController::class, 'retry']);
+$router->post('/voice-lab/{id:\d+}/regenerate', [VoiceLabController::class, 'regenerate']);
 $router->post('/voice-lab/{id:\d+}/rename', [VoiceLabController::class, 'rename']);
 $router->post('/voice-lab/{id:\d+}/delete', [VoiceLabController::class, 'destroy']);
 

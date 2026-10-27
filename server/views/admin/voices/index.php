@@ -209,6 +209,9 @@ $to = min($total, $page * 20);
                     <div class="flex flex-wrap gap-1.5">
                       <span class="flex items-center gap-1 rounded-full bg-surface-container-high px-2 py-0.5 font-label-sm text-label-sm text-on-surface"><span class="material-symbols-outlined text-[13px] text-primary">timer</span><?= (int) $smp['count'] ?>개 · <?= e(DashboardStats::koDuration($smp['total_ms'])) ?></span>
                       <span class="rounded-full px-2 py-0.5 font-label-sm text-label-sm <?= $gradeChip[$grade['tone']] ?>"><?= e($grade['label']) ?></span>
+                      <?php if (VoiceService::samplesChanged($r)): ?>
+                      <span class="rounded-full bg-tertiary-container px-2 py-0.5 font-label-sm text-label-sm text-on-tertiary-container" title="회원이 목소리를 만든 뒤 녹음을 고쳤고 아직 다시 생성하지 않았습니다">녹음 변경됨</span>
+                      <?php endif; ?>
                     </div>
                   </div>
                 </td>

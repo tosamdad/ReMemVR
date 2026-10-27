@@ -37,6 +37,9 @@ class VoiceLabController
     /** 녹음, 샘플 추가가 가능한 상태 */
     const EDITABLE = ['draft', 'rejected'];
 
+    /** 목소리를 만든 뒤 녹음을 고치고 다시 생성할 수 있는 상태(VoiceService::REVISABLE) */
+    const REVISABLE = ['completed', 'processing', 'failed'];
+
     /** 생성이 진행 중인 상태(화면이 주기적으로 상태를 다시 읽는다) */
     const WORKING = ['cloning', 'processing'];
 
@@ -129,8 +132,10 @@ class VoiceLabController
     {
         $user = require_user();
         $voice = $this->profile((int) $id);
-        if (!in_array($voice['status'], self::EDITABLE, true)) {
-            flash('info', '이미 제출한 목소리예요. 진행 상황을 확인해 주세요.');
+        if (!self::canEditSamples($voice)) {
+            flash('info', $voice['status'] === 'cloning'
+                ? '지금 목소리를 만들고 있어요. 다 만든 뒤 녹음을 고칠 수 있어요.'
+                : '이미 제출한 목소리예요. 진행 상황을 확인해 주세요.');
             redirect('/voice-lab/' . (int) $voice['id']);
         }
         $samples = $this->samples((int) $voice['id']);
@@ -146,6 +151,7 @@ class VoiceLabController
             'maxUpload' => self::uploadLimit(),
             'user' => $user,
             'auto' => VoiceService::autoClone(),
+            'revise' => in_array($voice['status'], self::REVISABLE, true),
         ]);
     }
 
@@ -173,6 +179,10 @@ class VoiceLabController
             'progress' => $progress,
             'timeline' => self::timeline($voice),
             'labelMax' => self::LABEL_MAX,
+            'canRevise' => in_array($voice['status'], self::REVISABLE, true),
+            'changed' => VoiceService::samplesChanged($voice),
+            'storiesBusy' => in_array($voice['status'], self::REVISABLE, true) && VoiceService::storiesBusy($pid),
+            'minSec' => (int) setting('voice.min_sample_seconds', 60),
         ]);
     }
 
@@ -185,8 +195,8 @@ class VoiceLabController
         $uid = (int) $user['id'];
         $voice = $this->profile((int) $id);
         $pid = (int) $voice['id'];
-        if (!in_array($voice['status'], self::EDITABLE, true)) {
-            abort(409, '이미 제출한 목소리에는 녹음을 더할 수 없어요.');
+        if (!self::canEditSamples($voice)) {
+            abort(409, $voice['status'] === 'cloning' ? '지금 목소리를 만들고 있어요. 다 만든 뒤 녹음을 더해 주세요.' : '이미 제출한 목소리에는 녹음을 더할 수 없어요.');
         }
         if (!RateLimiter::hit('voice-sample:' . $uid, 60, 3600)) {
             abort(429, '잠시 너무 많이 올렸어요. 조금 뒤에 다시 시도해 주세요.');
@@ -271,6 +281,7 @@ class VoiceLabController
             throw $e;
         }
         $totalMs = $this->updateTotal($pid);
+        VoiceService::markSamplesChanged($pid);
         $row = db_one('SELECT * FROM voice_samples WHERE id = ?', [$sampleId]);
 
         return [
@@ -288,16 +299,21 @@ class VoiceLabController
         require_user();
         $voice = $this->profile((int) $id);
         $pid = (int) $voice['id'];
-        if (!in_array($voice['status'], self::EDITABLE, true)) {
-            abort(409, '이미 제출한 목소리의 녹음은 지울 수 없어요.');
+        if (!self::canEditSamples($voice)) {
+            abort(409, $voice['status'] === 'cloning' ? '지금 목소리를 만들고 있어요. 다 만든 뒤 녹음을 지워 주세요.' : '이미 제출한 목소리의 녹음은 지울 수 없어요.');
         }
         $sample = db_one('SELECT * FROM voice_samples WHERE id = ? AND voice_profile_id = ?', [(int) $sampleId, $pid]);
         if (!$sample) {
             abort(404, '녹음을 찾을 수 없어요.');
         }
+        if (in_array($voice['status'], self::REVISABLE, true)) {
+            // 이미 만든 목소리는 다시 생성할 수 있도록 최소 길이 이상의 녹음을 남겨 둔다.
+            $this->guardMinimumAfterDelete($pid, (int) $sample['id']);
+        }
         db_exec('DELETE FROM voice_samples WHERE id = ? AND voice_profile_id = ?', [(int) $sample['id'], $pid]);
         Storage::delete((string) $sample['file_path']);
         $totalMs = $this->updateTotal($pid);
+        VoiceService::markSamplesChanged($pid);
 
         return [
             'ok' => true,
@@ -361,6 +377,22 @@ class VoiceLabController
             redirect('/voice-lab/' . $pid);
         }
         flash('success', '목소리를 다시 만들고 있어요. 잠시 뒤 준비되면 이 화면이 바로 바뀌어요.');
+        redirect('/voice-lab/' . $pid);
+    }
+
+    /** POST /voice-lab/{id}/regenerate: 지금 남은 녹음으로 목소리를 다시 만든다(이미 만든 동화는 그대로). */
+    public function regenerate(string $id): void
+    {
+        require_user();
+        $voice = $this->profile((int) $id);
+        $pid = (int) $voice['id'];
+        try {
+            VoiceService::regenerate($pid);
+        } catch (\RuntimeException $e) {
+            flash('error', $e->getMessage());
+            redirect('/voice-lab/' . $pid);
+        }
+        flash('success', '지금 녹음으로 목소리를 다시 만들고 있어요. 보통 1분 안에 끝나고, 이미 만든 동화는 그대로 들을 수 있어요.');
         redirect('/voice-lab/' . $pid);
     }
 
@@ -443,6 +475,31 @@ class VoiceLabController
         }
 
         return $row;
+    }
+
+    /** 녹음을 더하거나 지울 수 있는 목소리인지(녹음 중, 반려, 준비됨, 실패) */
+    public static function canEditSamples(array $voice): bool
+    {
+        return in_array((string) $voice['status'], array_merge(self::EDITABLE, self::REVISABLE), true);
+    }
+
+    /** 이 녹음을 지우면 남은 녹음이 최소 길이보다 짧아지는지 확인하고, 그렇다면 422 로 막는다. */
+    private function guardMinimumAfterDelete(int $pid, int $sampleId): void
+    {
+        $rest = db_one(
+            'SELECT COUNT(*) AS n, COALESCE(SUM(duration_ms), 0) AS ms,
+                    SUM(CASE WHEN duration_ms IS NULL OR duration_ms = 0 THEN 1 ELSE 0 END) AS unknown
+               FROM voice_samples WHERE voice_profile_id = ? AND id <> ?',
+            [$pid, $sampleId]
+        );
+        $minSec = (int) setting('voice.min_sample_seconds', 60);
+        if ((int) $rest['n'] === 0) {
+            abort(422, '마지막 녹음은 지울 수 없어요. 새 녹음을 먼저 더한 뒤 지워 주세요.');
+        }
+        if ($minSec > 0 && (int) $rest['unknown'] === 0 && (int) $rest['ms'] < $minSec * 1000) {
+            abort(422, '녹음은 모두 합쳐 ' . self::secText($minSec) . ' 이상 남아 있어야 해요. 이 녹음을 지우면 '
+                . self::secText((int) floor((int) $rest['ms'] / 1000)) . '만 남아요. 새 녹음을 먼저 더한 뒤 지워 주세요.');
+        }
     }
 
     private function userVoices(int $uid): array

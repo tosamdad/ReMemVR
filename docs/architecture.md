@@ -119,6 +119,9 @@
     녹음 샘플은 하나로 합치지 않고 모두 ElevenLabs 즉시 목소리 복제(IVC)에 함께 보낸다(여러 파일을 받는다). 끝내 실패하면 운영 알림 메일을 보낸다.
     키 권한, 요금제, 결제처럼 다시 해도 같은 오류(400, 401, 402, 403, 413, 422)는 재시도하지 않고 바로 failed 로 끝낸다.
     failed 는 회원(목소리 상세, 목록 카드의 다시 만들기)과 관리자(목록, 상세의 다시 생성) 모두 다시 만들 수 있다. 관리자 목록에는 마지막 실패 사유(jobs.last_error)가 보인다.
+    녹음 고치기(0007): 준비됨, 실패 상태에서도 회원이 목소리 상세에서 녹음을 듣고, 녹음 화면에서 더하거나 지울 수 있다. 바꾸면 samples_changed_at 을 남기고
+    목소리는 바로 바꾸지 않는다. 회원이 다시 생성을 누르면(VoiceService::regenerate) 예전 ElevenLabs 목소리를 지우고 남은 녹음으로 새로 만든다.
+    이미 만든 동화 오디오는 다시 만들지 않는다(voice_clone 의 keep_stories). 남은 녹음은 최소 길이 이상이어야 하고, 동화를 만드는 중에는 다시 생성할 수 없다.
     목소리가 준비되어도 동화를 한꺼번에 만들지 않는다. 동화는 회원이 골라 요청하고 관리자가 생성을 시작한 것만 만든다(story_requests).
     processing 은 예전 일괄 생성 방식의 상태로, 0004 에서 completed 로 옮겼고 지금은 쓰지 않는다.
     rejected(반려, 재녹음 필요), failed(생성 실패). 삭제는 deleted_at(소프트 삭제) + ElevenLabs 목소리 삭제 작업
@@ -172,6 +175,7 @@ sentence_timings JSON 형식(story_audios)
     VoiceService::submit(int $profileId): void                       사용자 제출(draft → pending), 관리자 알림 메일
     VoiceService::approve(int $profileId, ?int $adminId, array $params = []): void   cloning 으로 바꾸고 voice_clone 작업 등록
     VoiceService::retryByUser(int $profileId): void                  회원의 다시 만들기(failed → cloning)
+    VoiceService::regenerate(int $profileId): void                   녹음을 고친 뒤 다시 생성(completed|failed → cloning, 만든 동화는 그대로)
     VoiceService::failReasons(array $profileIds): array              실패한 목소리의 마지막 실패 사유 [id => 문구]
     VoiceService::reject(int $profileId, ?int $adminId, string $reason): void
     VoiceService::saveParams(int $profileId, array $params): void    stability, similarity_boost, style, speaker_boost
