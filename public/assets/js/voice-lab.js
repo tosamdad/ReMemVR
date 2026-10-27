@@ -4,6 +4,7 @@
  *   [data-vl-index], [data-vl-show]  생성 중인 목소리가 있으면 10초마다 /api/voice-lab/status 로 상태를 갱신한다.
  *   [data-vl-new]     누구 목소리인지, 아이콘 고르기(미리 보기 갱신)
  *   [data-vl-record]  안내된 녹음: 마이크 확인, 대본별 녹음(RMRecorder), 품질 안내, 저장, 파일로 올리기, 삭제, 제출
+ *                     (이미 만든 목소리는 같은 화면에서 녹음을 고치고 제출 대신 다시 생성한다)
  */
 (function () {
   'use strict';
@@ -272,6 +273,9 @@
     var totalMs = samples.reduce(function (a, s) { return a + (s.duration_ms || 0); }, 0);
     var unknownCount = samples.filter(function (s) { return !s.duration_ms; }).length;
     var step = data.step;
+    // 이미 만든 목소리의 녹음을 고치는 중이면 3단계가 동의, 제출 대신 다시 생성이다.
+    var revise = !!data.revise;
+    var doneWord = revise ? '다시 생성' : '완료';
     var scriptKey = null;
     var ALLOWED = ['wav', 'mp3', 'm4a', 'mp4', 'aac', 'ogg', 'webm', 'flac'];
 
@@ -437,34 +441,40 @@
       el.totalBar.classList.toggle('bg-primary', totalMs < data.minMs);
       var hint, icon = 'info';
       if (!samples.length) {
-        hint = '최소 ' + secText(data.minMs / 1000) + ' 이상 녹음하면 완료할 수 있어요.';
+        hint = '최소 ' + secText(data.minMs / 1000) + ' 이상 녹음하면 ' + doneWord + '할 수 있어요.';
       } else if (totalMs < data.minMs && unknownCount > 0) {
-        hint = '길이를 알 수 없는 파일이 ' + unknownCount + '개 있어요. 완료하면 운영팀이 확인한 뒤 만들어요.';
+        hint = revise
+          ? '길이를 알 수 없는 파일이 ' + unknownCount + '개 있어요. 다시 생성할 수 있어요.'
+          : '길이를 알 수 없는 파일이 ' + unknownCount + '개 있어요. 완료하면 운영팀이 확인한 뒤 만들어요.';
       } else if (totalMs < data.minMs) {
-        hint = '완료하려면 ' + secText(Math.ceil((data.minMs - totalMs) / 1000)) + ' 더 녹음해 주세요.';
+        hint = doneWord + '하려면 ' + secText(Math.ceil((data.minMs - totalMs) / 1000)) + ' 더 녹음해 주세요.';
       } else if (totalMs < data.recMs) {
         icon = 'check_circle';
-        hint = '완료할 수 있어요! ' + secText(data.recMs / 1000) + '까지 녹음하면 더 닮은 목소리가 돼요.';
+        hint = doneWord + '할 수 있어요! ' + secText(data.recMs / 1000) + '까지 녹음하면 더 닮은 목소리가 돼요.';
       } else {
         icon = 'celebration';
-        hint = '충분히 녹음했어요. 이제 완료해 주세요.';
+        hint = revise ? '충분히 녹음했어요. 고칠 녹음을 다 고쳤으면 다시 생성해 주세요.' : '충분히 녹음했어요. 이제 완료해 주세요.';
       }
       el.totalHint.innerHTML = '<span class="material-symbols-outlined text-[18px] ' + (icon === 'info' ? 'text-outline' : 'text-secondary') + '">' + icon + '</span><span>' + RM.escapeHtml(hint) + '</span>';
       updateSubmit();
       el.nextStep.hidden = !(step === 2 && canSubmit());
     }
 
+    function consented() {
+      return !el.consent || el.consent.checked;
+    }
+
     function updateSubmit() {
       var ok = canSubmit();
-      el.submitBtn.disabled = !(ok && el.consent.checked);
+      el.submitBtn.disabled = !(ok && consented());
       if (!ok) {
-        el.submitHint.textContent = samples.length ? '최소 ' + secText(data.minMs / 1000) + '을 채우면 완료할 수 있어요.' : '먼저 대본을 녹음해 주세요.';
+        el.submitHint.textContent = samples.length ? '최소 ' + secText(data.minMs / 1000) + '을 채우면 ' + doneWord + '할 수 있어요.' : '먼저 대본을 녹음해 주세요.';
       } else {
-        el.submitHint.textContent = el.consent.checked ? '' : '위 내용에 동의하면 완료할 수 있어요.';
+        el.submitHint.textContent = consented() ? '' : '위 내용에 동의하면 완료할 수 있어요.';
       }
     }
 
-    el.consent.addEventListener('change', updateSubmit);
+    if (el.consent) el.consent.addEventListener('change', updateSubmit);
     el.submitForm.addEventListener('submit', function (e) {
       if (el.submitBtn.disabled) { e.preventDefault(); return; }
       el.submitBtn.disabled = true;
@@ -492,7 +502,10 @@
     el.samplesList.addEventListener('click', async function (e) {
       var btn = e.target.closest('[data-delete-sample]');
       if (!btn) return;
-      if (!(await RM.confirm('이 녹음을 지울까요? 지운 녹음은 되돌릴 수 없어요.', { ok: '지우기' }))) return;
+      var ask = revise
+        ? '이 녹음을 지울까요? 지운 녹음은 되돌릴 수 없고, 다시 생성을 눌러야 목소리에 반영돼요.'
+        : '이 녹음을 지울까요? 지운 녹음은 되돌릴 수 없어요.';
+      if (!(await RM.confirm(ask, { ok: '지우기' }))) return;
       var id = Number(btn.getAttribute('data-delete-sample'));
       btn.disabled = true;
       try {
@@ -713,7 +726,9 @@
         var next = nextScriptKey();
         if (!wasReady && canSubmit()) {
           // 최소 길이(1분)를 막 넘겼으면 바로 완료 단계로 보낸다. 더 녹음하고 싶으면 녹음 탭으로 돌아가면 된다.
-          RM.toast('최소 녹음 시간을 채웠어요! 동의하고 완료를 누르면 바로 목소리를 만들어요.', 'success');
+          RM.toast(revise
+            ? '최소 녹음 시간을 채웠어요! 다시 생성을 누르면 새 녹음으로 목소리를 만들어요.'
+            : '최소 녹음 시간을 채웠어요! 동의하고 완료를 누르면 바로 목소리를 만들어요.', 'success');
           setStep(3, true);
         } else if (next) {
           RM.toast('녹음을 저장했어요.', 'success');
@@ -721,7 +736,7 @@
           var panel = $('[data-script-panel="' + next + '"]', root);
           if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
         } else if (canSubmit()) {
-          RM.toast('대본을 모두 녹음했어요! 이제 완료로 넘어가 볼까요?', 'info');
+          RM.toast(revise ? '대본을 모두 녹음했어요! 이제 다시 생성으로 넘어가 볼까요?' : '대본을 모두 녹음했어요! 이제 완료로 넘어가 볼까요?', 'info');
           el.nextStep.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
       } catch (err) {

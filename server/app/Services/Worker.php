@@ -164,8 +164,9 @@ class Worker
     // ───────────────────────── 작업별 처리 ─────────────────────────
 
     /**
-     * voice_clone {profile_id, restore?}: 샘플을 ElevenLabs 에 올려 목소리를 만들고 동화 생성을 등록한다.
+     * voice_clone {profile_id, restore?, keep_stories?}: 샘플을 ElevenLabs 에 올려 목소리를 만들고 동화 생성을 등록한다.
      * restore 는 자리를 비웠던(준비됨) 목소리를 남겨 둔 녹음으로 다시 만드는 경우다. 이미 만든 동화와 안내 음성은 그대로 둔다.
+     * keep_stories 는 회원이 녹음을 고쳐 다시 생성한 경우다. 안내 음성은 새 목소리로 다시 만들고, 이미 만든 동화는 그대로 둔다.
      */
     private static function handleVoiceClone(array $job, array $payload): void
     {
@@ -284,7 +285,9 @@ class Worker
         }
 
         // 동화는 한꺼번에 만들지 않는다. 회원이 이미 요청해 생성을 시작한 동화만 이어서(새 목소리면 다시) 만든다.
-        $count = VoiceService::queueStories($pid, null, $created && self::hasCompletedAudio($pid));
+        // 회원이 녹음을 고쳐 다시 생성한 목소리(keep_stories)는 이미 만든 동화를 다시 만들지 않는다.
+        $keepStories = !empty($payload['keep_stories']);
+        $count = VoiceService::queueStories($pid, null, $created && !$keepStories && self::hasCompletedAudio($pid));
         self::plog($job, $pid, 'info', $count > 0
             ? '생성을 시작한 요청 동화 ' . $count . '편 작업 등록'
             : '목소리 준비 완료. 회원이 동화를 골라 생성을 요청하면 만듭니다.');

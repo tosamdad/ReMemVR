@@ -1,7 +1,8 @@
 <?php
 /**
- * 목소리 상세: 진행 단계, 목소리 생성 상태(10초마다 갱신), 반려 사유, 동화 요청 안내, 이 목소리로 만든 동화, 샘플, 이름 바꾸기, 삭제.
- * 변수: $voice(decorate 결과), $samples, $stories, $progress, $timeline, $labelMax
+ * 목소리 상세: 목소리 생성 상태(10초마다 갱신), 반려 사유, 동화 요청 안내, 내 녹음 샘플(듣기, 고치기, 다시 생성), 진행 단계, 이 목소리로 만든 동화, 이름 바꾸기, 삭제.
+ * 변수: $voice(decorate 결과), $samples, $stories, $progress, $timeline, $labelMax,
+ *       $canRevise(녹음을 고쳐 다시 생성할 수 있는지), $changed(만든 뒤 녹음이 바뀌었는지), $storiesBusy(동화를 만드는 중인지), $minSec
  */
 $pid = (int) $voice['id'];
 $status = (string) $voice['status'];
@@ -128,6 +129,58 @@ $dot = [
     </section>
   <?php endif; ?>
 
+  <!-- 내 녹음 샘플: 들어 보고, 준비된 목소리는 녹음을 고쳐 다시 생성할 수 있다 -->
+  <section class="space-y-4" id="samples">
+    <div class="flex items-end justify-between">
+      <h3 class="font-headline-md text-[20px] font-bold leading-7 text-on-surface">내 녹음 샘플</h3>
+      <span class="font-label-sm text-label-sm text-outline"><?= count($samples) ?>개 · <?= e(fmt_duration($sampleMs)) ?></span>
+    </div>
+    <?php if ($changed): ?>
+      <div class="space-y-4 rounded-3xl bg-tertiary-container/50 p-5 text-on-tertiary-container" data-samples-changed>
+        <div class="flex items-start gap-3">
+          <span class="material-symbols-outlined">published_with_changes</span>
+          <div class="space-y-1">
+            <p class="font-label-lg text-label-lg">녹음이 바뀌었어요</p>
+            <p class="text-[14px] leading-5">다시 생성을 누르면 지금 남은 녹음으로 목소리를 새로 만들어요. 이미 만든 동화는 그대로 들을 수 있고, 새로 요청하는 동화부터 새 목소리로 읽어요.</p>
+          </div>
+        </div>
+        <?php if ($storiesBusy): ?>
+          <p class="flex items-start gap-1.5 text-label-sm"><span class="material-symbols-outlined text-[16px]">hourglass_top</span>지금 이 목소리로 동화를 만들고 있어요. 동화가 완성된 뒤 다시 생성할 수 있어요.</p>
+        <?php endif; ?>
+        <form method="post" action="<?= e(url('/voice-lab/' . $pid . '/regenerate')) ?>" data-confirm="지금 녹음으로 <?= e($voice['label']) ?> 목소리를 다시 생성할까요? 이미 만든 동화는 그대로 남아요." data-confirm-ok="다시 생성" data-confirm-danger="0">
+          <?= csrf_field() ?>
+          <button type="submit" class="btn-primary w-full rounded-full"<?= $storiesBusy ? ' disabled' : '' ?>><span class="material-symbols-outlined">autorenew</span>다시 생성</button>
+        </form>
+      </div>
+    <?php endif; ?>
+    <?php if (!$samples): ?>
+      <p class="rounded-2xl bg-surface-container-low px-4 py-5 text-center text-[14px] text-on-surface-variant">아직 녹음이 없어요.</p>
+    <?php else: ?>
+      <ul class="space-y-3">
+        <?php foreach ($samples as $s): $g = $s['grade'] && isset($grades[$s['grade']]) ? $grades[$s['grade']] : null; ?>
+          <li class="flex items-center gap-3 rounded-2xl border border-surface-container bg-surface-container-lowest p-3">
+            <button type="button" class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-secondary-container text-on-secondary-container active:scale-90" data-play-src="<?= e($s['url']) ?>" aria-label="<?= e($s['title']) ?> 듣기">
+              <span class="material-symbols-outlined icon-fill" data-play-icon>play_arrow</span>
+            </button>
+            <div class="min-w-0 flex-1">
+              <p class="truncate font-label-lg text-label-lg text-on-surface"><?= e($s['title']) ?></p>
+              <p class="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-label-sm text-on-surface-variant">
+                <span><?= e(($s['duration_ms'] ? fmt_duration($s['duration_ms']) : '길이 알 수 없음') . ' · ' . ($s['source'] === 'record' ? '녹음' : '파일')) ?></span>
+                <?php if ($g): ?><span class="rounded-full px-2 py-0.5 text-[11px] leading-4 <?= $g[1] ?>"><?= e($g[0]) ?></span><?php endif; ?>
+              </p>
+            </div>
+          </li>
+        <?php endforeach; ?>
+      </ul>
+    <?php endif; ?>
+    <?php if ($canRevise): ?>
+      <a href="<?= e(url('/voice-lab/' . $pid . '/record', ['step' => 2])) ?>" class="btn-ghost w-full rounded-full border-2 border-surface-variant py-3">
+        <span class="material-symbols-outlined">edit_note</span>녹음 더하기 · 지우기
+      </a>
+      <p class="text-center text-label-sm text-on-surface-variant">녹음을 고친 뒤 다시 생성을 눌러야 목소리에 반영돼요. 녹음은 모두 합쳐 <?= e(\App\Controllers\User\VoiceLabController::secText($minSec)) ?> 이상 남아 있어야 해요.</p>
+    <?php endif; ?>
+  </section>
+
   <!-- 진행 단계 -->
   <section class="space-y-4">
     <h3 class="font-headline-md text-[20px] font-bold leading-7 text-on-surface">진행 상황</h3>
@@ -179,34 +232,6 @@ $dot = [
       <?php endif; ?>
     </section>
   <?php endif; ?>
-
-  <!-- 녹음한 목소리 -->
-  <section class="space-y-4">
-    <div class="flex items-end justify-between">
-      <h3 class="font-headline-md text-[20px] font-bold leading-7 text-on-surface">녹음한 목소리</h3>
-      <span class="font-label-sm text-label-sm text-outline"><?= count($samples) ?>개 · <?= e(fmt_duration($sampleMs)) ?></span>
-    </div>
-    <?php if (!$samples): ?>
-      <p class="rounded-2xl bg-surface-container-low px-4 py-5 text-center text-[14px] text-on-surface-variant">아직 녹음이 없어요.</p>
-    <?php else: ?>
-      <ul class="space-y-3">
-        <?php foreach ($samples as $s): $g = $s['grade'] && isset($grades[$s['grade']]) ? $grades[$s['grade']] : null; ?>
-          <li class="flex items-center gap-3 rounded-2xl border border-surface-container bg-surface-container-lowest p-3">
-            <button type="button" class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-secondary-container text-on-secondary-container active:scale-90" data-play-src="<?= e($s['url']) ?>" aria-label="<?= e($s['title']) ?> 듣기">
-              <span class="material-symbols-outlined icon-fill" data-play-icon>play_arrow</span>
-            </button>
-            <div class="min-w-0 flex-1">
-              <p class="truncate font-label-lg text-label-lg text-on-surface"><?= e($s['title']) ?></p>
-              <p class="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-label-sm text-on-surface-variant">
-                <span><?= e(($s['duration_ms'] ? fmt_duration($s['duration_ms']) : '길이 알 수 없음') . ' · ' . ($s['source'] === 'record' ? '녹음' : '파일')) ?></span>
-                <?php if ($g): ?><span class="rounded-full px-2 py-0.5 text-[11px] leading-4 <?= $g[1] ?>"><?= e($g[0]) ?></span><?php endif; ?>
-              </p>
-            </div>
-          </li>
-        <?php endforeach; ?>
-      </ul>
-    <?php endif; ?>
-  </section>
 
   <!-- 관리 -->
   <section class="space-y-3">

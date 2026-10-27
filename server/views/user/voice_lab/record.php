@@ -2,16 +2,18 @@
 /**
  * 안내된 녹음 화면: 1 준비(안내, 마이크 확인) → 2 녹음(대본 3개, 파일로 올리기) → 3 완료(동의).
  * 변수: $voice, $scripts, $samples, $minSec, $recSec, $maxSec, $maxUpload(한 번에 올릴 수 있는 바이트),
- *       $auto(완료하면 관리자 검토 없이 바로 목소리를 만드는지)
+ *       $auto(완료하면 관리자 검토 없이 바로 목소리를 만드는지),
+ *       $revise(이미 만든 목소리의 녹음을 고치는 중인지. 3단계가 동의, 제출 대신 다시 생성이 된다)
  * 녹음, 저장, 삭제는 voice-lab.js 가 RMRecorder 와 /api/voice-lab/{id}/samples 로 처리한다.
  */
 $pid = (int) $voice['id'];
+$revise = !empty($revise);
 layout('user/layout', [
-    'title' => $voice['label'] . ' 목소리 녹음',
+    'title' => $voice['label'] . ($revise ? ' 목소리 녹음 고치기' : ' 목소리 녹음'),
     'nav' => 'voice',
     'header' => 'sub',
-    'back' => '/voice-lab',
-    'headerTitle' => $voice['label'] . ' 목소리 녹음',
+    'back' => $revise ? '/voice-lab/' . $pid : '/voice-lab',
+    'headerTitle' => $voice['label'] . ($revise ? ' 목소리 녹음 고치기' : ' 목소리 녹음'),
     'showNav' => false,
     'mainClass' => 'px-margin-mobile pt-5 pb-16',
 ]);
@@ -21,7 +23,7 @@ if (errors('consent')) {
 } elseif ($q >= 1 && $q <= 3) {
     $step = $q;
 } else {
-    $step = $samples ? 2 : 1;
+    $step = $samples || $revise ? 2 : 1;
 }
 $recSec = max($recSec, $minSec, 1);
 $minPct = min(100, round($minSec * 100 / $recSec, 1));
@@ -38,10 +40,11 @@ $data = [
         return ['key' => $s['key'], 'no' => $s['no'], 'title' => $s['title']];
     }, $scripts)),
     'samples' => $samples,
+    'revise' => $revise,
 ];
 $uploadMb = rtrim(rtrim(number_format($maxUpload / 1048576, 1), '0'), '.');
 $auto = !empty($auto);
-$stepTabs = [1 => ['준비', 'tune'], 2 => ['녹음', 'mic'], 3 => ['완료', 'task_alt']];
+$stepTabs = [1 => ['준비', 'tune'], 2 => ['녹음', 'mic'], 3 => [$revise ? '다시 생성' : '완료', $revise ? 'autorenew' : 'task_alt']];
 ?>
 <script type="application/json" id="vl-record-data"><?= json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) ?></script>
 <div class="space-y-6" data-vl-record>
@@ -53,7 +56,7 @@ $stepTabs = [1 => ['준비', 'tune'], 2 => ['녹음', 'mic'], 3 => ['완료', 't
     </div>
     <div class="min-w-0">
       <p class="truncate font-headline-md text-body-lg font-bold text-on-surface"><?= e($voice['label']) ?> 목소리</p>
-      <p class="text-label-sm text-on-surface-variant">대본 3개를 차례로 읽어 녹음해 주세요.</p>
+      <p class="text-label-sm text-on-surface-variant"><?= $revise ? '녹음을 들어 보고 더하거나 지운 뒤 다시 생성해 주세요.' : '대본 3개를 차례로 읽어 녹음해 주세요.' ?></p>
     </div>
   </div>
 
@@ -264,12 +267,29 @@ $stepTabs = [1 => ['준비', 'tune'], 2 => ['녹음', 'mic'], 3 => ['완료', 't
       <p class="text-[14px] leading-5 text-on-surface-variant">아직 저장한 녹음이 없어요.<br>대본을 읽고 저장하면 여기에 모여요.</p>
     </div>
     <button type="button" class="btn-secondary w-full rounded-full" data-goto="3" data-next-step hidden>
-      다음: 완료하기<span class="material-symbols-outlined">arrow_forward</span>
+      <?= $revise ? '다음: 다시 생성' : '다음: 완료하기' ?><span class="material-symbols-outlined">arrow_forward</span>
     </button>
   </section>
 
   <!-- 3단계: 완료 -->
   <section class="space-y-5" data-step="3"<?= $step === 3 ? '' : ' hidden' ?>>
+    <?php if ($revise): ?>
+    <form method="post" action="<?= e(url('/voice-lab/' . $pid . '/regenerate')) ?>" class="card space-y-5 p-6" data-submit-form>
+      <?= csrf_field() ?>
+      <div class="flex items-start gap-3">
+        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-container/40 text-primary"><span class="material-symbols-outlined">autorenew</span></span>
+        <div>
+          <h2 class="font-headline-md text-[20px] font-bold leading-7 text-on-surface">이 녹음으로 다시 생성하기</h2>
+          <p class="text-[14px] leading-5 text-on-surface-variant">지금 남은 녹음으로 AI가 목소리를 새로 만들어요. 보통 1분 안에 끝나요. 이미 만든 동화는 그대로 들을 수 있고, 새로 요청하는 동화부터 새 목소리로 읽어요.</p>
+        </div>
+      </div>
+      <button type="submit" class="btn-primary w-full rounded-full" data-submit-btn disabled>
+        <span class="material-symbols-outlined">autorenew</span>다시 생성
+      </button>
+      <a href="<?= e(url('/voice-lab/' . $pid)) ?>" class="btn-ghost w-full rounded-full border-2 border-surface-variant py-3">나중에 하기</a>
+      <p class="text-center text-label-sm text-on-surface-variant" data-submit-hint></p>
+    </form>
+    <?php else: ?>
     <form method="post" action="<?= e(url('/voice-lab/' . $pid . '/submit')) ?>" class="card space-y-5 p-6" data-submit-form>
       <?= csrf_field() ?>
       <div class="flex items-start gap-3">
@@ -294,6 +314,7 @@ $stepTabs = [1 => ['준비', 'tune'], 2 => ['녹음', 'mic'], 3 => ['완료', 't
       </button>
       <p class="text-center text-label-sm text-on-surface-variant" data-submit-hint></p>
     </form>
+    <?php endif; ?>
   </section>
 </div>
 <?php section('scripts'); ?>

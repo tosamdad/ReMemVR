@@ -70,6 +70,12 @@ $slider = static function ($key, $label, $value, $help, $accent) {
     <span class="break-keep font-label-sm text-label-sm font-semibold">실패 사유: <?= $v['fail_reason'] ? e(preg_replace('/^ElevenLabs 목소리 생성 실패:\s*/u', '', $v['fail_reason'])) : '기록이 없습니다. 아래 처리 콘솔을 확인하세요.' ?></span>
   </div>
   <?php endif; ?>
+  <?php if (VoiceService::samplesChanged($v)): ?>
+  <div class="flex items-start gap-2 rounded-xl bg-tertiary-container/60 px-3 py-2.5 text-on-tertiary-container">
+    <span class="material-symbols-outlined text-[18px]">published_with_changes</span>
+    <span class="break-keep font-label-sm text-label-sm font-semibold">회원이 목소리를 만든 뒤 녹음을 고쳤습니다(<?= e(time_ago($v['samples_changed_at'])) ?>). 회원이 다시 생성을 누르기 전까지는 예전 녹음으로 만든 목소리를 씁니다.</span>
+  </div>
+  <?php endif; ?>
 
   <!-- 업로드 샘플 정밀 분석 -->
   <div class="flex flex-col gap-3 rounded-xl bg-surface-container-low p-4">
@@ -93,7 +99,8 @@ $slider = static function ($key, $label, $value, $help, $accent) {
     </div>
     <span class="font-label-sm text-[11px] text-on-surface-variant">권장 <?= (int) $detail['length']['rec_sec'] ?>초 이상, 최소 <?= (int) $detail['length']['min_sec'] ?>초 · 품질 등급: <?= e($grade['label']) ?></span>
     <?php if ($detail['samples']): ?>
-    <div class="flex flex-col gap-2 border-t border-surface-container-high pt-3">
+    <div class="flex flex-col gap-2 border-t border-surface-container-high pt-3" data-sample-list>
+      <span class="flex items-center gap-1.5 font-label-sm text-label-sm font-bold text-on-surface"><span class="material-symbols-outlined text-[16px] text-primary">headphones</span>회원 녹음 샘플 <?= count($detail['samples']) ?>개 · 눌러서 듣기</span>
       <?php $scripts = \App\Controllers\User\VoiceLabController::scripts();
       foreach ($detail['samples'] as $i => $s):
           $sg = DashboardStats::gradeInfo($s['snr_db'], $s['quality_grade']);
@@ -103,7 +110,8 @@ $slider = static function ($key, $label, $value, $help, $accent) {
       <div class="flex flex-col gap-1 rounded-lg bg-surface-container-lowest p-2">
         <div class="flex items-center justify-between gap-2 font-label-sm text-label-sm">
           <span class="min-w-0 text-on-surface">샘플 <?= $i + 1 ?><?= $scriptName !== '' ? ' · 대본 ' . e($scriptName) : '' ?><?= $s['source'] === 'upload' ? ' · 업로드' : '' ?></span>
-          <span class="text-on-surface-variant"><?= $s['snr_db'] !== null ? 'SNR ' . e(fmt_number($s['snr_db'], 1)) . 'dB · ' : '' ?><?= e($sg['short']) ?><?= (int) $s['clip_count'] > 0 ? ' · 클리핑 ' . (int) $s['clip_count'] : '' ?></span>
+          <span class="flex shrink-0 items-center gap-1 text-on-surface-variant"><?= $s['snr_db'] !== null ? 'SNR ' . e(fmt_number($s['snr_db'], 1)) . 'dB · ' : '' ?><?= e($sg['short']) ?><?= (int) $s['clip_count'] > 0 ? ' · 클리핑 ' . (int) $s['clip_count'] : '' ?>
+            <a href="<?= e(url('/admin/media/sample/' . (int) $s['id'], ['download' => 1])) ?>" class="ml-1 rounded p-0.5 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface" title="샘플 내려받기" aria-label="샘플 <?= $i + 1 ?> 내려받기"><span class="material-symbols-outlined text-[16px]">download</span></a></span>
         </div>
         <?= partial('admin/voices/_player', ['src' => url('/admin/media/sample/' . (int) $s['id']), 'ms' => (int) $s['duration_ms'], 'variant' => 'list', 'seed' => (int) $s['id']]) ?>
       </div>

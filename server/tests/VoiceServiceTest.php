@@ -588,3 +588,85 @@ test('자리를 비운 목소리로 새 동화를 만들면 녹음으로 다시 
         assert_contains('ElevenLabs 목소리 다시 만들기 완료', $log);
     });
 });
+
+test('준비된 목소리는 녹음을 고친 뒤 다시 생성하면 새 목소리로 바꾸고 이미 만든 동화는 그대로 둔다', function () {
+    if (!config('providers_fake') || !class_exists('App\\Services\\FakeAudio')) {
+        skip_test('providers_fake 설정이 꺼져 있다');
+    }
+    voice_test_tx(function () {
+        voice_test_hide_slots();
+        $drain = function () {
+            for ($i = 0; $i < 40; $i++) {
+                $due = (int) db_value("SELECT COUNT(*) FROM jobs WHERE status IN ('pending', 'running') AND available_at <= NOW() AND ref_type = 'voice_profile' AND ref_id IN (" . implode(', ', array_map('intval', $GLOBALS['__voice_test_profiles'])) . ')');
+                if ($due === 0) {
+                    break;
+                }
+                $r = Worker::run(60);
+                if (!empty($r['locked'])) {
+                    usleep(300000);
+                }
+            }
+        };
+        $a = voice_test_profile(['status' => 'pending']);
+        $pid = $a['profile_id'];
+        $first = voice_test_sample($pid, 40000);
+        voice_test_sample($pid, 30000);
+        $sid = voice_test_story();
+        VoiceService::approve($pid, null);
+        $drain();
+        $res = StoryRequests::create($a['user_id'], $sid, [$pid]);
+        StoryRequests::approve($res['created'], null);
+        $drain();
+        $audio = db_one('SELECT * FROM story_audios WHERE story_id = ? AND voice_profile_id = ?', [$sid, $pid]);
+        assert_same('completed', $audio['status']);
+        $p = db_one('SELECT * FROM voice_profiles WHERE id = ?', [$pid]);
+        $oldVoice = (string) $p['provider_voice_id'];
+        assert_true($oldVoice !== '', '목소리가 만들어지지 않았다');
+        assert_true(!VoiceService::samplesChanged($p), '고치기 전에는 바뀐 녹음이 없다');
+
+        // 녹음을 지우면 바뀐 것으로 기록한다. 남은 녹음이 1분보다 짧으면 다시 생성할 수 없다.
+        db_exec('DELETE FROM voice_samples WHERE id = ?', [$first]);
+        VoiceService::markSamplesChanged($pid);
+        assert_true(VoiceService::samplesChanged(db_one('SELECT * FROM voice_profiles WHERE id = ?', [$pid])), '바뀐 녹음으로 보이지 않는다');
+        $msg = '';
+        try {
+            VoiceService::regenerate($pid);
+        } catch (RuntimeException $e) {
+            $msg = $e->getMessage();
+        }
+        assert_contains('1분 이상', $msg);
+        assert_same('completed', db_value('SELECT status FROM voice_profiles WHERE id = ?', [$pid]));
+
+        // 동화를 만드는 중에는 다시 생성하지 않는다.
+        voice_test_sample($pid, 40000);
+        $busy = Jobs::enqueue('story_tts', ['profile_id' => $pid, 'story_id' => $sid], ['ref_type' => 'voice_profile', 'ref_id' => $pid]);
+        $msg = '';
+        try {
+            VoiceService::regenerate($pid);
+        } catch (RuntimeException $e) {
+            $msg = $e->getMessage();
+        }
+        assert_contains('동화를 만들고 있어요', $msg);
+        db_exec("UPDATE jobs SET status = 'cancelled' WHERE id = ?", [$busy]);
+
+        VoiceService::regenerate($pid);
+        $p = db_one('SELECT * FROM voice_profiles WHERE id = ?', [$pid]);
+        assert_same('cloning', $p['status']);
+        assert_same(null, $p['samples_changed_at']);
+        assert_same(70000, (int) $p['sample_total_ms']);
+        assert_same(1, (int) db_value("SELECT COUNT(*) FROM jobs WHERE type = 'voice_delete' AND ref_id = ? AND status = 'pending'", [$pid]));
+        $mails = (int) db_value("SELECT COUNT(*) FROM jobs WHERE type = 'mail' AND ref_type = 'voice_profile' AND ref_id = ?", [$pid]);
+        $drain();
+        $p = db_one('SELECT * FROM voice_profiles WHERE id = ?', [$pid]);
+        assert_same('completed', $p['status']);
+        assert_true((string) $p['provider_voice_id'] !== '' && $p['provider_voice_id'] !== $oldVoice, '새 목소리로 바뀌지 않았다');
+        // 이미 만든 동화는 다시 만들지 않는다.
+        $again = db_one('SELECT * FROM story_audios WHERE story_id = ? AND voice_profile_id = ?', [$sid, $pid]);
+        assert_same($audio['generated_at'], $again['generated_at']);
+        assert_same($audio['file_path'], $again['file_path']);
+        assert_true(Storage::exists($again['file_path']), '만든 동화 파일이 사라졌다');
+        assert_same($mails, (int) db_value("SELECT COUNT(*) FROM jobs WHERE type = 'mail' AND ref_type = 'voice_profile' AND ref_id = ?", [$pid]), '준비 알림 메일을 다시 보냈다');
+        $failed = db_all("SELECT type, last_error FROM jobs WHERE ref_type = 'voice_profile' AND ref_id = ? AND status = 'failed'", [$pid]);
+        assert_same([], $failed, '실패한 작업');
+    });
+});
