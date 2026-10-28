@@ -24,9 +24,10 @@ return [
     // 보내는 메일 주소. 비우면 no-reply@사이트도메인
     'mail_from' => '',
 
-    // 외부 API 키. 실서버는 GitHub Secrets(ELEVENLABS_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY 등)로 채워진다.
+    // 외부 API 키. 실서버는 GitHub Secrets(ELEVENLABS_API_KEY, ANTHROPIC_API_KEY, GROQ_API_KEY, GEMINI_API_KEY 등)로 채워진다.
     'elevenlabs' => ['api_key' => ''],
     'anthropic' => ['api_key' => ''],
+    'groq' => ['api_key' => ''],
     'gemini' => ['api_key' => ''],
     'kakao' => ['rest_api_key' => '', 'client_secret' => ''],
     'google' => ['client_id' => '', 'client_secret' => ''],

@@ -64,7 +64,7 @@ class Health
     {
         return md5(json_encode([
             (bool) config('providers_fake'), qa_available(), QaModel::provider(), QaModel::ready(), ElevenLabs::ready(), QaModel::model(),
-            (string) config('gemini.base_url', ''), (string) config('anthropic.base_url', ''), (string) config('elevenlabs.base_url', ''),
+            (string) config('gemini.base_url', ''), (string) config('anthropic.base_url', ''), (string) config('groq.base_url', ''), (string) config('elevenlabs.base_url', ''),
         ]));
     }
 

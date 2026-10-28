@@ -44,6 +44,9 @@ class SettingsController
         'elevenlabs.flash_credit_ratio' => ['type' => 'float', 'min' => 0, 'max' => 1],
         'qa.llm_provider' => ['type' => 'select', 'options' => QaModel::PROVIDERS],
         'claude.model' => ['type' => 'select', 'options' => Claude::MODELS],
+        'groq.model' => ['type' => 'string', 'len' => 80, 'pattern' => '/^[a-z0-9][a-z0-9.\-\/]*$/'],
+        'groq.usd_per_1m_input' => ['type' => 'float', 'min' => 0, 'max' => 100],
+        'groq.usd_per_1m_output' => ['type' => 'float', 'min' => 0, 'max' => 100],
         'gemini.model' => ['type' => 'string', 'len' => 60, 'pattern' => '/^[a-z0-9][a-z0-9.\-]*$/'],
         'gemini.usd_per_1m_input' => ['type' => 'float', 'min' => 0, 'max' => 100],
         'gemini.usd_per_1m_output' => ['type' => 'float', 'min' => 0, 'max' => 100],
@@ -117,6 +120,7 @@ class SettingsController
             'providers' => [
                 'elevenlabs' => provider_ready('elevenlabs'),
                 'anthropic' => provider_ready('anthropic'),
+                'groq' => provider_ready('groq'),
                 'gemini' => provider_ready('gemini'),
                 'kakao' => provider_ready('kakao'),
                 'google' => provider_ready('google'),
