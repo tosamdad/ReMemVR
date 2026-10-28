@@ -3,8 +3,10 @@ namespace App\Controllers\Admin;
 
 use App\Core\Request;
 use App\Core\Settings;
+use App\Services\Claude;
 use App\Services\Health;
 use App\Services\Jobs;
+use App\Services\QaModel;
 
 /**
  * 운영 설정. 화면의 모든 항목은 SCHEMA 에 형식과 범위를 적고, 저장할 때 형식에 맞게 바꾼 뒤 바뀐 키만 Settings::set 한다.
@@ -40,9 +42,10 @@ class SettingsController
         'elevenlabs.voice_slot_limit' => ['type' => 'int', 'min' => 0, 'max' => 1000],
         'elevenlabs.usd_per_1k_credits' => ['type' => 'float', 'min' => 0, 'max' => 10],
         'elevenlabs.flash_credit_ratio' => ['type' => 'float', 'min' => 0, 'max' => 1],
+        'qa.llm_provider' => ['type' => 'select', 'options' => QaModel::PROVIDERS],
+        'claude.model' => ['type' => 'select', 'options' => Claude::MODELS],
         'gemini.model' => ['type' => 'string', 'len' => 60, 'pattern' => '/^[a-z0-9][a-z0-9.\-]*$/'],
         'gemini.usd_per_1m_input' => ['type' => 'float', 'min' => 0, 'max' => 100],
-        'gemini.usd_per_1m_audio_input' => ['type' => 'float', 'min' => 0, 'max' => 100],
         'gemini.usd_per_1m_output' => ['type' => 'float', 'min' => 0, 'max' => 100],
         'cost.usd_krw' => ['type' => 'int', 'min' => 500, 'max' => 5000],
         // 질문(끼어들기)과 비용 방어
@@ -53,6 +56,9 @@ class SettingsController
         'qa.vad_min_speech_ms' => ['type' => 'int', 'min' => 200, 'max' => 3000],
         'qa.silence_stop_ms' => ['type' => 'int', 'min' => 300, 'max' => 5000],
         'qa.aec_level' => ['type' => 'select', 'options' => self::AEC_LEVELS],
+        'qa.timeout_ms' => ['type' => 'int', 'min' => 2000, 'max' => 15000],
+        'qa.thinking_lines' => ['type' => 'lines', 'len' => 200, 'max_items' => 10, 'required' => true],
+        'qa.timeout_lines' => ['type' => 'lines', 'len' => 200, 'max_items' => 10, 'required' => true],
         'qa.fallback_lines' => ['type' => 'lines', 'len' => 200, 'max_items' => 10, 'required' => true],
         'qa.error_lines' => ['type' => 'lines', 'len' => 200, 'max_items' => 10, 'required' => true],
         'qa.blocked_words' => ['type' => 'words', 'len' => 50, 'max_items' => 300],
@@ -110,6 +116,7 @@ class SettingsController
             'checked' => $checked,
             'providers' => [
                 'elevenlabs' => provider_ready('elevenlabs'),
+                'anthropic' => provider_ready('anthropic'),
                 'gemini' => provider_ready('gemini'),
                 'kakao' => provider_ready('kakao'),
                 'google' => provider_ready('google'),
@@ -142,8 +149,8 @@ class SettingsController
         if ($changed) {
             admin_audit('settings.update', 'settings', null, ['keys' => $changed]);
             flash('success', '설정 ' . count($changed) . '개를 저장했습니다.');
-            if (array_intersect($changed, ['qa.fallback_lines', 'qa.error_lines'])) {
-                flash('info', '대체 문장이 바뀌었습니다. 가족 목소리 음성은 "모든 목소리 대체 음성 다시 만들기"로 새로 만들 수 있습니다.');
+            if (array_intersect($changed, ['qa.fallback_lines', 'qa.error_lines', 'qa.thinking_lines', 'qa.timeout_lines'])) {
+                flash('info', '준비된 문장이 바뀌었습니다. 가족 목소리 음성은 "모든 목소리 대체 음성 다시 만들기"로 새로 만들 수 있습니다.');
             }
         } else {
             flash('info', '바뀐 설정이 없습니다.');
@@ -273,7 +280,7 @@ class SettingsController
         return [$clean, $errors];
     }
 
-    /** POST /admin/settings/voice-clips: 목소리마다 대체 문장, 오류 안내 음성을 다시 만든다(이미 있는 문장은 건너뜀). */
+    /** POST /admin/settings/voice-clips: 목소리마다 준비된 문장(대체, 오류 안내, 기다림, 시간 초과) 음성을 다시 만든다(이미 있는 문장은 건너뜀). */
     public function rebuildClips(): void
     {
         require_admin();

@@ -798,7 +798,7 @@ class Worker
             }
         };
         // 설정을 비워 두면 질문 처리도 기본 문장을 쓰므로 기본 문장을 만든다.
-        foreach (['qa.fallback_lines' => 'fallback', 'qa.error_lines' => 'error'] as $key => $kind) {
+        foreach (['qa.fallback_lines' => 'fallback', 'qa.error_lines' => 'error', 'qa.thinking_lines' => 'thinking', 'qa.timeout_lines' => 'timeout'] as $key => $kind) {
             $list = array_filter((array) setting($key, []), static function ($t) {
                 return is_string($t) && trim($t) !== '';
             });

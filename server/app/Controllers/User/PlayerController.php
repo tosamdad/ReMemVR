@@ -3,11 +3,11 @@ namespace App\Controllers\User;
 
 use App\Core\Auth;
 use App\Core\Request;
-use App\Core\Storage;
 use App\Core\Text;
 use App\Services\Alignment;
 use App\Services\Playlists;
 use App\Services\Progress;
+use App\Services\QaPrompt;
 use App\Services\QuestionService;
 
 /**
@@ -20,8 +20,6 @@ use App\Services\QuestionService;
 class PlayerController
 {
     const RESUME_HOURS = 12;
-    const MAX_QUESTION_BYTES = 5242880;
-    const QUESTION_EXTS = ['wav', 'webm', 'ogg', 'm4a', 'mp4', 'mp3', 'mpeg'];
 
     // ───────────────────────── 화면 ─────────────────────────
 
@@ -229,6 +227,13 @@ class PlayerController
                 ],
                 'aec' => $aec,
                 'noise_suppression' => $aec === 'max',
+                // 마이크를 놓은 뒤 이 시간 안에 답 음성이 안 오면 준비된 음성(clips.timeout)으로 답한다.
+                'timeout_ms' => QuestionService::timeoutMs(),
+                'max_chars' => QaPrompt::MAX_QUESTION_CHARS,
+                'clips' => $qaEnabled ? self::qaClips($voice) : ['thinking' => [], 'timeout' => []],
+                // 질문은 앱(폰 안 음성 인식)에서만 받는다. 개발 모드에서는 글로 입력해 흐름을 점검할 수 있다.
+                'dev_text_input' => $qaEnabled && (bool) config('providers_fake'),
+                'app_message' => '말로 묻기는 르멤버 앱에서 쓸 수 있어요.',
             ],
             'prefs' => $prefs,
             'next' => $next ? [
@@ -371,27 +376,19 @@ class PlayerController
     {
         $user = require_user();
         $session = $this->ownSession((int) $id, (int) $user['id']);
-        $file = Request::file('audio');
-        if ($file === null) {
-            $code = isset($_FILES['audio']['error']) ? (int) $_FILES['audio']['error'] : -1;
-            if ($code === UPLOAD_ERR_INI_SIZE || $code === UPLOAD_ERR_FORM_SIZE) {
-                abort(413, '질문 녹음이 너무 길어요. 조금 짧게 물어봐 줄래요?');
-            }
-            abort(422, '질문 녹음을 받지 못했어요. 다시 말해 줄래요?');
+        // 앱이 폰 안에서 아이 말을 글로 바꿔 보낸 문장. 아이 음성 파일은 받지 않는다.
+        $text = Request::str('question');
+        if ($text === '') {
+            abort(422, '질문을 잘 못 들었어요. 다시 말해 줄래요?');
         }
-        if ((int) $file['size'] <= 0 || (int) $file['size'] > self::MAX_QUESTION_BYTES) {
-            abort(413, '질문 녹음이 너무 길어요. 조금 짧게 물어봐 줄래요?');
-        }
-        $mime = self::detectAudioMime($file);
-        if ($mime === null) {
-            abort(415, '지원하지 않는 녹음 형식이에요.');
+        if (mb_strlen($text) > QaPrompt::MAX_QUESTION_CHARS * 2) {
+            abort(413, '질문이 너무 길어요. 조금 짧게 물어봐 줄래요?');
         }
 
         return QuestionService::ask(
             $user,
             $session,
-            (string) $file['tmp_name'],
-            $mime,
+            $text,
             max(0, Request::int('sentence_seq')),
             max(0, Request::int('position_ms'))
         );
@@ -475,33 +472,20 @@ class PlayerController
         return $list[($pos + 1) % $n];
     }
 
-    /** 업로드된 질문 녹음의 형식 확인. 허용 형식이 아니면 null */
-    private static function detectAudioMime(array $file): ?string
+    /** 기다림, 시간 초과 때 들려줄 준비된 문장과 그 목소리 음성(없으면 url null, 화면이 기기 음성으로 읽는다) */
+    private static function qaClips(string $voice): array
     {
-        $clientExt = strtolower(pathinfo((string) $file['name'], PATHINFO_EXTENSION));
-        $mime = strtolower(trim(explode(';', (string) $file['type'])[0]));
-        if (function_exists('finfo_open')) {
-            $fi = @finfo_open(FILEINFO_MIME_TYPE);
-            if ($fi) {
-                $detected = @finfo_file($fi, (string) $file['tmp_name']);
-                finfo_close($fi);
-                if (is_string($detected) && $detected !== '' && $detected !== 'application/octet-stream') {
-                    $mime = strtolower($detected);
-                }
+        $out = [];
+        foreach (['thinking' => QuestionService::thinkingLines(), 'timeout' => QuestionService::timeoutLines()] as $kind => $lines) {
+            $out[$kind] = [];
+            foreach ($lines as $line) {
+                $out[$kind][] = [
+                    'text' => $line,
+                    'url' => $voice !== 'device' ? QuestionService::clipUrl((int) $voice, $line) : null,
+                ];
             }
         }
-        // 브라우저 녹음은 video/webm, video/mp4 로 표시되기도 한다.
-        if ($mime === 'video/webm' || $mime === 'video/mp4') {
-            $mime = 'audio/' . substr($mime, 6);
-        }
-        $ext = Storage::extForMime($mime, $clientExt);
-        if (!in_array($ext, self::QUESTION_EXTS, true)) {
-            return null;
-        }
-        if (strpos($mime, 'audio/') !== 0) {
-            $mime = Storage::mimeFor('x.' . ($ext === 'mpeg' ? 'mp3' : $ext));
-        }
 
-        return $mime;
+        return $out;
     }
 }

@@ -258,7 +258,7 @@ $to = min($list['total'], $list['page'] * $list['per_page']);
       <?php else: ?>
       <div class="flex flex-col gap-4">
         <?php foreach ([
-            ['graphic_eq', 'text-primary', 'bg-primary', '1단계: Gemini 음성 이해 + 답변', $latency['llm_avg'], '아이 질문 음성을 듣고 동화 맥락에 맞는 짧은 답을 만듭니다.'],
+            ['graphic_eq', 'text-primary', 'bg-primary', '1단계: ' . \App\Services\QaModel::label() . ' 답변 작성', $latency['llm_avg'], '앱이 글로 바꿔 보낸 질문에 동화 맥락에 맞는 짧은 답을 만듭니다.'],
             ['verified_user', 'text-tertiary', 'bg-tertiary', '2단계: 질문 한도·안전 필터·저장', $latency['mid_avg'], '질문 횟수 확인, 금지어 필터, 질문 음성 저장과 기록에 걸린 시간입니다.'],
             ['record_voice_over', 'text-secondary', 'bg-secondary', '3단계: ElevenLabs 답변 음성 합성', $latency['tts_avg'], '등록된 가족 목소리(' . $kpi['latency']['model_label'] . ')로 답변 음성을 만듭니다.'],
         ] as $st): ?>

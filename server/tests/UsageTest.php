@@ -40,6 +40,13 @@ test('Gemini 비용: 음성 토큰은 음성 단가, 나머지 입력은 텍스�
     usage_assert_close(500 / 1e6 * $audio, Usage::geminiCostUsd(100, 0, 500), '음성 토큰 초과');
 });
 
+test('Claude 비용: 모델별 1백만 토큰 단가', function () {
+    // Haiku 5.5: 입력 0.10, 출력 0.50 USD
+    usage_assert_close(1500 / 1e6 * 0.10 + 60 / 1e6 * 0.50, Usage::claudeCostUsd(1500, 60, 'claude-haiku-5-5'));
+    usage_assert_close(2.00 + 10.00, Usage::claudeCostUsd(1000000, 1000000, 'claude-sonnet-5-5'));
+    usage_assert_close(0.0, Usage::claudeCostUsd(-5, 0, 'claude-haiku-5-5'), '음수 토큰은 0');
+});
+
 test('원화 환산은 cost.usd_krw 환율을 쓴다', function () {
     usage_assert_close(2.5 * (float) setting('cost.usd_krw'), Usage::krw(2.5));
 });

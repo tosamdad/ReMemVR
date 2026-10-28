@@ -16,7 +16,7 @@ class Health
 
     /**
      * @return array [
-     *   'gemini' => [ok, ms, message, model],
+     *   'llm' => [ok, ms, message, model, provider, label](아이 질문 답변 AI, QaModel),
      *   'elevenlabs' => [ok, ms, message, model_story, model_answer, credits => ?[used, limit, remaining, reset_at, tier]],
      *   'storage' => [ok, writable, free_mb, message],
      *   'db' => [ok, ms, message],
@@ -41,7 +41,7 @@ class Health
         }
 
         $data = [
-            'gemini' => self::gemini(),
+            'llm' => self::llm(),
             'elevenlabs' => self::elevenlabs(),
             'storage' => self::storage(),
             'db' => self::db(),
@@ -63,15 +63,15 @@ class Health
     private static function signature(): string
     {
         return md5(json_encode([
-            (bool) config('providers_fake'), qa_available(), Gemini::ready(), ElevenLabs::ready(), Gemini::model(),
-            (string) config('gemini.base_url', ''), (string) config('elevenlabs.base_url', ''),
+            (bool) config('providers_fake'), qa_available(), QaModel::provider(), QaModel::ready(), ElevenLabs::ready(), QaModel::model(),
+            (string) config('gemini.base_url', ''), (string) config('anthropic.base_url', ''), (string) config('elevenlabs.base_url', ''),
         ]));
     }
 
     /** 전체가 정상인지(대시보드 상단 표시용) */
     public static function allOk(array $status): bool
     {
-        foreach (['gemini', 'elevenlabs', 'storage', 'db'] as $k) {
+        foreach (['llm', 'elevenlabs', 'storage', 'db'] as $k) {
             if (empty($status[$k]['ok'])) {
                 return false;
             }
@@ -80,18 +80,20 @@ class Health
         return true;
     }
 
-    private static function gemini(): array
+    /** 아이 질문 답변 AI(관리자 설정에서 고른 Claude 또는 Gemini) */
+    private static function llm(): array
     {
-        if (!qa_available()) {
-            // 아이 질문 기능 보류 중에는 Gemini 를 부르지 않는다(약관상 18세 미만 대상 서비스 사용 금지).
-            return ['ok' => true, 'skipped' => true, 'ms' => null, 'message' => '질문 기능 보류 중이라 쓰지 않음', 'model' => Gemini::model()];
+        $base = ['model' => QaModel::model(), 'provider' => QaModel::usageProvider(), 'label' => QaModel::label()];
+        if (!setting('qa.enabled', false)) {
+            // 질문 기능이 꺼져 있으면 답변 AI 를 부르지 않는다.
+            return $base + ['ok' => true, 'skipped' => true, 'ms' => null, 'message' => '질문 기능이 꺼져 있어 쓰지 않음'];
         }
-        $out = ['ok' => false, 'ms' => null, 'message' => 'API 키 미등록', 'model' => Gemini::model()];
-        if (!Gemini::ready()) {
+        $out = $base + ['ok' => false, 'ms' => null, 'message' => 'API 키 미등록'];
+        if (!QaModel::ready()) {
             return $out;
         }
         try {
-            $r = Gemini::ping();
+            $r = QaModel::ping();
             $out['ok'] = (bool) $r['ok'];
             $out['ms'] = (int) $r['ms'];
             $out['message'] = $r['ok'] ? (config('providers_fake') ? '개발 모드(가짜 응답)' : '정상') : (string) $r['error'];

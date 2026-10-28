@@ -57,6 +57,7 @@ jobs:
       OPS_TOKEN: ${{ secrets.TEST_OPS_TOKEN }}
       SITE_URL: ${{ secrets.TEST_SITE_URL }}
       ELEVENLABS_API_KEY: ${{ secrets.TEST_ELEVENLABS_API_KEY || secrets.ELEVENLABS_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.TEST_ANTHROPIC_API_KEY || secrets.ANTHROPIC_API_KEY }}
       GEMINI_API_KEY: ${{ secrets.TEST_GEMINI_API_KEY || secrets.GEMINI_API_KEY }}
       KAKAO_REST_API_KEY: ${{ secrets.TEST_KAKAO_REST_API_KEY }}
       KAKAO_CLIENT_SECRET: ${{ secrets.TEST_KAKAO_CLIENT_SECRET }}
@@ -93,6 +94,7 @@ jobs:
       OPS_TOKEN: ${{ secrets.OPS_TOKEN }}
       SITE_URL: ${{ secrets.SITE_URL }}
       ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
       KAKAO_CLIENT_SECRET: ${{ secrets.KAKAO_CLIENT_SECRET }}

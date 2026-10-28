@@ -94,6 +94,17 @@ class Usage
     }
 
     /**
+     * Claude 비용(달러). 모델별 1백만 토큰 단가(Claude::PRICES)로 계산한다.
+     */
+    public static function claudeCostUsd(int $inputTokens, int $outputTokens, ?string $model = null): float
+    {
+        $model = $model !== null && isset(Claude::PRICES[$model]) ? $model : Claude::model();
+        $price = Claude::PRICES[$model];
+
+        return max(0, $inputTokens) / 1000000 * $price[0] + max(0, $outputTokens) / 1000000 * $price[1];
+    }
+
+    /**
      * 기간 비용 요약(관리자 화면용). $from, $to 는 'Y-m-d H:i:s'
      * @return array ['total_krw', 'calls', 'failed', 'by_provider' => [provider => krw], 'by_purpose' => [purpose => ['krw', 'calls', 'units']]]
      */

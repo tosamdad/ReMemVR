@@ -17,7 +17,7 @@ $met = $lat['avg_ms'] !== null && $lat['avg_ms'] <= $target;
 <div class="mb-6 flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
   <div class="flex flex-col">
     <h2 class="font-headline-md text-headline-md text-on-surface">끼어들기(Barge-in) 응답 지연 &amp; 시간대별 비용 방어</h2>
-    <p class="font-body-md text-body-md text-on-surface-variant">아이 질문 녹음을 받은 뒤 Gemini 답변 작성과 ElevenLabs 음성 합성까지 걸린 시간 (오늘, 2시간 단위 평균)</p>
+    <p class="font-body-md text-body-md text-on-surface-variant">아이 질문 문장을 받은 뒤 답변 AI 의 답 작성과 ElevenLabs 음성 합성까지 걸린 시간 (오늘, 2시간 단위 평균)</p>
   </div>
   <div class="flex shrink-0 items-center gap-2">
     <?php if ($lat['avg_ms'] === null): ?>
@@ -31,8 +31,8 @@ $met = $lat['avg_ms'] !== null && $lat['avg_ms'] <= $target;
 <div class="flex h-56 flex-col items-center justify-center gap-3 rounded-2xl bg-surface-container-low/70 px-6 text-center">
   <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-container-high text-primary"><span class="material-symbols-outlined text-[28px]">speed</span></div>
   <?php if (!qa_available()): ?>
-  <p class="font-label-md text-label-md text-on-surface">아이 질문 기능이 보류 중입니다</p>
-  <p class="max-w-md font-body-md text-sm text-on-surface-variant">Gemini API 약관이 18세 미만이 이용하는 서비스에서의 사용을 금지해 질문 기능을 꺼 두었습니다. 아이 대상 사용을 허용하는 답변 AI 로 바꾸면 이곳에 응답 시간이 표시됩니다.</p>
+  <p class="font-label-md text-label-md text-on-surface">아이 질문 기능이 꺼져 있습니다</p>
+  <p class="max-w-md font-body-md text-sm text-on-surface-variant">운영 설정에서 질문 기능을 켜고 답변 AI 키를 등록하면, 앱에서 받은 질문의 응답 시간이 이곳에 표시됩니다.</p>
   <?php else: ?>
   <p class="font-label-md text-label-md text-on-surface">오늘은 아직 답변한 질문이 없습니다</p>
   <p class="max-w-md font-body-md text-sm text-on-surface-variant">아이가 동화를 듣다가 질문하면 시간대별 평균 응답 시간이 막대로 표시됩니다. 점선은 목표 응답 시간(<?= e(DashboardStats::koLatency($target)) ?>)입니다.</p>
@@ -77,9 +77,9 @@ $met = $lat['avg_ms'] !== null && $lat['avg_ms'] <= $target;
     <span class="font-label-sm text-[11px] text-primary">ElevenLabs <?= e((string) setting('elevenlabs.model_answer', 'eleven_flash_v2_5')) ?></span>
   </div>
   <div class="flex flex-col">
-    <span class="font-label-sm text-label-sm text-on-surface-variant">LLM 응답 생성 시간 (Gemini)</span>
+    <span class="font-label-sm text-label-sm text-on-surface-variant">LLM 응답 생성 시간 (<?= e(\App\Services\QaModel::label()) ?>)</span>
     <span class="mt-0.5 font-headline-md text-[20px] font-bold text-on-surface"><?= e($lat['llm_ms'] !== null ? fmt_number($lat['llm_ms']) . 'ms' : '-') ?></span>
-    <span class="font-label-sm text-[11px] text-primary"><?= e((string) setting('gemini.model', 'gemini-2.5-flash')) ?> · 음성 질문 이해 포함</span>
+    <span class="font-label-sm text-[11px] text-primary"><?= e(\App\Services\QaModel::model()) ?> · 질문 문장 입력</span>
   </div>
   <div class="flex flex-col">
     <span class="font-label-sm text-label-sm text-on-surface-variant">질문당 평균 비용</span>
