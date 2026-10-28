@@ -861,9 +861,16 @@
       var a = answerAudio || new Audio();
       answerAudio = a;
       var done = false;
-      function finish() { if (!done) { done = true; a.onended = null; a.onerror = null; resolve(); } }
+      function finish() { if (!done) { done = true; a.onended = null; a.onerror = null; a.onplaying = null; resolve(); } }
+      // 4초 안에 소리가 시작되지 않을 때만 건너뛴다. 시작되면 길이만큼 끝까지 들려준다.
       var guard = setTimeout(finish, 4000);
       if (item.url) {
+        a.onplaying = function () {
+          a.onplaying = null;
+          clearTimeout(guard);
+          var len = isFinite(a.duration) && a.duration > 0 ? a.duration * 1000 : 60000;
+          guard = setTimeout(finish, len + 3000);
+        };
         a.onended = function () { clearTimeout(guard); finish(); };
         a.onerror = function () { clearTimeout(guard); speakLine(item.text).then(finish); };
         a.src = cached ? cached.src : item.url;
@@ -888,7 +895,7 @@
       u.onerror = fin;
       try { synth.cancel(); synth.speak(u); } catch (e) { fin(); return; }
       setTimeout(function () { if (!started) { try { synth.cancel(); } catch (e) {} fin(); } }, 2500);
-      setTimeout(fin, 15000);
+      setTimeout(fin, Math.max(15000, 3000 + charLen(text) * 250));
     });
   }
 
@@ -968,7 +975,7 @@
   }
 
   function stopAnswer() {
-    if (answerAudio) { try { answerAudio.pause(); } catch (e) {} answerAudio.onended = null; answerAudio.onerror = null; }
+    if (answerAudio) { try { answerAudio.pause(); } catch (e) {} answerAudio.onended = null; answerAudio.onerror = null; answerAudio.onplaying = null; }
     if (synth) { try { synth.cancel(); } catch (e) {} }
   }
 
