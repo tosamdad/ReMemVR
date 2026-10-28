@@ -3,7 +3,8 @@
  * - 가족 목소리 오디오: HTMLAudioElement + requestAnimationFrame 으로 sentence_timings 를 따라 문장, 낱말을 강조한다.
  * - 기기 음성: speechSynthesis 로 문장씩 읽는다(낱말 경계 이벤트가 오면 낱말 강조, 소리를 못 내는 기기는 글자만 따라 읽기).
  * - 재생 기록: 첫 재생 때 만들고 15초마다, 멈출 때, 페이지를 떠날 때(sendBeacon) 위치와 들은 시간을 보낸다.
- * - 질문(끼어들기): 동화를 멈추고 RMRecorder 로 녹음 → 서버(Gemini, ElevenLabs) → 답 듣기 → 그 문장 처음부터 다시 재생.
+ * - 질문(끼어들기, 앱 전용): 동화를 멈추고 앱이 폰 안에서 말을 글로 바꿈 → 서버(답변 AI, ElevenLabs) → 답 듣기 → 그 문장 처음부터 다시 재생.
+ *   5초 안에 답이 안 오면 준비된 말로 답한다.
  * - 잠자기 타이머, 다음 이야기 자동 재생, 미디어 세션(잠금 화면 조작)을 지원한다.
  * - 플레이리스트에서 열면(M.playlist) 한 편이 끝날 때 환경 설정과 관계없이 다음 편으로 넘어가고(반복, 랜덤은 서버가 정한 M.next),
  *   다음 편은 열리자마자 재생한다(M.autostart). 잠자기 타이머 마감 시각은 주소(sl)로 다음 편에 넘긴다.
@@ -32,6 +33,7 @@
     play: $('pl-play'), playIcon: $('pl-play-icon'), back: $('pl-back'), fwd: $('pl-fwd'),
     ask: $('pl-ask'), askSub: $('pl-ask-sub'),
     overlay: $('pl-ask-overlay'), rec: $('pl-rec'), levels: $('pl-levels'), cancel: $('pl-ask-cancel'),
+    devForm: $('pl-dev-form'), devInput: $('pl-dev-q'), listenHint: $('pl-listen-hint'),
     q: $('pl-q'), qRow: $('pl-q-row'), a: $('pl-a'), aIcon: $('pl-a-icon'),
     end: $('pl-end'), endXp: $('pl-end-xp'), next: $('pl-next'), nextCount: $('pl-next-count'),
     nextCancel: $('pl-next-cancel'), again: $('pl-again'), sleepText: $('pl-sleep-text')
@@ -679,8 +681,36 @@
   }
 
   // ───────────────────────── 질문하기 ─────────────────────────
+  // 말로 묻기는 르멤버 앱에서만 쓴다. 앱이 폰 안에서 아이 말을 글로 바꾸고(window.RememvrNative, docs/native-bridge.md),
+  // 이 화면은 질문 문장만 서버로 보낸다. 아이 음성은 휴대폰 밖으로 나가지 않는다.
+  // 마이크를 놓으면 바로 기다림 소리(clips.thinking)를 들려주고, qa.timeout_ms(기본 5초) 안에 답이 안 오면 준비된 말(clips.timeout)로 답한다.
+  // 개발 모드(M.qa.dev_text_input)에서는 앱 없이 글을 입력해 같은 흐름을 점검할 수 있다.
 
-  var rec = null, recording = false, uploadCtl = null, answerAudio = null;
+  var listening = false, uploadCtl = null, answerAudio = null, waitTimer = null, thinkingDone = null;
+  var clipIndex = 0;
+
+  function nativeBridge() {
+    var n = window.RememvrNative;
+    return n && typeof n.startListening === 'function' ? n : null;
+  }
+
+  function askMode() {
+    if (!M.qa.enabled) return null;
+    if (nativeBridge()) return 'native';
+    if (M.qa.dev_text_input) return 'text';
+    return null;
+  }
+
+  // 모바일웹에는 마이크 버튼을 보이지 않는다. 앱이 연결 객체를 늦게 넣으면 'rememvr:native-ready' 이벤트로 다시 확인한다.
+  function refreshAskButton() {
+    var on = askMode() !== null;
+    el.ask.classList.toggle('hidden', !on);
+    el.ask.classList.toggle('flex', on);
+    el.ask.disabled = !on;
+  }
+  refreshAskButton();
+  window.addEventListener('rememvr:native-ready', refreshAskButton);
+
   var levelBars = [];
   if (el.levels) {
     for (var b = 0; b < 14; b++) {
@@ -701,9 +731,23 @@
       levelBars[i].style.height = Math.round(4 + h * 28) + 'px';
     }
   }
+  // 앱이 마이크 소리 크기를 알려 주면 막대로 보여 준다(선택).
+  window.addEventListener('rememvr:level', function (ev) {
+    if (listening && ev.detail && typeof ev.detail.db === 'number') drawLevel(ev.detail.db, !!ev.detail.speech);
+  });
 
   function step(name) {
     el.overlay.querySelectorAll('[data-step]').forEach(function (s) { s.hidden = s.getAttribute('data-step') !== name; });
+  }
+
+  // 0.1초 무음 WAV(iOS 에서 버튼을 누를 때 오디오를 미리 깨워 두는 용도)
+  function silentWavUrl() {
+    var n = 800, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+    function str(o, s) { for (var i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); }
+    str(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); str(8, 'WAVE'); str(12, 'fmt ');
+    v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, 8000, true);
+    v.setUint32(28, 16000, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); str(36, 'data'); v.setUint32(40, n * 2, true);
+    return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
   }
 
   // iOS 는 사용자 조작 없이 새 오디오를 재생하지 못하므로 버튼을 누를 때 답 오디오를 미리 깨워 둔다.
@@ -711,20 +755,40 @@
     if (answerAudio) return;
     answerAudio = new Audio();
     try {
-      // 0.1초 무음 WAV
-      answerAudio.src = URL.createObjectURL(RMRecorder.encodeWav(new Float32Array(800), 8000));
+      answerAudio.src = silentWavUrl();
       var p = answerAudio.play();
       if (p && p.catch) p.catch(function () {});
     } catch (e) {}
   }
 
+  // 준비된 말(기다림, 시간 초과)의 가족 목소리 음성을 미리 받아 둔다.
+  var clipCache = {};
+  function preloadClips() {
+    var c = M.qa.clips || {};
+    ['thinking', 'timeout'].forEach(function (k) {
+      (c[k] || []).forEach(function (item) {
+        if (item.url && !clipCache[item.url]) {
+          var a = new Audio();
+          a.preload = 'auto';
+          a.src = item.url;
+          clipCache[item.url] = a;
+        }
+      });
+    });
+  }
+  if (askMode()) preloadClips();
+  window.addEventListener('rememvr:native-ready', function () { if (askMode()) preloadClips(); });
+
+  function pickClip(kind) {
+    var list = (M.qa.clips && M.qa.clips[kind]) || [];
+    if (!list.length) return null;
+    return list[clipIndex % list.length];
+  }
+
   function startQuestion() {
     if (state.busy) return;
-    if (!M.qa.enabled) { RM.toast(M.qa.message || '지금은 질문할 수 없어요.', 'info'); return; }
-    if (!window.RMRecorder || !RMRecorder.supported()) {
-      RM.toast('이 브라우저에서는 마이크를 쓸 수 없어요.', 'error');
-      return;
-    }
+    var mode = askMode();
+    if (!mode) { RM.toast(M.qa.enabled ? (M.qa.app_message || '말로 묻기는 앱에서 쓸 수 있어요.') : (M.qa.message || '지금은 질문할 수 없어요.'), 'info'); return; }
     unlockAnswerAudio();
     cancelCountdown();
     el.end.hidden = true;
@@ -734,79 +798,158 @@
     drawLevel(-100, false);
     step('listening');
     el.overlay.hidden = false;
+    ensureSession().catch(function () {});
 
-    var vad = M.qa.vad || {};
-    rec = new RMRecorder({
-      sampleRate: 16000,
-      maxMs: M.qa.max_ms || 15000,
-      vad: { minSpeechMs: vad.minSpeechMs || 1000, silenceStopMs: vad.silenceStopMs || 1200, noSpeechTimeoutMs: vad.noSpeechTimeoutMs || 6000 },
-      echoCancellation: true,
-      noiseSuppression: !!M.qa.noise_suppression,
-      onLevel: drawLevel,
-      onAutoStop: function (reason) {
-        if (reason === 'no_speech') noSpeech();
-        else finishRecording();
+    if (mode === 'text') {
+      el.devForm.hidden = false;
+      el.listenHint.textContent = '개발 모드: 질문을 글로 쓰고 마이크를 눌러요';
+      el.devInput.value = '';
+      listening = true;
+      setTimeout(function () { try { el.devInput.focus(); } catch (e) {} }, 50);
+      return;
+    }
+    el.devForm.hidden = true;
+    el.listenHint.textContent = '다 말했으면 마이크를 한 번 더 눌러요';
+    listening = true;
+    var p;
+    try {
+      p = Promise.resolve(nativeBridge().startListening({
+        lang: 'ko-KR',
+        onDevice: true,
+        maxMs: M.qa.max_ms || 15000,
+        silenceStopMs: (M.qa.vad && M.qa.vad.silenceStopMs) || 1200
+      }));
+    } catch (e) {
+      p = Promise.reject(e);
+    }
+    p.then(function (result) {
+      if (!listening) return;
+      listening = false;
+      var text = result && typeof result.text === 'string' ? result.text.trim() : '';
+      if (!text) { endQuestion('목소리가 들리지 않았어요. 마이크 버튼을 누르고 다시 물어봐요.', 'info'); return; }
+      submitQuestion(text);
+    }).catch(function (err) {
+      if (!listening) return;
+      listening = false;
+      var code = err && err.code;
+      if (code === 'cancelled') { endQuestion(); return; }
+      if (code === 'no_speech') { endQuestion('목소리가 들리지 않았어요. 마이크 버튼을 누르고 다시 물어봐요.', 'info'); return; }
+      if (code === 'denied') { endQuestion('마이크 권한을 허용해 주세요.', 'error'); return; }
+      endQuestion(err && err.message ? err.message : '말을 알아듣지 못했어요. 다시 물어봐요.', 'error');
+    });
+  }
+
+  /** 마이크 버튼을 다시 누름: 말 끝내기 */
+  function finishListening() {
+    if (!listening) return;
+    if (askMode() === 'text') {
+      var text = el.devInput.value.trim();
+      if (!text) { try { el.devInput.focus(); } catch (e) {} return; }
+      listening = false;
+      submitQuestion(text);
+      return;
+    }
+    var n = nativeBridge();
+    // 앱은 인식을 마치고 startListening 의 Promise 를 글과 함께 끝낸다.
+    if (n && typeof n.stopListening === 'function') { try { n.stopListening(); } catch (e) {} }
+  }
+
+  function playClip(item) {
+    return new Promise(function (resolve) {
+      if (!item) { resolve(); return; }
+      var cached = item.url ? clipCache[item.url] : null;
+      var a = answerAudio || new Audio();
+      answerAudio = a;
+      var done = false;
+      function finish() { if (!done) { done = true; a.onended = null; a.onerror = null; resolve(); } }
+      var guard = setTimeout(finish, 4000);
+      if (item.url) {
+        a.onended = function () { clearTimeout(guard); finish(); };
+        a.onerror = function () { clearTimeout(guard); speakLine(item.text).then(finish); };
+        a.src = cached ? cached.src : item.url;
+        var p = a.play();
+        if (p && p.catch) p.catch(function () { clearTimeout(guard); speakLine(item.text).then(finish); });
+      } else {
+        speakLine(item.text).then(function () { clearTimeout(guard); finish(); });
       }
     });
-    // 마이크는 버튼을 누른 그 순간에 켠다(브라우저가 사용자 조작 안에서만 오디오를 허용하는 경우 대비). 재생 기록은 함께 준비한다.
-    var r = rec;
-    r.start()
-      .then(function () { if (rec === r) recording = true; else r.cancel(); })
-      .catch(function (err) {
-        if (rec === r) { r.cancel(); rec = null; }
-        endQuestion(err && err.message ? err.message : '마이크를 시작하지 못했어요.', 'error');
-      });
-    ensureSession().catch(function () {});
   }
 
-  function noSpeech() {
-    if (!recording) return;
-    recording = false;
-    if (rec) rec.cancel();
-    rec = null;
-    endQuestion('목소리가 들리지 않았어요. 마이크 버튼을 누르고 다시 물어봐요.', 'info');
+  function speakLine(text) {
+    return new Promise(function (resolve) {
+      if (!text || dev.silent || !synth) { setTimeout(resolve, Math.min(8000, 800 + charLen(text || '') * 90)); return; }
+      var u = new SpeechSynthesisUtterance(text);
+      u.lang = 'ko-KR';
+      if (dev.voice) u.voice = dev.voice;
+      var started = false, done = false;
+      function fin() { if (!done) { done = true; resolve(); } }
+      u.onstart = function () { started = true; };
+      u.onend = fin;
+      u.onerror = fin;
+      try { synth.cancel(); synth.speak(u); } catch (e) { fin(); return; }
+      setTimeout(function () { if (!started) { try { synth.cancel(); } catch (e) {} fin(); } }, 2500);
+      setTimeout(fin, 15000);
+    });
   }
 
-  function finishRecording() {
-    if (!recording || !rec) return;
-    recording = false;
-    var r = rec;
-    rec = null;
-    r.stop().then(function (result) {
-      if (!result.heardSpeech || result.durationMs < 300) {
-        endQuestion('목소리가 들리지 않았어요. 마이크 버튼을 누르고 다시 물어봐요.', 'info');
-        return;
-      }
-      upload(result);
-    }).catch(function () { endQuestion('녹음을 마치지 못했어요.', 'error'); });
-  }
-
-  function upload(result) {
+  function submitQuestion(text) {
     step('thinking');
-    var fd = new FormData();
-    fd.append('audio', result.blob, 'question.wav');
-    fd.append('sentence_seq', String(S[state.index].seq));
-    fd.append('position_ms', String(Math.round(positionMs())));
+    var thinking = pickClip('thinking');
+    thinkingDone = playClip(thinking);
+    var asked = Date.now();
+    var settled = false;
     uploadCtl = window.AbortController ? new AbortController() : null;
     var signal = uploadCtl ? uploadCtl.signal : undefined;
+
+    // 마이크를 놓은 뒤 제한 시간이 지나면 준비된 말로 답한다.
+    waitTimer = setTimeout(function () {
+      if (settled || !state.busy) return;
+      settled = true;
+      if (uploadCtl) { try { uploadCtl.abort(); } catch (e) {} uploadCtl = null; }
+      var line = pickClip('timeout');
+      clipIndex++;
+      respond({ mode: 'timeout', question_text: text, answer_text: line ? line.text : '', clip: line });
+    }, M.qa.timeout_ms || 5000);
+
     ensureSession()
       .then(function (sid) {
-        return RM.api('/api/play-sessions/' + sid + '/question', { method: 'POST', body: fd, signal: signal });
+        return RM.api('/api/play-sessions/' + sid + '/question', {
+          method: 'POST',
+          body: { question: text, sentence_seq: S[state.index].seq, position_ms: Math.round(positionMs()) },
+          signal: signal
+        });
       })
       .then(function (res) {
         uploadCtl = null;
-        if (!state.busy) return;
+        if (settled || !state.busy) return;
+        settled = true;
+        clearTimeout(waitTimer);
         if (typeof res.remaining === 'number') { state.remaining = res.remaining; updateAskLabel(); }
-        showAnswer(res);
-        return playAnswer(res).then(function () {
-          if (state.busy) setTimeout(function () { endQuestion(); }, 700);
-        });
+        if (res.mode === 'timeout') clipIndex++;
+        res.waited_ms = Date.now() - asked;
+        respond(res);
       })
       .catch(function (err) {
         uploadCtl = null;
         if (err && err.name === 'AbortError') return;
+        if (settled) return;
+        settled = true;
+        clearTimeout(waitTimer);
         endQuestion(err && err.message ? err.message : '네트워크 연결을 확인해 주세요.', 'error');
       });
+  }
+
+  /** 기다림 소리가 끝나면 답(또는 준비된 말)을 보여 주고 들려준 뒤 이야기로 돌아간다. */
+  function respond(res) {
+    var wait = thinkingDone || Promise.resolve();
+    wait.then(function () {
+      if (!state.busy) return;
+      showAnswer(res);
+      var speaking = res.clip ? playClip(res.clip) : playAnswer(res);
+      return speaking.then(function () {
+        if (state.busy) setTimeout(function () { endQuestion(); }, 700);
+      });
+    });
   }
 
   function showAnswer(res) {
@@ -820,40 +963,8 @@
   }
 
   function playAnswer(res) {
-    return new Promise(function (resolve) {
-      var done = false;
-      function finish() { if (!done) { done = true; resolve(); } }
-      // 너무 오래 걸리면 이야기로 돌아간다.
-      var guard = setTimeout(finish, 30000);
-      function speakText() {
-        var text = res.answer_text || '';
-        if (!text || dev.silent || !synth) {
-          setTimeout(function () { clearTimeout(guard); finish(); }, Math.min(8000, 1500 + charLen(text) * 90));
-          return;
-        }
-        var u = new SpeechSynthesisUtterance(text);
-        u.lang = 'ko-KR';
-        if (dev.voice) u.voice = dev.voice;
-        u.rate = 1;
-        var started = false;
-        u.onstart = function () { started = true; };
-        u.onend = function () { clearTimeout(guard); finish(); };
-        u.onerror = function () { clearTimeout(guard); finish(); };
-        try { synth.cancel(); synth.speak(u); } catch (e) { clearTimeout(guard); finish(); }
-        setTimeout(function () { if (!started) { try { synth.cancel(); } catch (e) {} clearTimeout(guard); setTimeout(finish, 2500); } }, 2500);
-      }
-      if (res.audio_url) {
-        var a = answerAudio || new Audio();
-        answerAudio = a;
-        a.onended = function () { clearTimeout(guard); finish(); };
-        a.onerror = function () { a.onerror = null; speakText(); };
-        a.src = res.audio_url;
-        var p = a.play();
-        if (p && p.catch) p.catch(function () { speakText(); });
-      } else {
-        speakText();
-      }
-    });
+    if (res.audio_url) return playClip({ url: res.audio_url, text: res.answer_text || '' }).then(function () {});
+    return speakLine(res.answer_text || '');
   }
 
   function stopAnswer() {
@@ -864,8 +975,13 @@
   /** 질문 화면을 닫고 지금 문장 처음부터 이야기를 이어 간다. */
   function endQuestion(message, type) {
     if (!state.busy) return;
-    if (rec) { rec.cancel(); rec = null; }
-    recording = false;
+    if (listening) {
+      listening = false;
+      var n = nativeBridge();
+      if (n && typeof n.cancelListening === 'function') { try { n.cancelListening(); } catch (e) {} }
+    }
+    clearTimeout(waitTimer);
+    thinkingDone = null;
     if (uploadCtl) { try { uploadCtl.abort(); } catch (e) {} uploadCtl = null; }
     stopAnswer();
     el.overlay.hidden = true;
@@ -877,7 +993,8 @@
   }
 
   el.ask.addEventListener('click', startQuestion);
-  el.rec.addEventListener('click', function () { if (recording) finishRecording(); });
+  el.rec.addEventListener('click', finishListening);
+  el.devForm.addEventListener('submit', function (ev) { ev.preventDefault(); finishListening(); });
   el.cancel.addEventListener('click', function () { endQuestion(); });
   document.addEventListener('keydown', function (ev) {
     if (ev.key === 'Escape' && state.busy) endQuestion();

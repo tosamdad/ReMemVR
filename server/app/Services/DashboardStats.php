@@ -196,7 +196,7 @@ class DashboardStats
     }
 
     /**
-     * 오늘 API 비용(원). ElevenLabs 는 실제 사용 크레딧 × 설정 단가, 그 밖의 API(Gemini)는 우리 기록.
+     * 오늘 API 비용(원). ElevenLabs 는 실제 사용 크레딧 × 설정 단가, 그 밖의 API(Claude, Gemini)는 우리 기록.
      * ElevenLabs 사용량을 모르면 우리 기록(추정치)을 그대로 쓴다.
      */
     public static function todayCostKrw(bool $fetch = false, ?array $usage = null): float
@@ -552,28 +552,29 @@ class DashboardStats
             app_log('error', '헬스체크 실패: ' . $e->getMessage());
             $h = [];
         }
-        $g = isset($h['gemini']) ? $h['gemini'] : ['ok' => false, 'ms' => null, 'message' => '점검 실패'];
+        $g = isset($h['llm']) ? $h['llm'] : ['ok' => false, 'ms' => null, 'message' => '점검 실패'];
         $el = isset($h['elevenlabs']) ? $h['elevenlabs'] : ['ok' => false, 'ms' => null, 'message' => '점검 실패', 'credits' => null];
         $st = isset($h['storage']) ? $h['storage'] : ['ok' => false, 'writable' => false, 'free_mb' => null, 'message' => '점검 실패'];
         $wk = isset($h['worker']) ? $h['worker'] : ['pending' => 0, 'running' => 0, 'failed_24h' => 0, 'stale' => 0, 'last_done_at' => null];
 
-        $model = (string) setting('gemini.model', 'gemini-2.5-flash');
+        $model = isset($g['model']) ? (string) $g['model'] : QaModel::model();
+        $llmName = isset($g['label']) ? (string) $g['label'] : QaModel::label();
         $items = [];
         $msText = static function ($ms) {
             return $ms !== null ? ' (' . number_format((int) $ms) . 'ms)' : '';
         };
         if (!empty($g['skipped'])) {
             $items[] = [
-                'key' => 'gemini', 'icon' => 'neurology', 'name' => 'Gemini',
-                'detail' => '아이 질문 기능 보류 중이라 쓰지 않음',
+                'key' => 'llm', 'icon' => 'neurology', 'name' => $llmName,
+                'detail' => '아이 질문 기능이 꺼져 있어 쓰지 않음',
                 'ok' => true, 'muted' => true,
-                'badge' => '보류',
+                'badge' => '꺼짐',
                 'text' => (string) $g['message'],
             ];
         } else {
             $items[] = [
-                'key' => 'gemini', 'icon' => 'neurology', 'name' => 'Gemini',
-                'detail' => $model . ' · ' . (!empty($g['ok']) ? '아이 질문 이해, 답변 작성' : (string) $g['message']),
+                'key' => 'llm', 'icon' => 'neurology', 'name' => $llmName,
+                'detail' => $model . ' · ' . (!empty($g['ok']) ? '아이 질문 답변 작성' : (string) $g['message']),
                 'ok' => !empty($g['ok']),
                 'badge' => !empty($g['ok']) ? '정상' . $msText($g['ms']) : '점검 필요',
                 'text' => !empty($g['ok']) ? '정상' . $msText($g['ms']) : (string) $g['message'],

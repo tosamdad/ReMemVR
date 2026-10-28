@@ -6,22 +6,26 @@ use App\Core\Storage;
 
 /**
  * 아이 질문(끼어들기) 처리.
- * 질문 음성 저장 → 사용 가능 여부(설정, 질문 한도, 일일 예산, API 키) 확인 → Gemini 답 → 같은 가족 목소리로 합성 → 기록.
+ * 앱이 폰 안에서 아이 말을 글로 바꿔 보낸 질문 문장을 받는다(아이 음성은 서버로 오지 않는다).
+ * 사용 가능 여부(설정, 질문 한도, 일일 예산, API 키) 확인 → 답변 AI(QaModel) 답 → 같은 가족 목소리로 합성 → 기록.
+ * 마이크를 놓은 뒤 qa.timeout_ms(기본 5초) 안에 답 음성을 돌려줄 수 없으면 준비된 음성(qa.timeout_lines)으로 답한다(mode 'timeout').
  * 어떤 오류도 호출한 쪽으로 던지지 않는다. 실패하면 mode 'error' 와 안내 문장을 돌려주고 동화는 이어진다.
  */
 class QuestionService
 {
-    /** 질문 음성 최대 크기(바이트). 15초 48kHz WAV 도 넉넉히 들어간다. */
-    const MAX_AUDIO_BYTES = 8388608;
-    const AUDIO_EXTS = ['wav', 'webm', 'ogg', 'oga', 'm4a', 'mp4', 'mp3', 'aac', 'flac'];
+    /** 서버가 답을 돌려줘야 하는 시각을 앱의 제한 시간보다 이만큼 앞당긴다(응답 전송 여유). */
+    const NETWORK_MARGIN_MS = 500;
+    /** 답 음성 합성에 남겨 둘 시간 */
+    const TTS_RESERVE_MS = 1000;
 
     /**
      * $session 은 호출한 쪽에서 본인 것으로 확인한 play_sessions 행이다.
      * @return array ['ok' => true, 'mode', 'question_text', 'answer_text', 'audio_url', 'remaining', 'interaction_id', 'latency_ms']
      */
-    public static function ask(array $user, array $session, string $audioTmpPath, string $mime, int $sentenceSeq, int $positionMs): array
+    public static function ask(array $user, array $session, string $questionText, int $sentenceSeq, int $positionMs): array
     {
         $started = microtime(true);
+        $deadlineMs = self::timeoutMs() - self::NETWORK_MARGIN_MS;
         $userId = (int) $user['id'];
         $sessionId = (int) $session['id'];
         $max = (int) setting('qa.max_questions', 3);
@@ -29,6 +33,8 @@ class QuestionService
         $interactionId = null;
         $reserved = false;
         $profile = null;
+        $cleaned = QaPrompt::cleanQuestion($questionText);
+        $question = $cleaned['text'];
         $row = [
             'play_session_id' => $sessionId,
             'sentence_seq' => $sentenceSeq > 0 ? $sentenceSeq : null,
@@ -48,7 +54,6 @@ class QuestionService
 
             // 1) 짧은 시간에 너무 많은 질문(오작동, 장난)을 막는다.
             if (!RateLimiter::hit('qa:' . $userId, 20, 600)) {
-                @unlink($audioTmpPath);
                 $line = self::pickLine(self::errorLines(), $count);
                 $interactionId = self::insert($row + ['answer_text' => $line, 'error_message' => '질문 요청 한도 초과(10분 20회)']);
 
@@ -67,32 +72,23 @@ class QuestionService
                 $max = (int) $story['max_questions'];
             }
 
-            // 3) 질문 기능이 꺼져 있음(전체 설정 또는 동화별 설정). 아이 음성은 저장하지 않고 바로 지운다.
+            // 3) 질문 기능이 꺼져 있음(전체 설정 또는 동화별 설정). 질문 문장도 남기지 않는다.
             if ($story && (!qa_available() || (int) $story['barge_in_enabled'] === 0)) {
-                @unlink($audioTmpPath);
                 $interactionId = self::insert($row);
                 $line = self::pickLine(self::fallbackLines($story), $fallbackCount);
 
                 return self::finish($interactionId, 'disabled', null, $line, $profile, [], max(0, $max - $count), $started);
             }
 
-            // 4) 질문 음성 저장(관리자 검토, 재처리용)
-            $stored = self::storeQuestionAudio($audioTmpPath, $mime);
-            $row['question_audio_path'] = $stored['path'];
+            $row['question_text'] = $question !== '' ? $question : null;
             $interactionId = self::insert($row);
-
             if (!$story) {
                 return self::finish($interactionId, 'error', null, self::pickLine(self::errorLines(), $count), $profile, [
                     'error_message' => '동화를 찾을 수 없음',
                 ], max(0, $max - $count), $started);
             }
-            if ($stored['error'] !== null) {
-                return self::finish($interactionId, 'error', null, self::pickLine(self::errorLines(), $count), $profile, [
-                    'error_message' => $stored['error'],
-                ], max(0, $max - $count), $started);
-            }
 
-            // 5) 질문 한도: 자리를 먼저 원자적으로 잡는다(동시에 두 질문이 와도 한도를 넘지 않게).
+            // 4) 질문 한도: 자리를 먼저 원자적으로 잡는다(동시에 두 질문이 와도 한도를 넘지 않게).
             $reserved = $max > 0 && db_exec(
                 'UPDATE play_sessions SET question_count = question_count + 1 WHERE id = ? AND user_id = ? AND question_count < ?',
                 [$sessionId, $userId, $max]
@@ -101,85 +97,110 @@ class QuestionService
                 $line = self::pickLine(self::fallbackLines($story), $fallbackCount);
                 db_exec('UPDATE play_sessions SET fallback_count = LEAST(fallback_count + 1, 255) WHERE id = ? AND user_id = ?', [$sessionId, $userId]);
 
-                return self::finish($interactionId, 'quota', null, $line, $profile, [], 0, $started);
+                return self::finish($interactionId, 'quota', $question ?: null, $line, $profile, [], 0, $started);
             }
 
-            // 6) 일일 예산(0 이하면 제한 없음)
+            // 5) 일일 예산(0 이하면 제한 없음)
             $budget = (float) setting('cost.daily_budget_krw', 0);
             if ($budget > 0 && Usage::todayCostKrw() >= $budget) {
                 self::release($sessionId, $userId);
                 $reserved = false;
 
-                return self::finish($interactionId, 'budget', null, self::pickLine(self::errorLines(), $count), $profile, [
+                return self::finish($interactionId, 'budget', $question ?: null, self::pickLine(self::errorLines(), $count), $profile, [
                     'error_message' => '일일 API 예산 도달',
                 ], max(0, $max - $count), $started);
             }
 
-            // 7) Gemini 키
-            if (!Gemini::ready()) {
+            // 6) 답변 AI 키
+            if (!QaModel::ready()) {
                 self::release($sessionId, $userId);
                 $reserved = false;
 
-                return self::finish($interactionId, 'error', null, self::pickLine(self::errorLines(), $count), $profile, [
-                    'error_message' => 'Gemini API 키 미등록',
+                return self::finish($interactionId, 'error', $question ?: null, self::pickLine(self::errorLines(), $count), $profile, [
+                    'error_message' => QaModel::label() . ' API 키 미등록',
                 ], max(0, $max - $count), $started);
             }
 
-            // 8) 답 만들기
-            $ctx = self::context($user, $session, $story, $profile, $sentenceSeq);
-            $llm = Gemini::answerQuestion($ctx, $stored['bytes'], $stored['mime']);
-            $llmCostUsd = Usage::geminiCostUsd($llm['input_tokens'], $llm['output_tokens'], $llm['audio_tokens']);
-            Usage::log([
-                'provider' => 'gemini',
-                'purpose' => 'answer_llm',
-                'model' => Gemini::model(),
-                'user_id' => $userId,
-                'ref_type' => 'interaction',
-                'ref_id' => $interactionId,
-                'unit_type' => 'tokens',
-                'units' => $llm['input_tokens'] + $llm['output_tokens'],
-                'cost_usd' => $llmCostUsd,
-                'latency_ms' => $llm['ms'],
-                'success' => $llm['ok'],
-            ]);
-            $extra = [
-                'llm_input_tokens' => $llm['input_tokens'],
-                'llm_output_tokens' => $llm['output_tokens'],
-                'llm_ms' => $llm['ms'],
-                'cost_krw' => Usage::krw($llmCostUsd),
-            ];
-            if (!$llm['ok']) {
-                self::release($sessionId, $userId);
-                $reserved = false;
-
-                return self::finish($interactionId, 'error', null, self::pickLine(self::errorLines(), $count), $profile, $extra + [
-                    'error_message' => (string) $llm['error'],
-                ], max(0, $max - $count), $started);
-            }
-
-            $question = $llm['question'];
-            $answer = $llm['answer'];
-            $extra['emotion'] = $llm['emotion'];
             $notes = [];
-            if ($llm['unsafe']) {
-                $notes[] = '안전 주제 전환';
+            if ($cleaned['masked']) {
+                $notes[] = '개인정보로 보이는 부분 가림';
             }
-            if (self::hasBlockedWord($answer) || self::hasBlockedWord($question)) {
-                $answer = Gemini::safeRedirect();
-                $notes[] = '금지어 감지로 답 교체';
+            $extra = ['cost_krw' => 0.0];
+            $unclear = false;
+
+            // 7) 답 만들기. 금지어가 들어 있으면 답변 AI 에 보내지 않고 화제를 돌린다.
+            if (self::hasBlockedWord($question)) {
+                $answer = QaPrompt::safeRedirect();
+                $extra['emotion'] = '기타';
+                $notes[] = '질문 금지어 감지로 답변 AI 를 거치지 않음';
+            } else {
+                $ctx = self::context($userId, $session, $story, $profile, $sentenceSeq);
+                $llmBudget = max(300, $deadlineMs - self::elapsed($started) - self::TTS_RESERVE_MS);
+                $llm = QaModel::answer($ctx, $question, $llmBudget);
+                $llmCostUsd = QaModel::costUsd($llm['input_tokens'], $llm['output_tokens']);
+                Usage::log([
+                    'provider' => QaModel::usageProvider(),
+                    'purpose' => 'answer_llm',
+                    'model' => QaModel::model(),
+                    'user_id' => $userId,
+                    'ref_type' => 'interaction',
+                    'ref_id' => $interactionId,
+                    'unit_type' => 'tokens',
+                    'units' => $llm['input_tokens'] + $llm['output_tokens'],
+                    'cost_usd' => $llmCostUsd,
+                    'latency_ms' => $llm['ms'],
+                    'success' => $llm['ok'],
+                ]);
+                $extra['llm_input_tokens'] = $llm['input_tokens'];
+                $extra['llm_output_tokens'] = $llm['output_tokens'];
+                $extra['llm_ms'] = $llm['ms'];
+                $extra['cost_krw'] = Usage::krw($llmCostUsd);
+
+                if (!empty($llm['timed_out'])) {
+                    $reserved = false;
+
+                    return self::timeout($interactionId, $sessionId, $userId, $question, $profile, $count, $max, $extra, $notes, null, $started);
+                }
+                if (!$llm['ok']) {
+                    self::release($sessionId, $userId);
+                    $reserved = false;
+
+                    return self::finish($interactionId, 'error', $question ?: null, self::pickLine(self::errorLines(), $count), $profile, $extra + [
+                        'error_message' => (string) $llm['error'],
+                    ], max(0, $max - $count), $started);
+                }
+
+                $answer = $llm['answer'];
+                $extra['emotion'] = $llm['emotion'];
+                $unclear = !empty($llm['unclear']);
+                if ($llm['unsafe']) {
+                    $notes[] = '안전 주제 전환';
+                }
+                if (self::hasBlockedWord($answer)) {
+                    $answer = QaPrompt::safeRedirect();
+                    $notes[] = '답 금지어 감지로 답 교체';
+                }
             }
             $answer = self::trimAnswer($answer, (int) setting('qa.max_answer_chars', 120));
 
             // 분명한 말이 없어 되물은 경우는 질문 횟수에서 빼 준다.
-            if ($question === '') {
+            if ($unclear) {
                 self::release($sessionId, $userId);
                 $reserved = false;
                 $notes[] = '질문 인식 안 됨(되묻기)';
             }
 
-            // 9) 같은 가족 목소리로 답 읽기(목소리가 없으면 화면이 기기 음성으로 읽는다)
+            // 8) 같은 가족 목소리로 답 읽기(목소리가 없으면 화면이 기기 음성으로 읽는다)
             $audioUrl = null;
             if ($profile && !empty($profile['provider_voice_id']) && ElevenLabs::ready()) {
+                $left = $deadlineMs - self::elapsed($started);
+                if ($left < 300) {
+                    if (!$unclear) {
+                        $reserved = false;
+                    }
+
+                    return self::timeout($interactionId, $sessionId, $userId, $question, $profile, $count, $max, $extra, $notes, $answer, $started, !$unclear);
+                }
                 $modelId = (string) setting('elevenlabs.model_answer', 'eleven_flash_v2_5');
                 $tts = ElevenLabs::synthesize((string) $profile['provider_voice_id'], $answer, [
                     'model_id' => $modelId,
@@ -190,8 +211,8 @@ class QuestionService
                         'use_speaker_boost' => $profile['speaker_boost'],
                     ],
                     'usage' => ['purpose' => 'answer_tts', 'user_id' => $userId, 'ref_type' => 'interaction', 'ref_id' => $interactionId],
-                    // 아이가 기다리는 중이라 오래 걸리면 기기 음성으로 넘긴다.
-                    'timeout' => 30,
+                    // 아이가 기다리는 중이라 마감까지 남은 시간만 쓴다.
+                    'timeout_ms' => $left,
                 ]);
                 $extra['tts_ms'] = $tts['ms'];
                 if ($tts['ok']) {
@@ -202,6 +223,13 @@ class QuestionService
                     $extra['tts_chars'] = $tts['chars'];
                     $extra['cost_krw'] += Usage::krw(Usage::elevenlabsCostUsd($tts['chars'], $modelId));
                     $audioUrl = url('/media/answer/' . $interactionId);
+                } elseif (self::elapsed($started) >= $deadlineMs) {
+                    $notes[] = '답 음성 합성 시간 초과';
+                    if (!$unclear) {
+                        $reserved = false;
+                    }
+
+                    return self::timeout($interactionId, $sessionId, $userId, $question, $profile, $count, $max, $extra, $notes, $answer, $started, !$unclear);
                 } else {
                     $notes[] = '답 음성 합성 실패: ' . $tts['error'];
                 }
@@ -212,9 +240,9 @@ class QuestionService
 
             $after = (int) db_value('SELECT question_count FROM play_sessions WHERE id = ? AND user_id = ?', [$sessionId, $userId]);
             $reserved = false;
-            $extra['question_text'] = $question !== '' ? $question : null;
             self::update($interactionId, array_merge($extra, [
                 'mode' => 'answer',
+                'question_text' => $question !== '' ? $question : null,
                 'answer_text' => $answer,
                 'latency_ms' => self::elapsed($started),
             ]));
@@ -248,6 +276,32 @@ class QuestionService
         }
     }
 
+    /** 앱이 답을 기다리는 시간(밀리초). 2~15초 */
+    public static function timeoutMs(): int
+    {
+        return max(2000, min(15000, (int) setting('qa.timeout_ms', 5000)));
+    }
+
+    /**
+     * 마감 안에 답 음성을 못 만든 경우: 준비된 음성으로 답하고 질문 횟수는 돌려준다.
+     * 만든 답이 있으면 관리자 기록에 남긴다.
+     */
+    private static function timeout(?int $interactionId, int $sessionId, int $userId, string $question, ?array $profile, int $count, int $max, array $extra, array $notes, ?string $answer, float $started, bool $release = true): array
+    {
+        if ($release) {
+            self::release($sessionId, $userId);
+        }
+        $notes[] = '시간 초과(' . self::elapsed($started) . 'ms)';
+        if ($answer !== null) {
+            $notes[] = '만든 답: ' . $answer;
+        }
+        $extra['error_message'] = implode(' / ', $notes);
+        $line = self::pickLine(self::timeoutLines(), $count);
+        $after = (int) db_value('SELECT question_count FROM play_sessions WHERE id = ? AND user_id = ?', [$sessionId, $userId]);
+
+        return self::finish($interactionId, 'timeout', $question !== '' ? $question : null, $line, $profile, $extra, max(0, $max - $after), $started);
+    }
+
     // ───────────────────────── 문장 ─────────────────────────
 
     /** 질문 한도 초과 대체 문장: 동화별 설정이 있으면 그것, 없으면 전체 설정 */
@@ -267,6 +321,22 @@ class QuestionService
         $lines = self::cleanLines((array) setting('qa.error_lines', []));
 
         return $lines ?: ['음, 잘 못 들었어. 이야기를 계속 들어 볼까?'];
+    }
+
+    /** 마이크를 놓자마자 들려주는 생각하는 소리 */
+    public static function thinkingLines(): array
+    {
+        $lines = self::cleanLines((array) setting('qa.thinking_lines', []));
+
+        return $lines ?: ['음, 그건 말이지…'];
+    }
+
+    /** 답이 늦을 때 대신 들려주는 말 */
+    public static function timeoutLines(): array
+    {
+        $lines = self::cleanLines((array) setting('qa.timeout_lines', []));
+
+        return $lines ?: ['우와, 좋은 질문이다! 이야기 다 듣고 같이 생각해 보자.'];
     }
 
     /** 빈 줄을 빼고 공백을 한 칸으로 정리한다(미리 만든 목소리 음성의 text_hash 와 같은 기준). */
@@ -340,84 +410,8 @@ class QuestionService
 
     // ───────────────────────── 내부 ─────────────────────────
 
-    /**
-     * 질문 음성을 저장 폴더로 옮긴다. 확장자, 크기를 확인한다.
-     * @return array ['path' => ?string, 'bytes' => string, 'mime' => string, 'error' => ?string]
-     */
-    private static function storeQuestionAudio(string $tmpPath, string $mime): array
-    {
-        $out = ['path' => null, 'bytes' => '', 'mime' => $mime, 'error' => null];
-        if ($tmpPath === '' || !is_file($tmpPath)) {
-            $out['error'] = '질문 음성 파일이 없음';
-
-            return $out;
-        }
-        $size = (int) filesize($tmpPath);
-        if ($size < 64 || $size > self::MAX_AUDIO_BYTES) {
-            @unlink($tmpPath);
-            $out['error'] = '질문 음성 크기가 올바르지 않음(' . $size . ' bytes)';
-
-            return $out;
-        }
-        // 브라우저가 알려 준 MIME 보다 파일 머리의 실제 형식을 믿는다(sendBeacon, Safari 녹음 대비).
-        $ext = self::sniffAudioExt($tmpPath);
-        if ($ext === null) {
-            $ext = Storage::extForMime($mime, 'bin');
-        }
-        if (!in_array($ext, self::AUDIO_EXTS, true)) {
-            @unlink($tmpPath);
-            $out['error'] = '지원하지 않는 음성 형식(' . str_limit($mime, 40) . ')';
-
-            return $out;
-        }
-        $rel = 'questions/' . date('Ym') . '/' . Storage::randomName($ext);
-        Storage::putUploaded($tmpPath, $rel);
-        $out['path'] = $rel;
-        $out['bytes'] = Storage::get($rel);
-        $out['mime'] = Storage::mimeFor($rel);
-
-        return $out;
-    }
-
-    /** 파일 머리 바이트로 음성 형식을 알아낸다. 모르면 null */
-    public static function sniffAudioExt(string $path): ?string
-    {
-        $fp = @fopen($path, 'rb');
-        if (!$fp) {
-            return null;
-        }
-        $head = (string) fread($fp, 16);
-        fclose($fp);
-        if (strlen($head) < 12) {
-            return null;
-        }
-        if (substr($head, 0, 4) === 'RIFF' && substr($head, 8, 4) === 'WAVE') {
-            return 'wav';
-        }
-        if (substr($head, 0, 4) === "\x1A\x45\xDF\xA3") {
-            return 'webm';
-        }
-        if (substr($head, 0, 4) === 'OggS') {
-            return 'ogg';
-        }
-        if (substr($head, 0, 4) === 'fLaC') {
-            return 'flac';
-        }
-        if (substr($head, 4, 4) === 'ftyp') {
-            return 'm4a';
-        }
-        if (substr($head, 0, 3) === 'ID3' || (ord($head[0]) === 0xFF && (ord($head[1]) & 0xE6) === 0xE2)) {
-            return 'mp3';
-        }
-        if (ord($head[0]) === 0xFF && (ord($head[1]) & 0xF6) === 0xF0) {
-            return 'aac';
-        }
-
-        return null;
-    }
-
-    /** Gemini 에 넘길 동화 맥락 */
-    private static function context(array $user, array $session, array $story, ?array $profile, int $seq): array
+    /** 답변 AI 에 넘길 동화 맥락(아이 실명은 넣지 않는다) */
+    private static function context(int $userId, array $session, array $story, ?array $profile, int $seq): array
     {
         $storyId = (int) $story['id'];
         if ($seq < 1) {
@@ -437,13 +431,12 @@ class QuestionService
 
         $child = null;
         if (!empty($session['child_id'])) {
-            $child = db_one('SELECT name, birth_year, birth_date FROM children WHERE id = ? AND user_id = ?', [(int) $session['child_id'], (int) $user['id']]);
+            $child = db_one('SELECT birth_year, birth_date FROM children WHERE id = ? AND user_id = ?', [(int) $session['child_id'], $userId]);
         }
 
         return [
             'story_title' => (string) $story['title'],
             'persona' => $profile ? (string) $profile['label'] : '보호자',
-            'child_name' => $child ? (string) $child['name'] : '',
             'child_age' => $child ? child_age($child) : null,
             'context_before' => implode(' ', array_map(static function ($r) {
                 return (string) $r['content'];

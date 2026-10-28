@@ -776,6 +776,7 @@ class MemberStats
             'error' => '오류 안내',
             'disabled' => '질문 꺼짐 안내',
             'budget' => '일일 예산 도달 안내',
+            'timeout' => '시간 초과 준비된 답',
         ];
 
         return isset($map[$mode]) ? $map[$mode] : $mode;

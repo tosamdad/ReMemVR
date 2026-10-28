@@ -24,12 +24,13 @@ return [
     // 보내는 메일 주소. 비우면 no-reply@사이트도메인
     'mail_from' => '',
 
-    // 외부 API 키. 실서버는 GitHub Secrets(ELEVENLABS_API_KEY, GEMINI_API_KEY 등)로 채워진다.
+    // 외부 API 키. 실서버는 GitHub Secrets(ELEVENLABS_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY 등)로 채워진다.
     'elevenlabs' => ['api_key' => ''],
+    'anthropic' => ['api_key' => ''],
     'gemini' => ['api_key' => ''],
     'kakao' => ['rest_api_key' => '', 'client_secret' => ''],
     'google' => ['client_id' => '', 'client_secret' => ''],
 
-    // 로컬 개발 전용. true 면 ElevenLabs, Gemini 대신 가짜 응답(삐 소리 음성, 고정 답변)을 쓰고 메일을 보내지 않는다.
+    // 로컬 개발 전용. true 면 ElevenLabs, Claude, Gemini 대신 가짜 응답(삐 소리 음성, 고정 답변)을 쓰고 메일을 보내지 않는다.
     'providers_fake' => false,
 ];

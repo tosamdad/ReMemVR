@@ -4,7 +4,8 @@ namespace App\Core;
 /**
  * 외부 API 호출. curl 확장이 있으면 curl, 없으면 PHP 스트림을 쓴다.
  * $res = HttpClient::request('POST', $url, ['headers' => [...], 'json' => [...], 'timeout' => 30]);
- * 옵션: headers(이름 => 값), query, json, form, multipart(아래 형식), body(문자열), timeout(초)
+ * 옵션: headers(이름 => 값), query, json, form, multipart(아래 형식), body(문자열), timeout(초),
+ *       timeout_ms(밀리초, 주면 timeout 대신 쓴다. 아이 질문 답처럼 몇 초 안에 끝나야 하는 호출용)
  * multipart: [['name' => 'name', 'contents' => '엄마'], ['name' => 'files', 'filename' => 'a.wav', 'contents' => $bytes, 'type' => 'audio/wav']]
  * 반환: ['status' => int(실패 시 0), 'headers' => [...소문자 이름], 'body' => string, 'ms' => int, 'error' => ?string]
  */
@@ -30,11 +31,13 @@ class HttpClient
         } elseif (isset($opts['body'])) {
             $body = (string) $opts['body'];
         }
-        $timeout = isset($opts['timeout']) ? (int) $opts['timeout'] : 30;
+        $timeoutMs = isset($opts['timeout_ms']) && (int) $opts['timeout_ms'] > 0
+            ? max(100, (int) $opts['timeout_ms'])
+            : (isset($opts['timeout']) ? (int) $opts['timeout'] : 30) * 1000;
         $started = microtime(true);
         $result = function_exists('curl_init')
-            ? self::viaCurl($method, $url, $headers, $body, $timeout)
-            : self::viaStream($method, $url, $headers, $body, $timeout);
+            ? self::viaCurl($method, $url, $headers, $body, $timeoutMs)
+            : self::viaStream($method, $url, $headers, $body, $timeoutMs);
         $result['ms'] = (int) round((microtime(true) - $started) * 1000);
 
         return $result;
@@ -67,7 +70,7 @@ class HttpClient
         return $out . '--' . $boundary . "--\r\n";
     }
 
-    private static function viaCurl(string $method, string $url, array $headers, ?string $body, int $timeout): array
+    private static function viaCurl(string $method, string $url, array $headers, ?string $body, int $timeoutMs): array
     {
         $ch = curl_init($url);
         $headerLines = [];
@@ -79,8 +82,10 @@ class HttpClient
             CURLOPT_CUSTOMREQUEST => $method,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_HTTPHEADER => $headerLines,
-            CURLOPT_CONNECTTIMEOUT => min(10, $timeout),
-            CURLOPT_TIMEOUT => $timeout,
+            CURLOPT_CONNECTTIMEOUT_MS => min(10000, $timeoutMs),
+            CURLOPT_TIMEOUT_MS => $timeoutMs,
+            // 1초 미만 제한 시간에서 DNS 조회가 신호로 끊기지 않게 한다.
+            CURLOPT_NOSIGNAL => true,
             CURLOPT_FOLLOWLOCATION => false,
             CURLOPT_HEADERFUNCTION => static function ($ch, $line) use (&$respHeaders) {
                 $pos = strpos($line, ':');
@@ -102,7 +107,7 @@ class HttpClient
         return ['status' => $resp === false ? 0 : $status, 'headers' => $respHeaders, 'body' => $resp === false ? '' : (string) $resp, 'error' => $error];
     }
 
-    private static function viaStream(string $method, string $url, array $headers, ?string $body, int $timeout): array
+    private static function viaStream(string $method, string $url, array $headers, ?string $body, int $timeoutMs): array
     {
         $headerLines = [];
         foreach ($headers as $k => $v) {
@@ -112,7 +117,7 @@ class HttpClient
             'method' => $method,
             'header' => implode("\r\n", $headerLines),
             'content' => $body === null ? '' : $body,
-            'timeout' => $timeout,
+            'timeout' => $timeoutMs / 1000,
             'ignore_errors' => true,
             'follow_location' => 0,
         ]]);

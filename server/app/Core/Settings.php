@@ -43,15 +43,21 @@ class Settings
         // ElevenLabs 에 만들어 둘 수 있는 목소리 수(Starter 10). 다 차면 가장 오래 안 쓴 목소리의 자리를 비운다. 0 이면 관리하지 않는다.
         'elevenlabs.voice_slot_limit' => 10,
 
-        // Gemini
+        // Claude(아이 질문 답변 기본 모델)
+        'claude.model' => 'claude-haiku-5-5',
+
+        // Gemini(관리자가 답변 모델로 고를 때만 쓴다)
         'gemini.model' => 'gemini-2.5-flash',
         'gemini.usd_per_1m_input' => 0.30,
         'gemini.usd_per_1m_audio_input' => 1.00,
         'gemini.usd_per_1m_output' => 2.50,
 
-        // 질문(끼어들기)
-        // 아이 대상 사용을 허용하는 답변 AI 를 정할 때까지 꺼 둔다(qa_available 참고).
+        // 질문(끼어들기): 앱이 폰 안에서 말을 글로 바꿔 보내면 답변 AI 가 답하고 가족 목소리로 읽는다.
+        // 보호자 동의, 앱 준비 전까지 꺼 둔다.
         'qa.enabled' => false,
+        'qa.llm_provider' => 'claude',
+        // 마이크를 놓은 뒤 이 시간 안에 답 음성이 안 오면 준비된 음성(qa.timeout_lines)으로 답한다.
+        'qa.timeout_ms' => 5000,
         'qa.max_questions' => 3,
         'qa.max_answer_chars' => 120,
         'qa.max_record_seconds' => 15,
@@ -64,6 +70,15 @@ class Settings
         ],
         'qa.error_lines' => [
             '음, 잘 못 들었어. 이야기를 계속 들어 볼까?',
+        ],
+        // 마이크를 놓자마자 들려주는 생각하는 소리
+        'qa.thinking_lines' => [
+            '음, 그건 말이지…',
+            '오, 궁금하구나. 잠깐만…',
+        ],
+        // 답이 늦을 때(qa.timeout_ms 초과) 대신 들려주는 말
+        'qa.timeout_lines' => [
+            '우와, 좋은 질문이다! 이야기 다 듣고 같이 생각해 보자.',
         ],
         'qa.blocked_words' => [],
 

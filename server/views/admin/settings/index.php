@@ -97,7 +97,8 @@ $nav = [
 ];
 $providerInfo = [
     'elevenlabs' => ['ElevenLabs', '목소리 복제, 동화 오디오, 답변 음성', 'ELEVENLABS_API_KEY', 'graphic_eq'],
-    'gemini' => ['Gemini', $fake ? '아이 질문 음성 이해와 답변 생성' : '아이 질문 답변 생성 (기능 보류 중, 쓰지 않음)', 'GEMINI_API_KEY', 'neurology'],
+    'anthropic' => ['Claude', '아이 질문 답변 생성 (기본 답변 모델)', 'ANTHROPIC_API_KEY', 'neurology'],
+    'gemini' => ['Gemini', '아이 질문 답변 생성 (답변 모델로 골랐을 때만)', 'GEMINI_API_KEY', 'neurology'],
     'kakao' => ['카카오 로그인', '카카오 간편 로그인', 'KAKAO_REST_API_KEY, KAKAO_CLIENT_SECRET', 'chat'],
     'google' => ['구글 로그인', '구글 간편 로그인', 'GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET', 'account_circle'],
 ];
@@ -151,12 +152,15 @@ $okChip = static function ($ok, string $yes = '정상', string $no = '확인 필
           <a href="<?= e(url('/admin/settings', ['check' => 1])) ?>#api" class="a-btn-tonal"><span class="material-symbols-outlined text-[18px]">network_check</span>지금 점검</a>
         </div>
         <?php if ($fake): ?>
-        <p class="rounded-lg bg-secondary-fixed px-4 py-2.5 font-label-md text-label-md text-on-secondary-fixed">개발 모드입니다. ElevenLabs, Gemini 대신 가짜 응답(삐 소리 음성, 고정 답변)을 쓰고 메일을 보내지 않습니다.</p>
+        <p class="rounded-lg bg-secondary-fixed px-4 py-2.5 font-label-md text-label-md text-on-secondary-fixed">개발 모드입니다. ElevenLabs, Claude, Gemini 대신 가짜 응답(삐 소리 음성, 고정 답변)을 쓰고 메일을 보내지 않습니다.</p>
         <?php endif; ?>
         <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
           <?php foreach ($providerInfo as $key => $p):
               $ready = $providers[$key];
               $h = $health && isset($health[$key]) ? $health[$key] : null;
+              if ($health && isset($health['llm']['provider']) && $health['llm']['provider'] === $key) {
+                  $h = $health['llm'];
+              }
           ?>
           <div class="flex flex-col gap-2 rounded-xl bg-surface-container-low p-4">
             <div class="flex items-center justify-between gap-2">
@@ -167,11 +171,7 @@ $okChip = static function ($ok, string $yes = '정상', string $no = '확인 필
                   <p class="font-label-sm text-label-sm text-on-surface-variant"><?= e($p[1]) ?></p>
                 </div>
               </div>
-              <?php if ($key === 'gemini' && !$fake): ?>
-              <span class="a-chip bg-surface-container-highest text-on-surface-variant">보류</span>
-              <?php else: ?>
               <?= $okChip($ready, $fake ? '개발 모드' : '키 등록됨', '키 미등록') ?>
-              <?php endif; ?>
             </div>
             <?php if ($h): ?>
             <p class="font-label-sm text-label-sm <?= !empty($h['ok']) ? 'text-on-surface-variant' : 'text-error' ?>">점검: <?= e((string) $h['message']) ?><?= !empty($h['ms']) ? ' · ' . (int) $h['ms'] . 'ms' : '' ?></p>
@@ -179,7 +179,7 @@ $okChip = static function ($ok, string $yes = '정상', string $no = '확인 필
             <p class="font-label-sm text-label-sm text-on-surface-variant">잔여 크레딧 <?= e(fmt_number($cr['remaining'])) ?> / <?= e(fmt_number($cr['limit'])) ?><?= !empty($cr['tier']) ? ' · ' . e($cr['tier']) : '' ?></p>
             <?php endif; ?>
             <?php endif; ?>
-            <?php if (!$ready && !($key === 'gemini' && !$fake)): ?>
+            <?php if (!$ready): ?>
             <p class="font-label-sm text-label-sm text-on-surface-variant">GitHub Secrets: <span class="font-mono"><?= e($p[2]) ?></span></p>
             <?php endif; ?>
           </div>
@@ -208,7 +208,7 @@ $okChip = static function ($ok, string $yes = '정상', string $no = '확인 필
           <summary class="cursor-pointer font-label-md text-label-md text-on-surface">API 키 등록 방법 (GitHub Secrets)</summary>
           <ol class="mt-3 list-decimal space-y-1.5 pl-5 font-label-sm text-label-sm text-on-surface-variant">
             <li>GitHub 저장소 → Settings → Secrets and variables → Actions → New repository secret 을 엽니다.</li>
-            <li>이름과 값을 등록합니다: <span class="font-mono text-on-surface">ELEVENLABS_API_KEY</span>, <span class="font-mono text-on-surface">GEMINI_API_KEY</span>, <span class="font-mono text-on-surface">KAKAO_REST_API_KEY</span>, <span class="font-mono text-on-surface">KAKAO_CLIENT_SECRET</span>, <span class="font-mono text-on-surface">GOOGLE_CLIENT_ID</span>, <span class="font-mono text-on-surface">GOOGLE_CLIENT_SECRET</span> (필요한 것만).</li>
+            <li>이름과 값을 등록합니다: <span class="font-mono text-on-surface">ELEVENLABS_API_KEY</span>, <span class="font-mono text-on-surface">ANTHROPIC_API_KEY</span>, <span class="font-mono text-on-surface">GEMINI_API_KEY</span>, <span class="font-mono text-on-surface">KAKAO_REST_API_KEY</span>, <span class="font-mono text-on-surface">KAKAO_CLIENT_SECRET</span>, <span class="font-mono text-on-surface">GOOGLE_CLIENT_ID</span>, <span class="font-mono text-on-surface">GOOGLE_CLIENT_SECRET</span> (필요한 것만).</li>
             <li>main 브랜치에 배포가 한 번 돌면 서버 설정 파일(config.php)에 들어가고, 이 화면에서 "키 등록됨"으로 바뀝니다.</li>
             <li>키가 없으면 해당 기능은 안내 문구와 함께 꺼집니다(목소리 생성 승인 비활성, 질문 대신 기기 음성 안내, 간편 로그인 준비 중).</li>
           </ol>
@@ -244,10 +244,18 @@ $okChip = static function ($ok, string $yes = '정상', string $no = '확인 필
             <?= $input('elevenlabs.usd_per_1k_credits', 'ElevenLabs 1천 크레딧 단가', '대시보드 비용 계산 기준. 정액 요금제 원가는 월 요금 ÷ 월 크레딧 × 1000, 초과 사용 단가는 보통 0.30', ['suffix' => 'USD', 'step' => '0.001']) ?>
             <?= $input('elevenlabs.flash_credit_ratio', 'Flash, Turbo 글자당 크레딧 비율', 'Multilingual 은 1자 1크레딧', ['step' => '0.05']) ?>
             <?= $input('elevenlabs.voice_slot_limit', 'ElevenLabs 목소리 자리 수', '요금제의 커스텀 목소리 한도(Starter 10). 다 차면 가장 오래 안 쓴 목소리의 자리를 비우고, 그 목소리로 동화를 만들 때 녹음으로 다시 만듭니다. 0 이면 관리하지 않습니다', ['suffix' => '개']) ?>
-            <?= $input('gemini.model', 'Gemini 모델', '예) gemini-2.5-flash') ?>
             <?= $input('cost.usd_krw', '환율 (1달러)', '비용을 원화로 바꿀 때 씁니다', ['suffix' => '원']) ?>
+            <div>
+              <?= $select('qa.llm_provider', '아이 질문 답변 AI') ?>
+              <?php if ($v('qa.llm_provider') === 'gemini'): ?>
+              <p class="mt-1 rounded-lg bg-error-container px-3 py-2 font-label-sm text-label-sm text-on-error-container">Gemini API 추가 약관은 18세 미만이 이용하거나 이용할 가능성이 높은 서비스에서의 사용을 금지합니다. 실서버에서는 Claude 를 권장합니다.</p>
+              <?php else: ?>
+              <p class="mt-1 font-label-sm text-label-sm text-on-surface-variant">Claude 는 안전 장치와 AI 고지를 갖추면 아이 대상 서비스에서 쓸 수 있습니다. Gemini 는 약관상 18세 미만 서비스 사용이 금지되어 권장하지 않습니다.</p>
+              <?php endif; ?>
+            </div>
+            <?= $select('claude.model', 'Claude 모델', '아이가 기다리므로 Haiku 5.5(입력 100만 토큰 0.10, 출력 0.50 USD)를 권장합니다.') ?>
+            <?= $input('gemini.model', 'Gemini 모델', '예) gemini-2.5-flash') ?>
             <?= $input('gemini.usd_per_1m_input', 'Gemini 텍스트 입력 100만 토큰 단가', '', ['suffix' => 'USD']) ?>
-            <?= $input('gemini.usd_per_1m_audio_input', 'Gemini 음성 입력 100만 토큰 단가', '', ['suffix' => 'USD']) ?>
             <?= $input('gemini.usd_per_1m_output', 'Gemini 출력 100만 토큰 단가', '', ['suffix' => 'USD']) ?>
           </div>
         </section>
@@ -257,11 +265,9 @@ $okChip = static function ($ok, string $yes = '정상', string $no = '확인 필
             <h2 class="font-headline-md text-headline-md text-on-surface">질문(끼어들기)과 비용 방어</h2>
             <p class="font-label-sm text-label-sm text-on-surface-variant">동화별 설정(동화 콘텐츠 관리 → 끼어들기 설정)이 비어 있으면 이 값을 씁니다.</p>
           </div>
-          <?php if (!$fake): ?>
-          <p class="rounded-lg bg-secondary-fixed px-4 py-2.5 font-label-md text-label-md text-on-secondary-fixed">아이 질문 기능은 보류 중입니다. Gemini API 약관이 18세 미만이 이용하는 서비스에서의 사용을 금지해, 아래 스위치를 켜도 실서버에서는 질문 버튼이 나타나지 않습니다. 아이 대상 사용을 허용하는 답변 AI 로 바꾼 뒤 다시 켤 수 있습니다.</p>
-          <?php endif; ?>
+          <p class="rounded-lg bg-secondary-fixed px-4 py-2.5 font-label-md text-label-md text-on-secondary-fixed">말로 묻기는 르멤버 앱에서만 나타납니다. 앱이 폰 안에서 아이 말을 글로 바꿔 질문 문장만 보내고, 아이 음성은 서버나 외부 API 로 가지 않습니다. 모바일웹에는 마이크 버튼이 없습니다. 켜기 전에 보호자 동의와 약관, 개인정보처리방침 고지를 확인하세요.</p>
           <div class="rounded-xl <?= $v('qa.enabled') ? 'bg-surface-container-low' : 'bg-error-container' ?>" data-killswitch>
-            <?= $toggle('qa.enabled', '질문 기능 전체 켜기 (긴급 차단 스위치)', '끄면 모든 동화에서 Gemini, ElevenLabs 호출 없이 대체 문장만 들려줍니다.', ' data-kill') ?>
+            <?= $toggle('qa.enabled', '질문 기능 전체 켜기 (긴급 차단 스위치)', '끄면 모든 동화에서 답변 AI, ElevenLabs 호출 없이 대체 문장만 들려줍니다.', ' data-kill') ?>
           </div>
           <div class="grid grid-cols-1 gap-5 md:grid-cols-3">
             <?= $input('qa.max_questions', '동화 1편당 질문 한도', '넘으면 대체 문장으로 응답', ['suffix' => '회']) ?>
@@ -270,10 +276,13 @@ $okChip = static function ($ok, string $yes = '정상', string $no = '확인 필
             <?= $input('qa.vad_min_speech_ms', '발화 감지 최소 길이 (VAD)', '숨소리, 추임새 오인 방지', ['suffix' => 'ms', 'step' => '50']) ?>
             <?= $input('qa.silence_stop_ms', '말 끝 감지 침묵 길이', '이만큼 조용하면 녹음 종료', ['suffix' => 'ms', 'step' => '50']) ?>
             <?= $select('qa.aec_level', '반향 제거(AEC) 감도', '최대는 잡음 억제까지 켭니다.') ?>
+            <?= $input('qa.timeout_ms', '답 기다리는 시간', '마이크를 놓은 뒤 이 시간 안에 답 음성이 안 오면 준비된 음성으로 답합니다. 질문 횟수는 빼지 않습니다', ['suffix' => 'ms', 'step' => '500']) ?>
           </div>
           <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
             <?= $area('qa.fallback_lines', '질문 한도 초과 대체 문장 (한 줄에 하나, 순서대로 돌아가며 사용)', '최대 10줄, 한 줄 200자 이하', 4) ?>
             <?= $area('qa.error_lines', '오류 안내 문장 (한 줄에 하나)', '알아듣지 못했거나 처리에 실패했을 때', 4) ?>
+            <?= $area('qa.thinking_lines', '기다림 문장 (한 줄에 하나)', '마이크를 놓자마자 들려주는 생각하는 소리', 3) ?>
+            <?= $area('qa.timeout_lines', '시간 초과 문장 (한 줄에 하나)', '답이 늦을 때 대신 들려주는 말', 3) ?>
           </div>
           <?= $area('qa.blocked_words', '금지어 (쉼표나 줄바꿈으로 구분)', '질문이나 답변에 들어 있으면 안전한 안내 문장으로 바꿉니다.', 3) ?>
           <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
@@ -286,7 +295,7 @@ $okChip = static function ($ok, string $yes = '정상', string $no = '확인 필
           <div class="flex flex-col justify-between gap-3 rounded-xl bg-surface-container-low p-4 md:flex-row md:items-center">
             <div>
               <p class="font-label-md text-label-md text-on-surface">가족 목소리 대체 음성</p>
-              <p class="font-label-sm text-label-sm text-on-surface-variant">대체 문장, 오류 안내를 목소리마다 미리 합성해 둡니다(동화별 전용 문장 포함). 이미 만든 문장은 건너뜁니다. 대상 목소리 <?= (int) $clipVoices ?>개<?= $clipJobs ? ' · 진행 중 작업 ' . (int) $clipJobs . '개' : '' ?></p>
+              <p class="font-label-sm text-label-sm text-on-surface-variant">대체 문장, 오류 안내, 기다림, 시간 초과 문장을 목소리마다 미리 합성해 둡니다(동화별 전용 문장 포함). 이미 만든 문장은 건너뜁니다. 대상 목소리 <?= (int) $clipVoices ?>개<?= $clipJobs ? ' · 진행 중 작업 ' . (int) $clipJobs . '개' : '' ?></p>
             </div>
             <button type="submit" form="clips-form" class="a-btn-secondary shrink-0"<?= $clipVoices ? '' : ' disabled' ?>><span class="material-symbols-outlined text-[18px]">autorenew</span>모든 목소리 대체 음성 다시 만들기</button>
           </div>

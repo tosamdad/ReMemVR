@@ -173,7 +173,7 @@ class ElevenLabs
      * 문장을 목소리로 읽는다.
      * $opts: model_id, voice_settings[stability, similarity_boost, style, use_speaker_boost], with_timestamps(bool),
      *        output_format, usage[purpose, user_id, ref_type, ref_id](주면 사용량 기록), chunk_chars(나눔 기준, 기본 4500),
-     *        timeout(조각 하나의 제한 시간 초, 기본 180. 실시간 답변은 짧게)
+     *        timeout(조각 하나의 제한 시간 초, 기본 180. 실시간 답변은 짧게), timeout_ms(밀리초, 주면 timeout 대신 쓴다)
      * @return array ['ok', 'audio', 'ext', 'mime', 'alignment' => ?['chars', 'starts', 'ends'](초), 'duration_ms', 'chars', 'error', 'ms']
      */
     public static function synthesize(string $voiceId, string $text, array $opts = []): array
@@ -208,6 +208,7 @@ class ElevenLabs
         $settings = self::voiceSettings(isset($opts['voice_settings']) && is_array($opts['voice_settings']) ? $opts['voice_settings'] : []);
         $max = isset($opts['chunk_chars']) ? max(50, (int) $opts['chunk_chars']) : self::MAX_CHUNK_CHARS;
         $timeout = isset($opts['timeout']) ? max(5, (int) $opts['timeout']) : 180;
+        $timeoutMs = isset($opts['timeout_ms']) && (int) $opts['timeout_ms'] > 0 ? max(300, (int) $opts['timeout_ms']) : null;
         $chunks = self::splitText($text, $max);
 
         $audios = [];
@@ -223,7 +224,7 @@ class ElevenLabs
                     'previous' => $ci > 0 ? mb_substr($chunks[$ci - 1], -300) : '',
                     'next' => isset($chunks[$ci + 1]) ? mb_substr($chunks[$ci + 1], 0, 300) : '',
                 ];
-                $part = self::requestChunk($voiceId, $chunk, $modelId, $format, $settings, $withTs, $ctx, $timeout);
+                $part = self::requestChunk($voiceId, $chunk, $modelId, $format, $settings, $withTs, $ctx, $timeout, $timeoutMs);
             }
             if (!$part['ok']) {
                 $error = $part['error'];
@@ -301,7 +302,7 @@ class ElevenLabs
     }
 
     /** API 한 번 호출(최대 MAX_CHUNK_CHARS 글자) */
-    private static function requestChunk(string $voiceId, string $text, string $modelId, string $format, array $settings, bool $withTs, array $ctx, int $timeout = 180): array
+    private static function requestChunk(string $voiceId, string $text, string $modelId, string $format, array $settings, bool $withTs, array $ctx, int $timeout = 180, ?int $timeoutMs = null): array
     {
         $out = ['ok' => false, 'audio' => '', 'ext' => 'mp3', 'alignment' => null, 'duration_ms' => null, 'error' => null];
         $body = ['text' => $text, 'model_id' => $modelId, 'voice_settings' => $settings];
@@ -323,6 +324,7 @@ class ElevenLabs
             'headers' => self::headers(['Accept' => $withTs ? 'application/json' : '*/*']),
             'json' => $body,
             'timeout' => $timeout,
+            'timeout_ms' => $timeoutMs,
         ]);
         if ($res['status'] < 200 || $res['status'] >= 300) {
             $out['error'] = self::errorMessage($res);

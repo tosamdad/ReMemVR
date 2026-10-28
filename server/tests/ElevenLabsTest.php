@@ -227,11 +227,11 @@ test('상태 점검: 항목 구조, 5분 보관, 새로 점검', function () {
     $lastSnap = (int) db_value('SELECT COALESCE(MAX(id), 0) FROM provider_credit_snapshots');
     try {
         $s = App\Services\Health::status(true);
-        foreach (['gemini', 'elevenlabs', 'storage', 'db', 'worker', 'checked_at'] as $k) {
+        foreach (['llm', 'elevenlabs', 'storage', 'db', 'worker', 'checked_at'] as $k) {
             assert_true(array_key_exists($k, $s), $k . ' 항목');
         }
         assert_same(false, $s['cached']);
-        assert_true($s['gemini']['ok'] && $s['elevenlabs']['ok'] && $s['db']['ok'], '가짜 모드는 모두 정상');
+        assert_true($s['llm']['ok'] && $s['elevenlabs']['ok'] && $s['db']['ok'], '가짜 모드는 모두 정상');
         assert_same(['used', 'limit', 'remaining', 'reset_at', 'tier'], array_keys($s['elevenlabs']['credits']));
         assert_same(88000, $s['elevenlabs']['credits']['remaining']);
         assert_true($s['storage']['writable'], '저장 폴더 쓰기');
