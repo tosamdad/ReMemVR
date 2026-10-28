@@ -47,13 +47,6 @@ test('Claude 비용: 모델별 1백만 토큰 단가', function () {
     usage_assert_close(0.0, Usage::claudeCostUsd(-5, 0, 'claude-haiku-5-5'), '음수 토큰은 0');
 });
 
-test('Groq 비용: 기본(무료 요금제)은 0, 단가를 넣으면 계산한다', function () {
-    usage_assert_close(0.0, Usage::groqCostUsd(1500, 60));
-    $in = (float) setting('groq.usd_per_1m_input');
-    $out = (float) setting('groq.usd_per_1m_output');
-    usage_assert_close(1500 / 1e6 * $in + 60 / 1e6 * $out, Usage::groqCostUsd(1500, 60));
-});
-
 test('원화 환산은 cost.usd_krw 환율을 쓴다', function () {
     usage_assert_close(2.5 * (float) setting('cost.usd_krw'), Usage::krw(2.5));
 });

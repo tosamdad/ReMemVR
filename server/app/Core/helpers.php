@@ -713,9 +713,6 @@ function provider_ready(string $provider): bool
     if ($provider === 'gemini') {
         return (string) config('gemini.api_key', '') !== '';
     }
-    if ($provider === 'groq') {
-        return (string) config('groq.api_key', '') !== '';
-    }
     if ($provider === 'anthropic') {
         return (string) config('anthropic.api_key', '') !== '';
     }

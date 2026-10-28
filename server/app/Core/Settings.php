@@ -46,11 +46,6 @@ class Settings
         // Claude(아이 질문 답변 기본 모델)
         'claude.model' => 'claude-haiku-5-5',
 
-        // Groq(관리자가 답변 모델로 고를 때만 쓴다). 무료 요금제면 단가 0, 유료로 바꾸면 gpt-oss-120b 입력 0.15, 출력 0.60 USD
-        'groq.model' => 'openai/gpt-oss-120b',
-        'groq.usd_per_1m_input' => 0.0,
-        'groq.usd_per_1m_output' => 0.0,
-
         // Gemini(관리자가 답변 모델로 고를 때만 쓴다)
         'gemini.model' => 'gemini-2.5-flash',
         'gemini.usd_per_1m_input' => 0.30,

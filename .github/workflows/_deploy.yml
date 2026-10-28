@@ -52,8 +52,6 @@ on:
         required: false
       ANTHROPIC_API_KEY:
         required: false
-      GROQ_API_KEY:
-        required: false
       GEMINI_API_KEY:
         required: false
       KAKAO_REST_API_KEY:
@@ -146,7 +144,6 @@ jobs:
           APP_ENV: ${{ inputs.environment }}
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
           KAKAO_CLIENT_SECRET: ${{ secrets.KAKAO_CLIENT_SECRET }}
@@ -175,7 +172,6 @@ jobs:
               "mail_from" => $key("MAIL_FROM"),
               "elevenlabs" => ["api_key" => $key("ELEVENLABS_API_KEY")],
               "anthropic" => ["api_key" => $key("ANTHROPIC_API_KEY")],
-              "groq" => ["api_key" => $key("GROQ_API_KEY")],
               "gemini" => ["api_key" => $key("GEMINI_API_KEY")],
               "kakao" => ["rest_api_key" => $key("KAKAO_REST_API_KEY"), "client_secret" => $key("KAKAO_CLIENT_SECRET")],
               "google" => ["client_id" => $key("GOOGLE_CLIENT_ID"), "client_secret" => $key("GOOGLE_CLIENT_SECRET")],
@@ -183,7 +179,7 @@ jobs:
             file_put_contents("server/config.php", "<?php\nreturn " . var_export($config, true) . ";\n");
           '
           php -l server/config.php
-          for name in ELEVENLABS_API_KEY ANTHROPIC_API_KEY GROQ_API_KEY GEMINI_API_KEY KAKAO_REST_API_KEY GOOGLE_CLIENT_ID; do
+          for name in ELEVENLABS_API_KEY ANTHROPIC_API_KEY GEMINI_API_KEY KAKAO_REST_API_KEY GOOGLE_CLIENT_ID; do
             if [ -n "${!name}" ]; then echo "$name: 등록됨"; else echo "$name: 미등록(해당 기능은 꺼진 상태로 배포)"; fi
           done
 

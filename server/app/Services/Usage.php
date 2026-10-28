@@ -93,13 +93,6 @@ class Usage
             + max(0, $outputTokens) / 1000000 * (float) setting('gemini.usd_per_1m_output', 2.50);
     }
 
-    /** Groq 비용(달러). 무료 요금제면 단가를 0 으로 둔다. */
-    public static function groqCostUsd(int $inputTokens, int $outputTokens): float
-    {
-        return max(0, $inputTokens) / 1000000 * (float) setting('groq.usd_per_1m_input', 0)
-            + max(0, $outputTokens) / 1000000 * (float) setting('groq.usd_per_1m_output', 0);
-    }
-
     /**
      * Claude 비용(달러). 모델별 1백만 토큰 단가(Claude::PRICES)로 계산한다.
      */

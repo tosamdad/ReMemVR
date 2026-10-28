@@ -292,7 +292,7 @@ test('시간 초과: 준비된 말로 답하고 질문 횟수는 빼지 않는�
     });
 });
 
-test('답변 AI 고르기: Groq, Gemini 로 바꾸면 그 이름으로 기록한다', function () {
+test('답변 AI 고르기: Gemini 로 바꾸면 Gemini 로 기록한다', function () {
     qs_run(function (QsFixture $f) {
         assert_same('claude', QaModel::provider(), '기본은 Claude');
         assert_same('claude-haiku-5-5', QaModel::model());
@@ -302,12 +302,6 @@ test('답변 AI 고르기: Groq, Gemini 로 바꾸면 그 이름으로 기록한
         $r = QuestionService::ask($f->user, $s, QS_Q, 1, 0);
         assert_same('answer', $r['mode']);
         assert_same('gemini', (string) db_value("SELECT provider FROM api_usage_logs WHERE user_id = ? AND purpose = 'answer_llm'", [$f->userId]));
-        $f->setSetting('qa.llm_provider', 'groq');
-        assert_same('openai/gpt-oss-120b', QaModel::model());
-        assert_same('Groq', QaModel::label());
-        $r2 = QuestionService::ask($f->user, $f->session(null), QS_Q, 1, 0);
-        assert_same('answer', $r2['mode']);
-        assert_same(1, (int) db_value("SELECT COUNT(*) FROM api_usage_logs WHERE user_id = ? AND purpose = 'answer_llm' AND provider = 'groq'", [$f->userId]));
         $f->setSetting('qa.llm_provider', 'nope');
         assert_same('claude', QaModel::provider(), '모르는 값이면 Claude');
     });
