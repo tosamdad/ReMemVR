@@ -57,6 +57,7 @@ class SettingsController
         'qa.silence_stop_ms' => ['type' => 'int', 'min' => 300, 'max' => 5000],
         'qa.aec_level' => ['type' => 'select', 'options' => self::AEC_LEVELS],
         'qa.timeout_ms' => ['type' => 'int', 'min' => 2000, 'max' => 15000],
+        'qa.audio_start_ms' => ['type' => 'int', 'min' => 1000, 'max' => 15000],
         'qa.thinking_lines' => ['type' => 'lines', 'len' => 200, 'max_items' => 10, 'required' => true],
         'qa.timeout_lines' => ['type' => 'lines', 'len' => 200, 'max_items' => 10, 'required' => true],
         'qa.fallback_lines' => ['type' => 'lines', 'len' => 200, 'max_items' => 10, 'required' => true],

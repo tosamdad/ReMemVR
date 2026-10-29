@@ -701,6 +701,12 @@ function qa_available(): bool
     return (bool) setting('qa.enabled', false) && \App\Services\QaModel::ready();
 }
 
+/** 르멤버 안드로이드 앱(웹뷰)에서 열었는지. 앱은 사용자 에이전트 끝에 RememvrApp/버전 을 붙인다. */
+function in_app(): bool
+{
+    return strpos((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 'RememvrApp/') !== false;
+}
+
 /** 외부 API 키가 등록되어 있는지 */
 function provider_ready(string $provider): bool
 {

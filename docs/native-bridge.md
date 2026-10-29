@@ -55,3 +55,14 @@ options 항목
 4. 개발 모드
 
 서버 config 의 `providers_fake` 가 true 면 연결 객체가 없어도 질문 버튼이 보이고, 질문 창에 글 입력칸이 나온다. 앱 없이 같은 흐름(기다림 소리, 5초 규칙, 질문 한도)을 점검할 수 있다. `qa.fake_delay_ms` 설정값(관리자 화면에는 없음)으로 답이 늦는 경우를 흉내 낼 수 있다.
+
+
+5. 안드로이드 앱(android/)
+
+- 웹뷰로 사이트(SITE_URL Secret, 없으면 https://rememvr.mycafe24.com)를 연다. 사용자 에이전트 끝에 RememvrApp/버전 을 붙인다.
+- SpeechBridge.kt 가 Android 12 이상에서 기기 안 인식(createOnDeviceSpeechRecognizer)을 쓸 수 있을 때만 window.RememvrNative 를 넣는다. 그 밖의 폰과 일반 브라우저에서는 질문 버튼이 보이지 않는다.
+- 웹과 앱의 통신은 WebMessageListener(RememvrAndroid) 로 하고, 우리 사이트 주소에서만 열린다.
+- 한국어 기기 안 인식 모델이 없으면 Android 13 이상에서 내려받기를 요청하고, 이번 질문은 "준비하고 있어요" 안내로 끝낸다.
+- 목소리 녹음(웹 getUserMedia)과 파일 올리기도 앱에서 쓸 수 있게 마이크 권한, 파일 선택을 연결했다.
+- 빌드: GitHub Actions 의 Android APK 워크플로. main 에 반영되면 Releases 의 android-latest 에 rememvr.apk 를 올린다. 테스트 서명 키(android/app/rememvr-test.keystore)로 서명하므로 같은 키로 만든 새 APK 를 덮어 설치할 수 있다. Play 스토어에 올릴 때는 별도 업로드 키로 바꾼다.
+- 알려진 제한: 구글 로그인은 웹뷰 안에서 막혀 있다(구글 정책). 앱에서는 이메일 또는 카카오 로그인을 쓴다. iOS 앱은 아직 없다.

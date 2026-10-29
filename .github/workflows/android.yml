@@ -1,0 +1,63 @@
+# 하이브리드 앱(안드로이드) APK 를 만든다.
+# PR 에서는 빌드만 확인하고 결과 APK 를 실행 기록의 Artifacts 에 올린다.
+# main 푸시와 수동 실행에서는 GitHub Releases 의 android-latest 에 rememvr.apk 를 올려 폰에서 바로 받게 한다.
+name: Android APK
+
+on:
+  pull_request:
+    paths: ['android/**', '.github/workflows/android.yml']
+  push:
+    branches: [main]
+    paths: ['android/**', '.github/workflows/android.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    name: APK 빌드
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: APK 빌드
+        run: |
+          site="${{ secrets.SITE_URL }}"
+          ./gradlew --no-daemon assembleRelease -PsiteUrl="${site:-https://rememvr.mycafe24.com}"
+          cp app/build/outputs/apk/release/app-release.apk ../rememvr.apk
+          ls -la ../rememvr.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rememvr-apk
+          path: rememvr.apk
+          retention-days: 30
+
+      - name: 최신 APK 를 Releases 에 올리기
+        if: github.event_name != 'pull_request'
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes="르멤버 안드로이드 앱 테스트 빌드 ${GITHUB_RUN_NUMBER} (${GITHUB_SHA::7}). 폰에서 rememvr.apk 를 받아 설치한다."
+          if gh release view android-latest > /dev/null 2>&1; then
+            gh release upload android-latest rememvr.apk --clobber
+            gh release edit android-latest --notes "$notes"
+          else
+            gh release create android-latest rememvr.apk --title "르멤버 안드로이드 앱(테스트)" --notes "$notes" --prerelease --target "$GITHUB_SHA"
+          fi

@@ -58,6 +58,8 @@ class Settings
         'qa.llm_provider' => 'claude',
         // 마이크를 놓은 뒤 이 시간 안에 답 음성이 안 오면 준비된 음성(qa.timeout_lines)으로 답한다.
         'qa.timeout_ms' => 5000,
+        // 답 음성이 이 시간 안에 소리 나기 시작하지 않으면 건너뛴다. 시작되면 끝까지 들려준다.
+        'qa.audio_start_ms' => 4000,
         'qa.max_questions' => 3,
         'qa.max_answer_chars' => 120,
         'qa.max_record_seconds' => 15,

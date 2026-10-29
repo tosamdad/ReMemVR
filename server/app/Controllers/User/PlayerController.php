@@ -229,6 +229,8 @@ class PlayerController
                 'noise_suppression' => $aec === 'max',
                 // 마이크를 놓은 뒤 이 시간 안에 답 음성이 안 오면 준비된 음성(clips.timeout)으로 답한다.
                 'timeout_ms' => QuestionService::timeoutMs(),
+                // 답 음성이 이 시간 안에 시작되지 않을 때만 건너뛴다.
+                'audio_start_ms' => max(1000, (int) setting('qa.audio_start_ms', 4000)),
                 'max_chars' => QaPrompt::MAX_QUESTION_CHARS,
                 'clips' => $qaEnabled ? self::qaClips($voice) : ['thinking' => [], 'timeout' => []],
                 // 질문은 앱(폰 안 음성 인식)에서만 받는다. 개발 모드에서는 글로 입력해 흐름을 점검할 수 있다.
