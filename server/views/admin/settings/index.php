@@ -277,6 +277,7 @@ $okChip = static function ($ok, string $yes = '정상', string $no = '확인 필
             <?= $input('qa.silence_stop_ms', '말 끝 감지 침묵 길이', '이만큼 조용하면 녹음 종료', ['suffix' => 'ms', 'step' => '50']) ?>
             <?= $select('qa.aec_level', '반향 제거(AEC) 감도', '최대는 잡음 억제까지 켭니다.') ?>
             <?= $input('qa.timeout_ms', '답 기다리는 시간', '마이크를 놓은 뒤 이 시간 안에 답 음성이 안 오면 준비된 음성으로 답합니다. 질문 횟수는 빼지 않습니다', ['suffix' => 'ms', 'step' => '500']) ?>
+            <?= $input('qa.audio_start_ms', '답 음성 시작 대기 시간', '이 시간 안에 소리가 나지 않으면 건너뜁니다. 소리가 나기 시작하면 답이 길어도 끝까지 들려줍니다', ['suffix' => 'ms', 'step' => '500']) ?>
           </div>
           <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
             <?= $area('qa.fallback_lines', '질문 한도 초과 대체 문장 (한 줄에 하나, 순서대로 돌아가며 사용)', '최대 10줄, 한 줄 200자 이하', 4) ?>

@@ -862,8 +862,8 @@
       answerAudio = a;
       var done = false;
       function finish() { if (!done) { done = true; a.onended = null; a.onerror = null; a.onplaying = null; resolve(); } }
-      // 4초 안에 소리가 시작되지 않을 때만 건너뛴다. 시작되면 길이만큼 끝까지 들려준다.
-      var guard = setTimeout(finish, 4000);
+      // qa.audio_start_ms(기본 4초) 안에 소리가 시작되지 않을 때만 건너뛴다. 시작되면 길이만큼 끝까지 들려준다.
+      var guard = setTimeout(finish, M.qa.audio_start_ms || 4000);
       if (item.url) {
         a.onplaying = function () {
           a.onplaying = null;
@@ -877,7 +877,8 @@
         var p = a.play();
         if (p && p.catch) p.catch(function () { clearTimeout(guard); speakLine(item.text).then(finish); });
       } else {
-        speakLine(item.text).then(function () { clearTimeout(guard); finish(); });
+        clearTimeout(guard);
+        speakLine(item.text).then(finish);
       }
     });
   }
