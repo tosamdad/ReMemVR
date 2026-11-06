@@ -190,9 +190,11 @@ class QuestionService
                 $notes[] = '질문 인식 안 됨(되묻기)';
             }
 
-            // 8) 같은 가족 목소리로 답 읽기(목소리가 없거나 엔진이 다르면 화면이 기기 음성으로 읽는다)
+            // 8) 같은 가족 목소리로 답 읽기(목소리가 없거나 그 목소리의 엔진 키가 없으면 화면이 기기 음성으로 읽는다)
+            // 합성은 그 목소리가 만들어진 엔진으로 한다(지금 설정 엔진과 관계없이).
             $audioUrl = null;
-            if ($profile && !empty($profile['provider_voice_id']) && TtsEngine::ready() && TtsEngine::profileMismatch($profile) === null) {
+            $voiceEngine = $profile ? TtsEngine::profileEngine($profile) : null;
+            if ($profile && !empty($profile['provider_voice_id']) && TtsEngine::ready($voiceEngine)) {
                 $left = $deadlineMs - self::elapsed($started);
                 if ($left < 300) {
                     if (!$unclear) {
@@ -213,7 +215,7 @@ class QuestionService
                     'usage' => ['purpose' => 'answer_tts', 'user_id' => $userId, 'ref_type' => 'interaction', 'ref_id' => $interactionId],
                     // 아이가 기다리는 중이라 마감까지 남은 시간만 쓴다.
                     'timeout_ms' => $left,
-                ]);
+                ], $voiceEngine);
                 $extra['tts_ms'] = $tts['ms'];
                 if ($tts['ok']) {
                     VoiceService::touch((int) $profile['id']);

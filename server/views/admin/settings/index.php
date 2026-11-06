@@ -228,7 +228,7 @@ $okChip = static function ($ok, string $yes = '정상', string $no = '확인 필
           <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
             <!-- TTS 엔진: 목소리 만들기와 음성 합성에 쓸 회사 -->
             <div class="md:col-span-2 flex flex-col gap-2">
-              <?= $select('tts.engine', 'TTS 엔진 (목소리 생성과 음성 합성)', 'Typecast 를 골라도 Typecast API 키(TYPECAST_API)가 없으면 ElevenLabs 로 동작합니다. 엔진을 바꾸면 기존 목소리는 새 엔진으로 읽을 수 없으므로, 각 목소리를 다시 생성해야 합니다.') ?>
+              <?= $select('tts.engine', 'TTS 엔진 (목소리 생성과 음성 합성)', 'Typecast 를 골라도 Typecast API 키(TYPECAST_API)가 없으면 ElevenLabs 로 동작합니다. 새로 만드는 목소리는 여기 고른 엔진을 따르고, 이미 만든 목소리는 만들어진 엔진(ElevenLabs)으로 계속 읽고 지울 수 있습니다.') ?>
               <?php if ($v('tts.engine') === 'typecast' && empty($providers['typecast'])): ?>
               <p class="rounded-lg bg-error-container px-4 py-2.5 font-label-md text-label-md text-on-error-container">Typecast API 키(Secret TYPECAST_API)가 등록되지 않아 지금은 ElevenLabs 로 동작합니다. 키를 등록하고 다시 배포한 뒤 이 설정을 저장하면 Typecast 로 바뀝니다.</p>
               <?php endif; ?>

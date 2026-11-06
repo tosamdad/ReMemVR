@@ -222,7 +222,9 @@ class Worker
                 throw new \DomainException('업로드할 샘플 파일이 없습니다.');
             }
 
-            // ElevenLabs 목소리 자리가 다 찼으면 가장 오래 쓰지 않은 목소리의 자리를 비운다.
+            // 지금 엔진으로 만든다. 처리 도중 설정이 바뀌어도 같은 엔진으로 기록하고 지울 수 있게 남겨 둔다.
+            $engine = TtsEngine::current();
+            // 지금 엔진의 목소리 자리가 다 찼으면 가장 오래 쓰지 않은 그 엔진 목소리의 자리를 비운다.
             VoiceService::ensureSlot($pid);
             self::plog($job, $pid, 'info', '샘플 ' . count($files) . '개(총 ' . self::koDuration($totalMs) . ') 업로드');
 
@@ -236,33 +238,33 @@ class Worker
             $res = TtsEngine::addVoice($name, $files, $description, $usage);
             if (empty($res['ok']) && !empty($res['voice_limit'])) {
                 // 계정에 우리가 모르는 목소리가 있어 한도에 먼저 걸린 경우: 한 자리를 더 비우고 한 번만 다시 시도한다.
-                self::plog($job, $pid, 'warn', TtsEngine::label() . ' 목소리 개수 한도에 걸려 한 자리를 더 비우고 다시 시도합니다.');
+                self::plog($job, $pid, 'warn', TtsEngine::label($engine) . ' 목소리 개수 한도에 걸려 한 자리를 더 비우고 다시 시도합니다.');
                 VoiceService::ensureSlot($pid, true);
                 $res = TtsEngine::addVoice($name, $files, $description, $usage);
             }
             if (empty($res['ok']) || empty($res['voice_id'])) {
                 // 키 권한, 요금제처럼 다시 해도 같은 오류는 재시도하지 않는다(목소리 개수 한도는 자리가 나면 되므로 재시도).
                 if (!empty($res['permanent']) && empty($res['voice_limit'])) {
-                    throw new \DomainException(TtsEngine::label() . ' 목소리 생성 실패: ' . self::errorText($res));
+                    throw new \DomainException(TtsEngine::label($engine) . ' 목소리 생성 실패: ' . self::errorText($res));
                 }
-                throw new \RuntimeException(TtsEngine::label() . ' 목소리 생성 실패: ' . self::errorText($res));
+                throw new \RuntimeException(TtsEngine::label($engine) . ' 목소리 생성 실패: ' . self::errorText($res));
             }
             $voiceId = (string) $res['voice_id'];
 
-            // 처리하는 동안 삭제나 반려가 되었으면 방금 만든 목소리를 바로 지운다.
+            // 처리하는 동안 삭제나 반려가 되었으면 방금 만든 목소리를 바로 지운다(만든 그 엔진에서).
             $now = db_one('SELECT status, deleted_at FROM voice_profiles WHERE id = ?', [$pid]);
             if (!$now || $now['deleted_at'] !== null || $now['status'] !== ($restore ? 'completed' : 'cloning')) {
-                TtsEngine::deleteVoice($voiceId);
+                TtsEngine::deleteVoice($voiceId, $engine);
                 self::plog($job, $pid, 'warn', '처리 중 목소리가 삭제되거나 반려되어 만든 목소리를 지웠습니다.');
 
                 return;
             }
             db_exec(
                 'UPDATE voice_profiles SET provider_voice_id = ?, tts_engine = ?, cloned_at = NOW(), status = ?, provider_released_at = NULL, provider_last_used_at = NOW() WHERE id = ?',
-                [$voiceId, TtsEngine::current(), 'completed', $pid]
+                [$voiceId, $engine, 'completed', $pid]
             );
             $created = true;
-            self::plog($job, $pid, 'info', ($restore ? TtsEngine::label() . ' 목소리 다시 만들기 완료: ' : TtsEngine::label() . ' 목소리 생성 완료: ')
+            self::plog($job, $pid, 'info', ($restore ? TtsEngine::label($engine) . ' 목소리 다시 만들기 완료: ' : TtsEngine::label($engine) . ' 목소리 생성 완료: ')
                 . self::shortId($voiceId) . self::tookText(isset($res['ms']) ? (int) $res['ms'] : 0));
 
             if ($restore) {
@@ -317,13 +319,10 @@ class Worker
                 // 자리를 비운 목소리: 다시 만들기가 끝날 때까지 기다린다.
                 self::waitRestore($pid);
             }
-            throw new \DomainException(TtsEngine::label() . ' 목소리가 아직 없습니다.');
+            throw new \DomainException(TtsEngine::label(TtsEngine::profileEngine($profile)) . ' 목소리가 아직 없습니다.');
         }
-        // 엔진을 바꾼 뒤에는 예전 엔진의 목소리로 합성할 수 없다. 목소리를 다시 만들어야 한다.
-        $mismatch = TtsEngine::profileMismatch($profile);
-        if ($mismatch !== null) {
-            throw new \DomainException($mismatch);
-        }
+        // 합성은 그 목소리가 만들어진 엔진으로 한다(지금 설정 엔진과 관계없이, 원래 엔진이 그 목소리를 읽을 수 있다).
+        $engine = TtsEngine::profileEngine($profile);
         $story = db_one('SELECT * FROM stories WHERE id = ? AND status = ? AND deleted_at IS NULL', [$sid, 'published']);
         $audio = db_one('SELECT * FROM story_audios WHERE story_id = ? AND voice_profile_id = ?', [$sid, $pid]);
         if (!$story) {
@@ -381,7 +380,7 @@ class Worker
                 'ref_type' => 'story_audio',
                 'ref_id' => $audioId,
             ],
-        ]);
+        ], $engine);
         if (empty($res['ok']) || !isset($res['audio']) || (string) $res['audio'] === '') {
             throw new \RuntimeException('음성 합성 실패: ' . self::errorText($res));
         }
@@ -438,12 +437,10 @@ class Worker
                 // 자리를 비운 목소리는 안내 음성을 새로 만들지 않는다(만들어 둔 것은 그대로 쓴다).
                 return;
             }
-            throw new \DomainException(TtsEngine::label() . ' 목소리가 아직 없습니다.');
+            throw new \DomainException(TtsEngine::label(TtsEngine::profileEngine($profile)) . ' 목소리가 아직 없습니다.');
         }
-        $mismatch = TtsEngine::profileMismatch($profile);
-        if ($mismatch !== null) {
-            throw new \DomainException($mismatch);
-        }
+        // 합성은 그 목소리가 만들어진 엔진으로 한다(지금 설정 엔진과 관계없이).
+        $engine = TtsEngine::profileEngine($profile);
 
         $made = 0;
         $kept = 0;
@@ -476,7 +473,7 @@ class Worker
                     'ref_type' => 'voice_clip',
                     'ref_id' => $clipId,
                 ],
-            ]);
+            ], $engine);
             if (empty($res['ok']) || !isset($res['audio']) || (string) $res['audio'] === '') {
                 $err = self::errorText($res);
                 db_exec('UPDATE voice_clips SET status = ?, error_message = ? WHERE id = ?', ['failed', mb_substr($err, 0, 500), $clipId]);
@@ -517,6 +514,8 @@ class Worker
         if ($voiceId === '' && $profile && !$providerOnly) {
             $voiceId = (string) $profile['provider_voice_id'];
         }
+        // 목소리별 작업(삭제)은 그 목소리가 만들어진 엔진에서 한다(지금 설정 엔진과 다르면 형식이 달라 실패한다).
+        $engine = $profile ? TtsEngine::profileEngine($profile) : null;
 
         if (!$providerOnly && $profile) {
             // 로컬 파일을 먼저 지운다(외부 API 가 실패해도 개인 음성 파일은 남기지 않는다).
@@ -552,15 +551,15 @@ class Worker
         }
 
         if ($voiceId !== '') {
-            $res = TtsEngine::deleteVoice($voiceId);
+            $res = TtsEngine::deleteVoice($voiceId, $engine);
             if (empty($res['ok'])) {
                 $err = self::errorText($res);
                 // 이미 없는 목소리면 삭제된 것으로 본다.
                 if (!preg_match('/not[_ ]?found|404|voice_does_not_exist|존재하지/i', $err)) {
-                    throw new \RuntimeException(TtsEngine::label() . ' 목소리 삭제 실패: ' . $err);
+                    throw new \RuntimeException(TtsEngine::label($engine) . ' 목소리 삭제 실패: ' . $err);
                 }
             }
-            self::plog($job, $pid, 'info', TtsEngine::label() . ' 목소리 삭제 완료: ' . self::shortId($voiceId));
+            self::plog($job, $pid, 'info', TtsEngine::label($engine) . ' 목소리 삭제 완료: ' . self::shortId($voiceId));
         }
         if ($profile && !$providerOnly) {
             db_exec('UPDATE voice_profiles SET provider_deleted_at = NOW() WHERE id = ?', [$pid]);

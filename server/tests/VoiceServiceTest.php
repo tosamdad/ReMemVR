@@ -520,6 +520,50 @@ test('ElevenLabs 목소리 자리가 다 차면 가장 오래 쓰지 않은 목�
     });
 });
 
+test('엔진을 바꿔도 예전 엔진 목소리는 자리 계산에 섞이지 않고, 자리 비움은 그 목소리의 엔진으로 돌린다', function () {
+    if (!config('providers_fake')) {
+        skip_test('Typecast 키 없이는 엔진 전환을 확인할 수 없다(providers_fake 필요)');
+    }
+    voice_test_tx(function () {
+        voice_test_hide_slots();
+        // 지금 엔진을 Typecast 로 바꾼 상태(개발 모드라 키 없이 ready). 예전 ElevenLabs 목소리 세 개가 남아 있다.
+        Settings::set('tts.engine', 'typecast');
+        Settings::set('typecast.voice_slot_limit', 2);
+        $old = function (string $label, string $usedAt) {
+            $t = voice_test_profile(['status' => 'completed', 'label' => $label, 'provider_voice_id' => 'EL' . bin2hex(random_bytes(8)), 'cloned_at' => $usedAt]);
+            db_exec('UPDATE voice_profiles SET provider_last_used_at = ? WHERE id = ?', [$usedAt, $t['profile_id']]);
+
+            return $t['profile_id'];
+        };
+        $oldest = $old('할머니', '2026-01-01 10:00:00');
+        $older = $old('아빠', '2026-02-01 10:00:00');
+        $old('엄마', '2026-09-01 10:00:00');
+
+        // 예전 ElevenLabs 목소리는 Typecast 자리를 새지 않는다(0008 이전 행처럼 tts_engine 이 NULL 이라 ElevenLabs 몫이다).
+        assert_same(0, VoiceService::slotsUsed());
+
+        // 새 Typecast 목소리를 만들 자리를 마련할 때 예전 엔진 목소리를 지우지 않는다(이전 버그: 여기서 "목소리 ID 형식이 올바르지 않습니다").
+        $new = voice_test_profile(['status' => 'cloning', 'label' => '삼촌'])['profile_id'];
+        assert_same([], VoiceService::ensureSlot($new));
+        assert_same(3, (int) db_value("SELECT COUNT(*) FROM voice_profiles WHERE provider_voice_id <> ''"), '예전 엔진 목소리가 지워졌다');
+
+        // Typecast 목소리가 자리를 차지하면 그 목소리부터 비운다.
+        $tc = function (string $label, string $usedAt) {
+            $t = voice_test_profile(['status' => 'completed', 'label' => $label, 'provider_voice_id' => 'uc_' . bin2hex(random_bytes(12)), 'tts_engine' => 'typecast', 'cloned_at' => $usedAt]);
+            db_exec('UPDATE voice_profiles SET provider_last_used_at = ? WHERE id = ?', [$usedAt, $t['profile_id']]);
+
+            return $t['profile_id'];
+        };
+        $tcOldest = $tc('할아버지', '2026-03-01 10:00:00');
+        $tc('외숫모', '2026-04-01 10:00:00');
+        assert_same(2, VoiceService::slotsUsed());
+        assert_same([$tcOldest], VoiceService::ensureSlot($new));
+        $p = db_one('SELECT * FROM voice_profiles WHERE id = ?', [$tcOldest]);
+        assert_same(null, $p['provider_voice_id'], 'Typecast 목소리의 자리를 비웠다');
+        assert_same(3, (int) db_value("SELECT COUNT(*) FROM voice_profiles WHERE provider_voice_id <> ''"), 'ElevenLabs 목소리까지 지우면 안 된다');
+    });
+});
+
 test('자리를 비운 목소리로 새 동화를 만들면 녹음으로 다시 만들고, 만든 동화와 안내 음성은 그대로 둔다', function () {
     if (!config('providers_fake') || !class_exists('App\\Services\\FakeAudio')) {
         skip_test('providers_fake 설정이 꺼져 있다');

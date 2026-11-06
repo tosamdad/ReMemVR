@@ -141,7 +141,9 @@ class VoiceService
 
     // ───────────────────────── TTS 엔진 목소리 자리(슬롯) ─────────────────────────
     // 요금제마다 만들어 둘 수 있는 목소리 수가 정해져 있다(ElevenLabs Starter 10, Typecast 는 플랜별 클로닝 슬롯).
-    // 자리가 모자라면 가장 오래 쓰지 않은 목소리를 엔진에서만 지운다(released).
+    // 자리는 엔진별로 센다. 엔진을 바꿔도 예전 엔진의 목소리는 새 엔진 자리를 쓰지 않으므로,
+    // 새 엔진 목소리를 만들 자리가 모자라도 예전 엔진 목소리를 건드리지 않는다.
+    // 자리가 모자라면 그 엔진의 목소리 가운데 가장 오래 쓰지 않은 것을 엔진에서만 지운다(released).
     // 녹음 샘플과 만든 동화 오디오는 남기므로 재생은 그대로 되고, 그 목소리로 새 동화를 만들 때 다시 만든다.
 
     /** 자리를 비운 목소리인가(준비됨 상태인데 ElevenLabs 목소리만 없다) */
@@ -164,19 +166,24 @@ class VoiceService
         return TtsEngine::slotLimit();
     }
 
-    /** ElevenLabs 에 목소리가 남아 자리를 차지하는 행의 조건(삭제를 기다리는 목소리 포함, 이미 지운 목소리 제외) */
-    private static function slotSql(string $a): string
+    /** 지금 엔진의 목소리가 자리를 차지하는 행의 조건(삭제를 기다리는 목소리 포함, 이미 지운 목소리와 다른 엔진 목소리 제외) */
+    private static function slotSql(string $a, ?string $engine = null): string
     {
-        return "({$a}.provider_voice_id IS NOT NULL AND {$a}.provider_voice_id <> '' AND {$a}.provider_deleted_at IS NULL)";
+        // tts_engine 이 NULL 인 행은 0008 이전의 ElevenLabs 목소리다.
+        $engineSql = TtsEngine::routeEngine($engine) === 'typecast'
+            ? "{$a}.tts_engine = 'typecast'"
+            : "({$a}.tts_engine IS NULL OR {$a}.tts_engine = 'elevenlabs')";
+
+        return "({$a}.provider_voice_id IS NOT NULL AND {$a}.provider_voice_id <> '' AND {$a}.provider_deleted_at IS NULL AND {$engineSql})";
     }
 
-    /** 지금 ElevenLabs 에 있는 우리 목소리 수(삭제 처리 중인 목소리 포함) */
+    /** 지금 엔진에 있는 우리 목소리 수(삭제 처리 중인 목소리 포함). 예전 엔진의 목소리는 새지 않는다. */
     public static function slotsUsed(): int
     {
         return (int) db_value('SELECT COUNT(*) FROM voice_profiles vp WHERE ' . self::slotSql('vp'));
     }
 
-    /** ElevenLabs 목소리를 썼다고 기록한다(자리를 비울 순서를 정할 때 쓴다). */
+    /** 목소리를 엔진에 썼다고 기록한다(자리를 비울 순서를 정할 때 쓴다). */
     public static function touch(int $profileId): void
     {
         db_exec('UPDATE voice_profiles SET provider_last_used_at = NOW() WHERE id = ?', [$profileId]);
@@ -216,7 +223,8 @@ class VoiceService
     }
 
     /**
-     * 자리를 비울 목소리: 삭제된 목소리(남아 있는 ElevenLabs 목소리)를 먼저, 그다음 가장 오래 쓰지 않은 목소리.
+     * 자리를 비울 목소리: 삭제된 목소리(엔진에 남아 있는 목소리)를 먼저, 그다음 가장 오래 쓰지 않은 목소리.
+     * 지금 엔진의 목소리만 고른다(예전 엔진 목소리는 지금 엔진 자리와 상관이 없다).
      * 지금 만들거나 합성 중인 목소리(대기, 진행 중 작업이 있는 목소리)는 고르지 않는다.
      */
     private static function slotVictim(int $exceptId): ?array
@@ -233,21 +241,23 @@ class VoiceService
         );
     }
 
-    /** ElevenLabs 에서 목소리만 지우고 자리를 비웠다고 기록한다. 실패하면 RuntimeException. */
+    /** 그 목소리의 엔진에서 목소리만 지우고 자리를 비웠다고 기록한다. 실패하면 RuntimeException. */
     private static function releaseSlot(array $victim, int $forProfileId): void
     {
         $vid = (int) $victim['id'];
-        $res = TtsEngine::deleteVoice((string) $victim['provider_voice_id']);
+        // 이 목소리가 만들어진 엔진에서 지운다(지금 엔진과 다르면 형식이 달라 지우지 못한다).
+        $engine = TtsEngine::profileEngine($victim);
+        $res = TtsEngine::deleteVoice((string) $victim['provider_voice_id'], $engine);
         if (empty($res['ok'])) {
-            throw new \RuntimeException('자리를 비우려고 목소리 #' . $vid . '를 지우지 못했습니다: ' . (string) $res['error']);
+            throw new \RuntimeException('자리를 비우려고 목소리 #' . $vid . '(' . TtsEngine::label($engine) . ')를 지우지 못했습니다: ' . (string) $res['error']);
         }
         if ($victim['deleted_at'] !== null) {
             db_exec('UPDATE voice_profiles SET provider_voice_id = NULL, provider_deleted_at = NOW() WHERE id = ?', [$vid]);
         } else {
             db_exec('UPDATE voice_profiles SET provider_voice_id = NULL, provider_released_at = NOW() WHERE id = ?', [$vid]);
-            Jobs::log(null, 'voice_profile', $vid, 'info', 'ElevenLabs 목소리 자리가 모자라 이 목소리의 자리를 비웠습니다(녹음과 만든 동화는 그대로, 새 동화를 만들 때 다시 만듭니다).');
+            Jobs::log(null, 'voice_profile', $vid, 'info', TtsEngine::label($engine) . ' 목소리 자리가 모자라 이 목소리의 자리를 비웠습니다(녹음과 만든 동화는 그대로, 새 동화를 만들 때 다시 만듭니다).');
         }
-        Jobs::log(null, 'voice_profile', $forProfileId, 'info', 'ElevenLabs 목소리 자리를 마련하려고 목소리 #' . $vid . '(' . $victim['label'] . ')의 자리를 비웠습니다.');
+        Jobs::log(null, 'voice_profile', $forProfileId, 'info', TtsEngine::label($engine) . ' 목소리 자리를 마련하려고 목소리 #' . $vid . '(' . $victim['label'] . ')의 자리를 비웠습니다.');
     }
 
     /** 자리를 비운 목소리를 남겨 둔 녹음으로 다시 만드는 작업을 등록한다(이미 있으면 그대로). */
@@ -706,12 +716,10 @@ class VoiceService
                 ? TtsEngine::label() . ' 목소리 자리를 비운 목소리입니다. 이 목소리로 동화 생성을 시작하면 녹음으로 다시 만들어집니다.'
                 : '아직 ' . TtsEngine::label() . ' 목소리가 생성되지 않았습니다.'];
         }
-        if (!TtsEngine::ready()) {
-            return ['ok' => false, 'error' => TtsEngine::notReadyMessage()];
-        }
-        $mismatch = TtsEngine::profileMismatch($profile);
-        if ($mismatch !== null) {
-            return ['ok' => false, 'error' => $mismatch];
+        // 합성은 그 목소리가 만들어진 엔진으로 하므로, 그 엔진의 키가 있어야 한다.
+        $engine = TtsEngine::profileEngine($profile);
+        if (!TtsEngine::ready($engine)) {
+            return ['ok' => false, 'error' => TtsEngine::notReadyMessage($engine)];
         }
 
         $hash = self::textHash($text);
@@ -735,7 +743,7 @@ class VoiceService
                 'ref_type' => 'voice_clip',
                 'ref_id' => $clipId,
             ],
-        ]);
+        ], $engine);
         if (empty($res['ok']) || !isset($res['audio']) || (string) $res['audio'] === '') {
             $err = !empty($res['error']) ? (string) $res['error'] : '음성 합성에 실패했습니다.';
             if (!$row || $row['status'] !== 'completed') {
