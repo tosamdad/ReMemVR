@@ -1,75 +1,88 @@
-# 매일 새벽 3시(한국 시각) 실서버 DB 를 백업한다.
-# 서버의 _ops/backup.php 가 gzip 으로 압축한 SQL 덤프를 돌려주고, 이 워크플로가 Actions 아티팩트로 보관한다.
-# BACKUP_PASSPHRASE Secret 이 있으면 gpg(AES256)로 암호화해서 보관한다.
-# 보관 기간은 저장소 변수 BACKUP_RETENTION_DAYS (기본 30일)로 정한다.
 name: DB Backup
 
 on:
-  schedule:
-    - cron: '0 18 * * *'
-  workflow_dispatch:
+schedule:
+- cron: '0 18 * * *'
+workflow_dispatch:
 
 concurrency:
-  group: db-backup
-  cancel-in-progress: false
+group: db-backup
+cancel-in-progress: false
 
 jobs:
-  backup:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    env:
-      SITE_URL: ${{ secrets.SITE_URL }}
-      OPS_TOKEN: ${{ secrets.OPS_TOKEN }}
-      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
-    steps:
-      - name: 접속정보 확인
-        run: |
-          if [ -z "$SITE_URL" ] || [ -z "$OPS_TOKEN" ]; then
-            echo "::error::SITE_URL, OPS_TOKEN Secrets 가 필요하다."
-            exit 1
-          fi
-          # 복사·붙여넣기로 섞여 들어간 줄바꿈과 공백을 지운다(HTTP 헤더에 줄바꿈이 있으면 요청이 실패한다).
-          clean=$(printf '%s' "$OPS_TOKEN" | tr -d '[:space:]')
-          if [ -n "$clean" ]; then echo "::add-mask::$clean"; echo "OPS_TOKEN=$clean" >> "$GITHUB_ENV"; OPS_TOKEN="$clean"; fi
+backup:
+runs-on: ubuntu-latest
+timeout-minutes: 30
+env:
+SITE_URL: ${{ secrets.SITE_URL }}
+OPS_TOKEN: ${{ secrets.OPS_TOKEN }}
+BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+NAS_FTP_HOST: ${{ secrets.NAS_FTP_HOST }}
+NAS_FTP_USER: ${{ secrets.NAS_FTP_USER }}
+NAS_FTP_PASS: ${{ secrets.NAS_FTP_PASS }}
+DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+steps:
+- name: 접속정보 확인
+run: |
+if [ -z "$SITE_URL" ] || [ -z "$OPS_TOKEN" ]; then
+echo "::error::SITE_URL, OPS_TOKEN Secrets 가 필요하다."
+exit 1
+fi
+# 복사·붙여넣기로 섞여 들어간 줄바꿈과 공백을 지운다(HTTP 헤더에 줄바꿈이 있으면 요청이 실패한다).
+clean=$(printf '%s' "$OPS_TOKEN" | tr -d '[:space:]')
+if [ -n "$clean" ]; then echo "::add-mask::$clean"; echo "OPS_TOKEN=$clean" >> "$GITHUB_ENV"; OPS_TOKEN="$clean"; fi
 
-      - name: 덤프 내려받기
-        id: dump
-        run: |
-          name="rememvr-db-$(TZ=Asia/Seoul date +%Y%m%d-%H%M%S)"
-          mkdir -p out
-          code=$(curl -sS --max-time 1500 -o "out/$name.sql.gz" -w '%{http_code}' \
-            -X POST -H "X-Ops-Token: $OPS_TOKEN" --data-urlencode "token=$OPS_TOKEN" \
-            "${SITE_URL%/}/_ops/backup.php" || echo 000)
-          if [ "$code" != "200" ]; then
-            echo "::error::백업 요청 실패 (HTTP $code)"
-            head -c 1000 "out/$name.sql.gz" || true
-            exit 1
-          fi
-          gzip -t "out/$name.sql.gz"
-          last=$(zcat "out/$name.sql.gz" | tail -n 1)
-          case "$last" in
-            "-- Dump completed"*) echo "덤프 확인: $last" ;;
-            *) echo "::error::덤프가 끝까지 만들어지지 않았다. 마지막 줄: $last"; exit 1 ;;
-          esac
-          tables=$(zcat "out/$name.sql.gz" | grep -c '^CREATE TABLE' || true)
-          size=$(du -h "out/$name.sql.gz" | cut -f1)
-          echo "name=$name" >> "$GITHUB_OUTPUT"
-          echo "### DB 백업: $name (테이블 ${tables}개, $size)" >> "$GITHUB_STEP_SUMMARY"
+  - name: 덤프 내려받기
+    id: dump
+    run: |
+      name="rememvr-db-$(TZ=Asia/Seoul date +%Y%m%d-%H%M%S)"
+      mkdir -p out
+      code=$(curl -sS --max-time 1500 -o "out/$name.sql.gz" -w '%{http_code}' \
+        -X POST -H "X-Ops-Token: $OPS_TOKEN" --data-urlencode "token=$OPS_TOKEN" \
+        "${SITE_URL%/}/_ops/backup.php" || echo 000)
+      if [ "$code" != "200" ]; then
+        echo "::error::백업 요청 실패 (HTTP $code)"
+        head -c 1000 "out/$name.sql.gz" || true
+        exit 1
+      fi
+      gzip -t "out/$name.sql.gz"
+      last=$(zcat "out/$name.sql.gz" | tail -n 1)
+      case "$last" in
+        "-- Dump completed"*) echo "덤프 확인: $last" ;;
+        *) echo "::error::덤프가 끝까지 만들어지지 않았다. 마지막 줄: $last"; exit 1 ;;
+      esac
+      tables=$(zcat "out/$name.sql.gz" | grep -c '^CREATE TABLE' || true)
+      size=$(du -h "out/$name.sql.gz" | cut -f1)
+      echo "name=$name" >> "$GITHUB_OUTPUT"
+      echo "### DB 백업: $name (테이블 ${tables}개, $size)" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: 암호화 (BACKUP_PASSPHRASE 가 있을 때)
-        if: env.BACKUP_PASSPHRASE != ''
-        run: |
-          f="out/${{ steps.dump.outputs.name }}.sql.gz"
-          printf '%s' "$BACKUP_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
-            --symmetric --cipher-algo AES256 -o "$f.gpg" "$f"
-          rm "$f"
-          echo "gpg 로 암호화했다. 복원: gpg -d 파일.sql.gz.gpg | gunzip > dump.sql" >> "$GITHUB_STEP_SUMMARY"
+  - name: 암호화 (BACKUP_PASSPHRASE 가 있을 때)
+    if: env.BACKUP_PASSPHRASE != ''
+    run: |
+      f="out/${{ steps.dump.outputs.name }}.sql.gz"
+      printf '%s' "$BACKUP_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
+        --symmetric --cipher-algo AES256 -o "$f.gpg" "$f"
+      rm "$f"
+      echo "gpg 로 암호화했다. 복원: gpg -d 파일.sql.gz.gpg | gunzip > dump.sql" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: 아티팩트로 보관
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ steps.dump.outputs.name }}
-          path: out/
-          retention-days: ${{ vars.BACKUP_RETENTION_DAYS || 30 }}
-          if-no-files-found: error
-          compression-level: 0
+  # NAS Secret 이 아직 없으면 이 단계를 건너뛴다.
+  - name: NAS 로 FTP 업로드
+    if: env.NAS_FTP_HOST != '' && env.NAS_FTP_USER != '' && env.NAS_FTP_PASS != ''
+    run: |
+      file=$(ls out/ | head -n 1)
+      [ -n "$file" ] || { echo "::error::올릴 백업 파일이 없다."; exit 1; }
+      # --ftp-create-dirs 로 /Backup_Only/DB/rememvr 폴더가 없으면 만든다.
+      curl -sS --connect-timeout 20 --max-time 900 --ftp-create-dirs \
+        --user "$NAS_FTP_USER:$NAS_FTP_PASS" \
+        -T "out/$file" "ftp://$NAS_FTP_HOST/Backup_Only/DB/rememvr/$file"
+      echo "NAS 업로드 완료: /Backup_Only/DB/rememvr/$file" >> "$GITHUB_STEP_SUMMARY"
+
+  # 디스코드 웹훅이 없으면 조용히 건너뛴다.
+  - name: 디스코드 알림
+    if: always() && env.DISCORD_WEBHOOK_URL != ''
+    uses: sarisia/actions-status-discord@v1
+    with:
+      webhook: ${{ env.DISCORD_WEBHOOK_URL }}
+      status: ${{ job.status }}
+      content: "🗄️ **ReMemVR DB 백업 결과 (NAS FTP 전송 포함)**"
+      description: "파일: ${{ steps.dump.outputs.name }}.sql.gz (BACKUP_PASSPHRASE 설정 시 .gpg 암호화)\n전송위치: NAS /Backup_O
