@@ -716,6 +716,9 @@ function provider_ready(string $provider): bool
     if ($provider === 'elevenlabs') {
         return (string) config('elevenlabs.api_key', '') !== '';
     }
+    if ($provider === 'typecast') {
+        return (string) config('typecast.api_key', '') !== '';
+    }
     if ($provider === 'gemini') {
         return (string) config('gemini.api_key', '') !== '';
     }

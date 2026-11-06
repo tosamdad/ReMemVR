@@ -97,6 +97,7 @@ $nav = [
 ];
 $providerInfo = [
     'elevenlabs' => ['ElevenLabs', '목소리 복제, 동화 오디오, 답변 음성', 'ELEVENLABS_API_KEY', 'graphic_eq'],
+    'typecast' => ['Typecast (타입캐스트)', '목소리 복제, 동화 오디오, 답변 음성 (TTS 엔진을 Typecast 로 골랐을 때만)', 'TYPECAST_API', 'record_voice_over'],
     'anthropic' => ['Claude', '아이 질문 답변 생성 (기본 답변 모델)', 'ANTHROPIC_API_KEY', 'neurology'],
     'gemini' => ['Gemini', '아이 질문 답변 생성 (답변 모델로 골랐을 때만)', 'GEMINI_API_KEY', 'neurology'],
     'kakao' => ['카카오 로그인', '카카오 간편 로그인', 'KAKAO_REST_API_KEY, KAKAO_CLIENT_SECRET', 'chat'],
@@ -225,6 +226,20 @@ $okChip = static function ($ok, string $yes = '정상', string $no = '확인 필
             <p class="font-label-sm text-label-sm text-on-surface-variant">비용 계산(대시보드, 일일 예산)에 쓰는 단가입니다. 실제 청구 금액은 각 서비스 결제 화면에서 확인하세요.</p>
           </div>
           <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
+            <!-- TTS 엔진: 목소리 만들기와 음성 합성에 쓸 회사 -->
+            <div class="md:col-span-2 flex flex-col gap-2">
+              <?= $select('tts.engine', 'TTS 엔진 (목소리 생성과 음성 합성)', 'Typecast 를 골라도 Typecast API 키(TYPECAST_API)가 없으면 ElevenLabs 로 동작합니다. 엔진을 바꾸면 기존 목소리는 새 엔진으로 읽을 수 없으므로, 각 목소리를 다시 생성해야 합니다.') ?>
+              <?php if ($v('tts.engine') === 'typecast' && empty($providers['typecast'])): ?>
+              <p class="rounded-lg bg-error-container px-4 py-2.5 font-label-md text-label-md text-on-error-container">Typecast API 키(Secret TYPECAST_API)가 등록되지 않아 지금은 ElevenLabs 로 동작합니다. 키를 등록하고 다시 배포한 뒤 이 설정을 저장하면 Typecast 로 바뀝니다.</p>
+              <?php endif; ?>
+            </div>
+            <div>
+              <?= $select('typecast.model', 'Typecast 합성 모델') ?>
+              <p class="mt-1 font-label-sm text-label-sm text-on-surface-variant">Typecast 엔진을 골랐을 때만 쓰입니다. 목소리 복제도 이 모델로 만들어집니다.</p>
+            </div>
+            <?= $select('typecast.audio_format', 'Typecast 오디오 출력 형식', 'MP3 를 권장합니다. WAV 는 파일이 훨씬 큽니다.') ?>
+            <?= $input('typecast.voice_slot_limit', 'Typecast 목소리 자리 수', 'Typecast 플랜의 클로닝 목소리 슬롯(custom_voice_slot) 한도. API 키 발급 후 구독 조회에서 확인한 값으로 고치세요. 0 이면 관리하지 않습니다', ['suffix' => '개']) ?>
+            <div></div>
             <div>
               <?= $select('elevenlabs.model_story', '동화 오디오 모델') ?>
               <p class="mt-1 font-label-sm text-label-sm text-on-surface-variant">Flash 로 바꾸면 동화 생성 크레딧이 절반으로 줄고 음질은 조금 낮아집니다. 새로 만드는 오디오에만 적용됩니다.</p>

@@ -78,22 +78,22 @@ class VoiceService
         Worker::kick();
     }
 
-    /** 제출하면 관리자 검토 없이 바로 목소리를 만드는지(운영 설정, 기본 켬. ElevenLabs 키가 있어야 한다) */
+    /** 제출하면 관리자 검토 없이 바로 목소리를 만드는지(운영 설정, 기본 켬. TTS 엔진(ElevenLabs/Typecast) 키가 있어야 한다) */
     public static function autoClone(): bool
     {
-        return (bool) setting('voice.auto_clone_on_submit', true) && ElevenLabs::ready();
+        return (bool) setting('voice.auto_clone_on_submit', true) && TtsEngine::ready();
     }
 
     // ───────────────────────── 관리자 승인, 반려 ─────────────────────────
 
     /**
      * 승인: 파라미터를 저장하고 cloning 으로 바꾼 뒤 voice_clone 작업을 등록한다.
-     * ElevenLabs 키가 없거나, 샘플이 없거나, 승인할 수 없는 상태면 RuntimeException(한국어 메시지).
+     * TTS 엔진 키가 없거나, 샘플이 없거나, 승인할 수 없는 상태면 RuntimeException(한국어 메시지).
      */
     public static function approve(int $profileId, ?int $adminId, array $params = []): void
     {
-        if (!ElevenLabs::ready()) {
-            throw new \RuntimeException('ElevenLabs API 키가 설정되지 않아 목소리를 생성할 수 없습니다.');
+        if (!TtsEngine::ready()) {
+            throw new \RuntimeException(TtsEngine::notReadyMessage() . ' 목소리를 생성할 수 없습니다.');
         }
         $profile = self::find($profileId);
         if (!in_array($profile['status'], self::APPROVABLE, true)) {
@@ -139,9 +139,9 @@ class VoiceService
         Worker::kick();
     }
 
-    // ───────────────────────── ElevenLabs 목소리 자리(슬롯) ─────────────────────────
-    // 요금제마다 ElevenLabs 에 만들어 둘 수 있는 목소리 수가 정해져 있다(Starter 10).
-    // 자리가 모자라면 가장 오래 쓰지 않은 목소리를 ElevenLabs 에서만 지운다(released).
+    // ───────────────────────── TTS 엔진 목소리 자리(슬롯) ─────────────────────────
+    // 요금제마다 만들어 둘 수 있는 목소리 수가 정해져 있다(ElevenLabs Starter 10, Typecast 는 플랜별 클로닝 슬롯).
+    // 자리가 모자라면 가장 오래 쓰지 않은 목소리를 엔진에서만 지운다(released).
     // 녹음 샘플과 만든 동화 오디오는 남기므로 재생은 그대로 되고, 그 목소리로 새 동화를 만들 때 다시 만든다.
 
     /** 자리를 비운 목소리인가(준비됨 상태인데 ElevenLabs 목소리만 없다) */
@@ -158,10 +158,10 @@ class VoiceService
         return "({$a}.status = 'completed' AND (({$a}.provider_voice_id IS NOT NULL AND {$a}.provider_voice_id <> '') OR {$a}.provider_released_at IS NOT NULL))";
     }
 
-    /** 설정한 자리 수(0 이면 관리하지 않음) */
+    /** 설정한 자리 수(0 이면 관리하지 않음). 지금 TTS 엔진의 요금제 한도를 따른다. */
     public static function slotLimit(): int
     {
-        return max(0, (int) setting('elevenlabs.voice_slot_limit', 10));
+        return TtsEngine::slotLimit();
     }
 
     /** ElevenLabs 에 목소리가 남아 자리를 차지하는 행의 조건(삭제를 기다리는 목소리 포함, 이미 지운 목소리 제외) */
@@ -203,7 +203,7 @@ class VoiceService
             }
             $victim = self::slotVictim($forProfileId);
             if (!$victim) {
-                throw new RetryLater('ElevenLabs 목소리 자리(' . ($limit > 0 ? $limit : $used) . '개)가 모두 동화를 만드는 중이라 비울 수 있는 목소리가 없습니다. 자리가 나면 이어서 만듭니다.', 60);
+                throw new RetryLater(TtsEngine::label() . ' 목소리 자리(' . ($limit > 0 ? $limit : $used) . '개)가 모두 동화를 만드는 중이라 비울 수 있는 목소리가 없습니다. 자리가 나면 이어서 만듭니다.', 60);
             }
             self::releaseSlot($victim, $forProfileId);
             $released[] = (int) $victim['id'];
@@ -237,7 +237,7 @@ class VoiceService
     private static function releaseSlot(array $victim, int $forProfileId): void
     {
         $vid = (int) $victim['id'];
-        $res = ElevenLabs::deleteVoice((string) $victim['provider_voice_id']);
+        $res = TtsEngine::deleteVoice((string) $victim['provider_voice_id']);
         if (empty($res['ok'])) {
             throw new \RuntimeException('자리를 비우려고 목소리 #' . $vid . '를 지우지 못했습니다: ' . (string) $res['error']);
         }
@@ -307,7 +307,7 @@ class VoiceService
         if (!in_array((string) $profile['status'], self::REVISABLE, true)) {
             throw new \RuntimeException('지금은 다시 생성할 수 없어요. (현재 상태: ' . voice_status_label((string) $profile['status']) . ')');
         }
-        if (!ElevenLabs::ready()) {
+        if (!TtsEngine::ready()) {
             throw new \RuntimeException('지금은 목소리를 만들 수 없어요. 잠시 뒤 다시 시도하거나 문의해 주세요.');
         }
         $summary = self::sampleSummary($profileId);
@@ -481,7 +481,7 @@ class VoiceService
         $released = false;
         if ((string) $profile['provider_voice_id'] === '') {
             if (!self::isReleased($profile)) {
-                throw new \RuntimeException('아직 ElevenLabs 목소리가 만들어지지 않아 동화 오디오를 생성할 수 없습니다.');
+                throw new \RuntimeException('아직 ' . TtsEngine::label() . ' 목소리가 만들어지지 않아 동화 오디오를 생성할 수 없습니다.');
             }
             // 자리를 비운 목소리: 만들 동화가 있으면 아래에서 목소리를 먼저 다시 만들도록 등록한다.
             $released = true;
@@ -680,7 +680,7 @@ class VoiceService
             'profile_id' => $profileId,
             'provider_voice_id' => (string) $profile['provider_voice_id'],
         ], ['priority' => 3, 'ref_type' => 'voice_profile', 'ref_id' => $profileId]);
-        Jobs::log(null, 'voice_profile', $profileId, 'warn', '목소리를 삭제했습니다. 음성 파일과 ElevenLabs 목소리 삭제 작업을 등록했습니다.');
+        Jobs::log(null, 'voice_profile', $profileId, 'warn', '목소리를 삭제했습니다. 음성 파일과 ' . TtsEngine::label() . ' 목소리 삭제 작업을 등록했습니다.');
         Worker::kick();
     }
 
@@ -703,11 +703,15 @@ class VoiceService
         }
         if ((string) $profile['provider_voice_id'] === '') {
             return ['ok' => false, 'error' => self::isReleased($profile)
-                ? 'ElevenLabs 목소리 자리를 비운 목소리입니다. 이 목소리로 동화 생성을 시작하면 녹음으로 다시 만들어집니다.'
-                : '아직 ElevenLabs 목소리가 생성되지 않았습니다.'];
+                ? TtsEngine::label() . ' 목소리 자리를 비운 목소리입니다. 이 목소리로 동화 생성을 시작하면 녹음으로 다시 만들어집니다.'
+                : '아직 ' . TtsEngine::label() . ' 목소리가 생성되지 않았습니다.'];
         }
-        if (!ElevenLabs::ready()) {
-            return ['ok' => false, 'error' => 'ElevenLabs API 키가 설정되지 않았습니다.'];
+        if (!TtsEngine::ready()) {
+            return ['ok' => false, 'error' => TtsEngine::notReadyMessage()];
+        }
+        $mismatch = TtsEngine::profileMismatch($profile);
+        if ($mismatch !== null) {
+            return ['ok' => false, 'error' => $mismatch];
         }
 
         $hash = self::textHash($text);
@@ -720,7 +724,7 @@ class VoiceService
             'status' => 'pending',
         ]);
         self::touch($profileId);
-        $res = ElevenLabs::synthesize((string) $profile['provider_voice_id'], $text, [
+        $res = TtsEngine::synthesize((string) $profile['provider_voice_id'], $text, [
             'model_id' => (string) setting('elevenlabs.model_answer', 'eleven_flash_v2_5'),
             'voice_settings' => self::voiceSettings($profile),
             'with_timestamps' => false,

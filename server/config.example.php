@@ -26,6 +26,7 @@ return [
 
     // 외부 API 키. 실서버는 GitHub Secrets(ELEVENLABS_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY 등)로 채워진다.
     'elevenlabs' => ['api_key' => ''],
+    'typecast' => ['api_key' => ''],
     'anthropic' => ['api_key' => ''],
     'gemini' => ['api_key' => ''],
     'kakao' => ['rest_api_key' => '', 'client_secret' => ''],

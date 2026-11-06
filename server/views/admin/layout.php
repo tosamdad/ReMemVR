@@ -21,16 +21,16 @@ try {
 } catch (Throwable $e) {
     app_log('error', '관리자 레이아웃 집계 실패: ' . $e->getMessage());
 }
-// 아이 질문 기능이 보류된 동안(qa_available() 거짓) 실서버에 필요한 외부 API 는 ElevenLabs 하나다.
-$elOk = provider_ready('elevenlabs');
+// 아이 질문 기능이 보류된 동안(qa_available() 거짓) 실서버에 필요한 외부 API 는 TTS 엔진(ElevenLabs 또는 Typecast) 하나다.
+$elOk = \App\Services\TtsEngine::ready();
 if (config('providers_fake')) {
     $statusText = '개발 모드 (가짜 AI 응답)';
     $statusDot = 'bg-secondary-container';
 } elseif ($elOk) {
-    $statusText = '정상 가동 중 (ElevenLabs 연동)';
+    $statusText = '정상 가동 중 (' . \App\Services\TtsEngine::label() . ' 연동)';
     $statusDot = 'bg-emerald-500';
 } else {
-    $statusText = 'ElevenLabs API 키 미등록';
+    $statusText = \App\Services\TtsEngine::label() . ' API 키 미등록';
     $statusDot = 'bg-error';
 }
 $menu = [

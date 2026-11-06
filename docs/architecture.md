@@ -6,7 +6,7 @@
 
 - 회원 화면(모바일 웹): 부모가 가족 목소리를 녹음해 등록하고, 아이는 그 목소리로 동화를 듣다가 궁금한 것을 말로 물어본다.
 - 관리자 화면(/admin): 목소리 생성 승인, 동화 오디오 사전 생성, 동화 관리, 회원과 통계, 운영 설정.
-- 외부 API: ElevenLabs(목소리 복제, 음성 합성), Gemini(아이 질문 음성 인식과 답변 생성).
+- 외부 API: ElevenLabs 또는 Typecast(목소리 복제, 음성 합성 — 관리자 설정 tts.engine 으로 고른다), Gemini(아이 질문 음성 인식과 답변 생성).
 - 구조: PHP(프레임워크 없음) + MariaDB + Tailwind CSS(빌드) + 순수 자바스크립트. cafe24 웹호스팅(PHP 8.4, MariaDB 10.6)에서 동작하며 코드는 PHP 7.4 문법까지만 쓴다.
 
 2. 폴더
@@ -218,6 +218,15 @@ sentence_timings JSON 형식(story_audios)
 
     ElevenLabs::addVoice(string $name, array $files, string $description = '', array $usage = [])   usage: user_id, ref_type, ref_id
     ElevenLabs::synthesize(string $voiceId, string $text, array $opts = [])   opts 에 timeout(초, 기본 180), chunk_chars(긴 글 분할 길이)도 받는다
+
+    TTS 엔진 선택(tts.engine 설정, ElevenLabs | Typecast. Typecast 키가 없으면 ElevenLabs 로 되돌아간다):
+        TtsEngine::current() / ready() / label() / notReadyMessage()
+        TtsEngine::addVoice / deleteVoice / synthesize   ElevenLabs 어댑터와 같은 인자와 반환을 Typecast 어댑터로 넘긴다
+        TtsEngine::profileEngine(array $profile)   목소리가 만들어진 엔진(voice_profiles.tts_engine, NULL 은 ElevenLabs)
+        TtsEngine::profileMismatch(array $profile)   엔진이 다르면 다시 생성 안내 문구, 같으면 null. 합성 전에 확인한다
+        TtsEngine::slotLimit()   지금 엔진의 목소리 자리 수(elevenlabs.voice_slot_limit / typecast.voice_slot_limit)
+        Typecast(타입캐스트) 어댑터는 ElevenLabs 와 같은 반환 형식을 쓴다. 목소리 복제는 WAV/MP3 샘플 하나(5~150초)만 받으므로
+        가장 큰 샘플 하나를 올린다(Typecast::pickSample). 합성은 글자 2,000자 한도로 ElevenLabs::splitText 로 나눠 붙인다.
     Alignment::joinText / build / estimate / sentenceAt(array $timings, int $ms): ?int
 
 9. 주소 약속
@@ -258,8 +267,9 @@ sentence_timings JSON 형식(story_audios)
 
 10. 외부 API 키와 개발 모드
 
-- 실서버 config.php 는 배포 때 GitHub Secrets 로 만든다: ELEVENLABS_API_KEY, GEMINI_API_KEY, KAKAO_REST_API_KEY, KAKAO_CLIENT_SECRET, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET(모두 선택).
-- 키가 없으면 해당 기능은 안내 문구와 함께 꺼진다(예: 목소리 생성 승인 버튼 비활성, 질문하기 대신 기기 음성 안내, 간편 로그인 버튼 준비 중).
+- 실서버 config.php 는 배포 때 GitHub Secrets 로 만든다: ELEVENLABS_API_KEY, TYPECAST_API, GEMINI_API_KEY, KAKAO_REST_API_KEY, KAKAO_CLIENT_SECRET, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET(모두 선택).
+- 키가 없으면 해당 기능은 안내 문구와 함께 꺼진다(예: 목소리 생성 승인 버튼 비활성, 질문하기 대신 기기 음성 안내, 간편 로그인 버튼 준비 중). TTS 엔진 설정(tts.engine)이 Typecast 여도 TYPECAST_API 키가 없으면 ElevenLabs 로 동작한다.
+- TTS 엔진(tts.engine = elevenlabs | typecast)은 관리자 화면에서 고른다. 엔진을 바꾸면 기존 목소리는 새 엔진으로 읽을 수 없으므로 목소리를 다시 생성해야 한다(voice_profiles.tts_engine 에 목소리별 엔진을 남긴다, 0008).
 - 로컬 개발에서 config.php 의 providers_fake 를 true 로 두면 외부 API 대신 가짜 응답을 쓴다(합성 음성은 삐 소리 WAV, 답변은 고정 문장). 실서버 설정에는 이 값이 들어가지 않는다.
 
 11. 로컬 실행

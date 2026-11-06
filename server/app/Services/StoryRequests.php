@@ -178,10 +178,10 @@ class StoryRequests
         return ['created' => $created, 'skipped' => $skipped, 'auto' => $auto, 'approved' => $approved];
     }
 
-    /** 요청하면 관리자 확인 없이 바로 만드는 설정인가(설정 request.auto_approve, ElevenLabs 키 필요) */
+    /** 요청하면 관리자 확인 없이 바로 만드는 설정인가(설정 request.auto_approve, TTS 엔진 키 필요) */
     public static function autoApprove(): bool
     {
-        return (bool) setting('request.auto_approve', false) && ElevenLabs::ready();
+        return (bool) setting('request.auto_approve', false) && TtsEngine::ready();
     }
 
     /**
@@ -311,8 +311,8 @@ class StoryRequests
      */
     public static function approve(array $ids, ?int $adminId): array
     {
-        if (!ElevenLabs::ready()) {
-            throw new \RuntimeException('ElevenLabs API 키가 설정되지 않아 동화를 만들 수 없습니다.');
+        if (!TtsEngine::ready()) {
+            throw new \RuntimeException(TtsEngine::notReadyMessage() . ' 동화를 만들 수 없습니다.');
         }
         $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
         $approved = 0;

@@ -164,7 +164,7 @@ class Worker
     // ───────────────────────── 작업별 처리 ─────────────────────────
 
     /**
-     * voice_clone {profile_id, restore?, keep_stories?}: 샘플을 ElevenLabs 에 올려 목소리를 만들고 동화 생성을 등록한다.
+     * voice_clone {profile_id, restore?, keep_stories?}: 샘플을 TTS 엔진(ElevenLabs 또는 Typecast)에 올려 목소리를 만들고 동화 생성을 등록한다.
      * restore 는 자리를 비웠던(준비됨) 목소리를 남겨 둔 녹음으로 다시 만드는 경우다. 이미 만든 동화와 안내 음성은 그대로 둔다.
      * keep_stories 는 회원이 녹음을 고쳐 다시 생성한 경우다. 안내 음성은 새 목소리로 다시 만들고, 이미 만든 동화는 그대로 둔다.
      */
@@ -233,36 +233,36 @@ class Worker
                 'ref_type' => 'voice_profile',
                 'ref_id' => $pid,
             ];
-            $res = ElevenLabs::addVoice($name, $files, $description, $usage);
+            $res = TtsEngine::addVoice($name, $files, $description, $usage);
             if (empty($res['ok']) && !empty($res['voice_limit'])) {
                 // 계정에 우리가 모르는 목소리가 있어 한도에 먼저 걸린 경우: 한 자리를 더 비우고 한 번만 다시 시도한다.
-                self::plog($job, $pid, 'warn', 'ElevenLabs 목소리 개수 한도에 걸려 한 자리를 더 비우고 다시 시도합니다.');
+                self::plog($job, $pid, 'warn', TtsEngine::label() . ' 목소리 개수 한도에 걸려 한 자리를 더 비우고 다시 시도합니다.');
                 VoiceService::ensureSlot($pid, true);
-                $res = ElevenLabs::addVoice($name, $files, $description, $usage);
+                $res = TtsEngine::addVoice($name, $files, $description, $usage);
             }
             if (empty($res['ok']) || empty($res['voice_id'])) {
                 // 키 권한, 요금제처럼 다시 해도 같은 오류는 재시도하지 않는다(목소리 개수 한도는 자리가 나면 되므로 재시도).
                 if (!empty($res['permanent']) && empty($res['voice_limit'])) {
-                    throw new \DomainException('ElevenLabs 목소리 생성 실패: ' . self::errorText($res));
+                    throw new \DomainException(TtsEngine::label() . ' 목소리 생성 실패: ' . self::errorText($res));
                 }
-                throw new \RuntimeException('ElevenLabs 목소리 생성 실패: ' . self::errorText($res));
+                throw new \RuntimeException(TtsEngine::label() . ' 목소리 생성 실패: ' . self::errorText($res));
             }
             $voiceId = (string) $res['voice_id'];
 
             // 처리하는 동안 삭제나 반려가 되었으면 방금 만든 목소리를 바로 지운다.
             $now = db_one('SELECT status, deleted_at FROM voice_profiles WHERE id = ?', [$pid]);
             if (!$now || $now['deleted_at'] !== null || $now['status'] !== ($restore ? 'completed' : 'cloning')) {
-                ElevenLabs::deleteVoice($voiceId);
+                TtsEngine::deleteVoice($voiceId);
                 self::plog($job, $pid, 'warn', '처리 중 목소리가 삭제되거나 반려되어 만든 목소리를 지웠습니다.');
 
                 return;
             }
             db_exec(
-                'UPDATE voice_profiles SET provider_voice_id = ?, cloned_at = NOW(), status = ?, provider_released_at = NULL, provider_last_used_at = NOW() WHERE id = ?',
-                [$voiceId, 'completed', $pid]
+                'UPDATE voice_profiles SET provider_voice_id = ?, tts_engine = ?, cloned_at = NOW(), status = ?, provider_released_at = NULL, provider_last_used_at = NOW() WHERE id = ?',
+                [$voiceId, TtsEngine::current(), 'completed', $pid]
             );
             $created = true;
-            self::plog($job, $pid, 'info', ($restore ? 'ElevenLabs 목소리 다시 만들기 완료: ' : 'ElevenLabs 목소리 생성 완료: ')
+            self::plog($job, $pid, 'info', ($restore ? TtsEngine::label() . ' 목소리 다시 만들기 완료: ' : TtsEngine::label() . ' 목소리 생성 완료: ')
                 . self::shortId($voiceId) . self::tookText(isset($res['ms']) ? (int) $res['ms'] : 0));
 
             if ($restore) {
@@ -281,7 +281,7 @@ class Worker
             db_exec('DELETE FROM voice_clips WHERE voice_profile_id = ?', [$pid]);
         } else {
             db_exec('UPDATE voice_profiles SET status = ? WHERE id = ?', ['completed', $pid]);
-            self::plog($job, $pid, 'info', '기존 ElevenLabs 목소리를 사용합니다: ' . self::shortId((string) $profile['provider_voice_id']));
+            self::plog($job, $pid, 'info', '기존 ' . TtsEngine::label(TtsEngine::profileEngine($profile)) . ' 목소리를 사용합니다: ' . self::shortId((string) $profile['provider_voice_id']));
         }
 
         // 동화는 한꺼번에 만들지 않는다. 회원이 이미 요청해 생성을 시작한 동화만 이어서(새 목소리면 다시) 만든다.
@@ -317,7 +317,12 @@ class Worker
                 // 자리를 비운 목소리: 다시 만들기가 끝날 때까지 기다린다.
                 self::waitRestore($pid);
             }
-            throw new \DomainException('ElevenLabs 목소리가 아직 없습니다.');
+            throw new \DomainException(TtsEngine::label() . ' 목소리가 아직 없습니다.');
+        }
+        // 엔진을 바꾼 뒤에는 예전 엔진의 목소리로 합성할 수 없다. 목소리를 다시 만들어야 한다.
+        $mismatch = TtsEngine::profileMismatch($profile);
+        if ($mismatch !== null) {
+            throw new \DomainException($mismatch);
         }
         $story = db_one('SELECT * FROM stories WHERE id = ? AND status = ? AND deleted_at IS NULL', [$sid, 'published']);
         $audio = db_one('SELECT * FROM story_audios WHERE story_id = ? AND voice_profile_id = ?', [$sid, $pid]);
@@ -365,7 +370,7 @@ class Worker
 
         $text = Alignment::joinText($sentences);
         $model = (string) setting('elevenlabs.model_story', 'eleven_multilingual_v2');
-        $res = ElevenLabs::synthesize((string) $profile['provider_voice_id'], $text, [
+        $res = TtsEngine::synthesize((string) $profile['provider_voice_id'], $text, [
             'model_id' => $model,
             'voice_settings' => VoiceService::voiceSettings($profile),
             'with_timestamps' => true,
@@ -433,7 +438,11 @@ class Worker
                 // 자리를 비운 목소리는 안내 음성을 새로 만들지 않는다(만들어 둔 것은 그대로 쓴다).
                 return;
             }
-            throw new \DomainException('ElevenLabs 목소리가 아직 없습니다.');
+            throw new \DomainException(TtsEngine::label() . ' 목소리가 아직 없습니다.');
+        }
+        $mismatch = TtsEngine::profileMismatch($profile);
+        if ($mismatch !== null) {
+            throw new \DomainException($mismatch);
         }
 
         $made = 0;
@@ -456,7 +465,7 @@ class Worker
                     'status' => 'pending',
                 ]);
             }
-            $res = ElevenLabs::synthesize((string) $profile['provider_voice_id'], $line['text'], [
+            $res = TtsEngine::synthesize((string) $profile['provider_voice_id'], $line['text'], [
                 'model_id' => (string) setting('elevenlabs.model_answer', 'eleven_flash_v2_5'),
                 'voice_settings' => VoiceService::voiceSettings($profile),
                 'with_timestamps' => false,
@@ -496,8 +505,8 @@ class Worker
     }
 
     /**
-     * voice_delete {profile_id, provider_voice_id, provider_only}: ElevenLabs 목소리와 로컬 파일(동화 오디오, 짧은 음성, 샘플)을 지운다.
-     * provider_only 면 ElevenLabs 목소리만 지운다(재녹음 후 다시 만들 때).
+     * voice_delete {profile_id, provider_voice_id, provider_only}: TTS 엔진(ElevenLabs 또는 Typecast)의 목소리와 로컬 파일(동화 오디오, 짧은 음성, 샘플)을 지운다.
+     * provider_only 면 엔진의 목소리만 지운다(재녹음 후 다시 만들 때).
      */
     private static function handleVoiceDelete(array $job, array $payload): void
     {
@@ -543,15 +552,15 @@ class Worker
         }
 
         if ($voiceId !== '') {
-            $res = ElevenLabs::deleteVoice($voiceId);
+            $res = TtsEngine::deleteVoice($voiceId);
             if (empty($res['ok'])) {
                 $err = self::errorText($res);
                 // 이미 없는 목소리면 삭제된 것으로 본다.
                 if (!preg_match('/not[_ ]?found|404|voice_does_not_exist|존재하지/i', $err)) {
-                    throw new \RuntimeException('ElevenLabs 목소리 삭제 실패: ' . $err);
+                    throw new \RuntimeException(TtsEngine::label() . ' 목소리 삭제 실패: ' . $err);
                 }
             }
-            self::plog($job, $pid, 'info', 'ElevenLabs 목소리 삭제 완료: ' . self::shortId($voiceId));
+            self::plog($job, $pid, 'info', TtsEngine::label() . ' 목소리 삭제 완료: ' . self::shortId($voiceId));
         }
         if ($profile && !$providerOnly) {
             db_exec('UPDATE voice_profiles SET provider_deleted_at = NOW() WHERE id = ?', [$pid]);
@@ -842,7 +851,7 @@ class Worker
         Jobs::enqueue('mail', [
             'to' => $to,
             'subject' => '[ReMemVR] 목소리 생성 실패: ' . ($label !== '' ? $label : '#' . $pid),
-            'text' => "가족 목소리를 ElevenLabs 에서 만들지 못했습니다.\n\n"
+            'text' => "가족 목소리를 " . TtsEngine::label() . " 에서 만들지 못했습니다.\n\n"
                 . '목소리: ' . $label . ' (#' . $pid . ")\n"
                 . '오류: ' . $message . "\n\n"
                 . '원인을 해결한 뒤 관리자 화면에서 다시 생성할 수 있습니다: ' . absolute_url('/admin/voices/' . $pid) . "\n",

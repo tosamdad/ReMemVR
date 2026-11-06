@@ -29,6 +29,16 @@ class Settings
         'request.max_open' => 30,
         'request.auto_approve' => false,
 
+        // TTS 엔진(음성 합성): elevenlabs | typecast. Typecast 를 골라도 API 키(TYPECAST_API)가 없으면 ElevenLabs 로 동작한다.
+        'tts.engine' => 'elevenlabs',
+
+        // Typecast(타입캐스트). 목소리 복제는 WAV/MP3 샘플 하나(5~150초)로 한다.
+        'typecast.model' => 'ssfm-v31',
+        'typecast.audio_format' => 'mp3',
+        // Typecast 에 만들어 둘 수 있는 클로닝 목소리 수(플랜의 custom_voice_slot). 발급 후 실제 한도를 확인해 고치세요. 0 이면 관리하지 않는다.
+        // TODO: 무료 플랜 슬롯 수는 미확인(일단 3). Typecast API Console 에서 확인 후 조정.
+        'typecast.voice_slot_limit' => 3,
+
         // ElevenLabs
         'elevenlabs.model_story' => 'eleven_multilingual_v2',
         'elevenlabs.model_answer' => 'eleven_flash_v2_5',
