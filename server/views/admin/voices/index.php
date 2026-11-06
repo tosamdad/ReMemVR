@@ -67,9 +67,9 @@ $to = min($total, $page * 20);
     </div>
     <div class="flex items-center justify-between gap-3 rounded-xl bg-surface-container-lowest p-card-padding shadow-card">
       <div class="flex flex-col">
-        <span class="font-label-sm text-label-sm uppercase tracking-wider text-on-surface-variant">ElevenLabs 생성 중</span>
+        <span class="font-label-sm text-label-sm uppercase tracking-wider text-on-surface-variant"><?= e(\App\Services\TtsEngine::label()) ?> 생성 중</span>
         <span class="mt-1 font-headline-lg text-headline-lg font-bold text-primary"><?= fmt_number($kpi['cloning']) ?><span class="ml-1 font-body-md text-body-md font-normal text-on-surface-variant">건</span></span>
-        <span class="mt-0.5 font-label-sm text-label-sm text-on-surface-variant" title="자리가 다 차면 가장 오래 쓰지 않은 목소리의 자리를 비우고, 그 목소리로 새 동화를 만들 때 녹음으로 다시 만듭니다."><?= $slotLimit > 0 ? 'ElevenLabs 자리 ' . fmt_number($slotsUsed) . ' / ' . fmt_number($slotLimit) . '개 사용' : 'Instant Voice Clone' ?></span>
+        <span class="mt-0.5 font-label-sm text-label-sm text-on-surface-variant" title="자리는 엔진별로 세고, 다 차면 그 엔진의 가장 오래 쓰지 않은 목소리의 자리를 비웁니다. 그 목소리로 새 동화를 만들 때 녹음으로 다시 만듭니다."><?= $slotLimit > 0 ? e(\App\Services\TtsEngine::label()) . ' 자리 ' . fmt_number($slotsUsed) . ' / ' . fmt_number($slotLimit) . '개 사용' : 'Instant Voice Clone' ?></span>
       </div>
       <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary-fixed text-on-primary-fixed"><span class="material-symbols-outlined text-[26px]">neurology</span></div>
     </div>

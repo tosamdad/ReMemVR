@@ -70,14 +70,26 @@ test('엔진 기록: voice_profiles.tts_engine 값으로 그 목소리의 엔진
     assert_same('typecast', TtsEngine::profileEngine(['tts_engine' => 'typecast']));
 });
 
-test('엔진이 다른 목소리는 합성 전에 막는다(문구에 두 엔진 이름이 모두 나온다)', function () {
-    $profile = ['tts_engine' => 'elevenlabs'];
-    $made = TtsEngine::profileEngine($profile);
+test('목소리별 작업 엔진 결정: 그 목소리의 엔진을 따르고, 모르면 지금 엔진을 따른다', function () {
     $now = TtsEngine::current();
-    $mismatch = $made !== $now ? TtsEngine::profileMismatch($profile) : null;
-    if ($mismatch !== null) {
-        assert_true(strpos($mismatch, 'ElevenLabs') !== false && strpos($mismatch, 'Typecast') !== false, '두 엔진 이름이 모두 나온다');
+    // 목소리의 엔진 기록이 있으면 지금 설정과 관계없이 그 엔진으로 돌린다.
+    assert_same('elevenlabs', TtsEngine::routeEngine('elevenlabs'));
+    assert_same('typecast', TtsEngine::routeEngine('typecast'));
+    // 기록이 없으면(예전 호출 형식) 지금 엔진이다.
+    assert_same($now, TtsEngine::routeEngine(null));
+    // 알 수 없는 값도 지금 엔진이다.
+    assert_same($now, TtsEngine::routeEngine('unknown'));
+    // 이전 버그: 엔진을 바꾼 뒤 예전 엔진 목소리를 지우면 지금 엔진으로 보내 "목소리 ID 형식이 올바르지 않습니다" 가 나왔다.
+    // routeEngine 이 그 목소리의 엔진을 그대로 돌려주는지로 막는다.
+    $madeElevenlabs = TtsEngine::profileEngine(['tts_engine' => null]);
+    assert_same('elevenlabs', TtsEngine::routeEngine($madeElevenlabs), '예전 ElevenLabs 목소리는 ElevenLabs 로');
+});
+
+test('엔진별 준비 문구: 그 목소리의 엔진 키가 없을 때 그 엔진 이름으로 안내한다', function () {
+    assert_contains('ElevenLabs', TtsEngine::notReadyMessage('elevenlabs'));
+    assert_contains('Typecast', TtsEngine::notReadyMessage('typecast'));
+    // 개발 모드(fake)에서는 두 엔진 모두 항상 준비되어 있다.
+    if ((bool) config('providers_fake')) {
+        assert_true(TtsEngine::ready('elevenlabs') && TtsEngine::ready('typecast'));
     }
-    // 같은 엔진이면 문제 없다.
-    assert_same(null, TtsEngine::profileMismatch(['tts_engine' => $now]));
 });
