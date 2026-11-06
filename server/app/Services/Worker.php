@@ -387,7 +387,7 @@ class Worker
         VoiceService::touch($pid);
 
         $ext = self::cleanExt(isset($res['ext']) ? (string) $res['ext'] : '', isset($res['mime']) ? (string) $res['mime'] : '');
-        if ($audio && $audio['status'] === 'completed' && (string) $audio['file_path'] !== '' && Storage::exists($audio['file_path'])) {
+        if ($audio && (string) $audio['file_path'] !== '' && Storage::exists($audio['file_path'])) {
             // 다시 만드는 동안에도 기존 오디오를 그대로 들을 수 있게(듣다가 끊기지 않게), 다른 이름으로 저장하고
             // 성공하면 아래에서 옛 파일을 지운다.
             $rel = 'story-audio/' . $pid . '/' . Storage::randomName($ext);
