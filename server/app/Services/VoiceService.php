@@ -483,9 +483,12 @@ class VoiceService
     /**
      * 동화 오디오 생성 작업을 등록하고 등록 개수를 돌려준다.
      * 게시된 동화만 대상이며, 최신 본문으로 만든 오디오가 있으면 $force 가 아닌 한 건너뛴다.
-     * $storyIds 가 null 이면 이 목소리로 생성을 시작한 요청(approved)이 있는 동화만 대상이다.
+     * $storyIds 가 null 이면 이 목소리로 생성 요청을 하고 승인된(approved) 동화만 대상이다.
+     * $remakeStale 은 회원이 명시적으로 다시 요청한 때만 참으로 넘는다: 목소리를 다시 만들었다면
+     * (엔진을 바꿔 다시 만든 경우 포함) 기존 오디오는 예전 목소리 것이므로 다시 만든다.
+     * 녹음을 고쳐 목소리를 다시 만든 흐름(keep_stories)은 이미 만든 동화를 그대로 두므로 참을 넘지 않는다.
      */
-    public static function queueStories(int $profileId, ?array $storyIds = null, bool $force = false): int
+    public static function queueStories(int $profileId, ?array $storyIds = null, bool $force = false, bool $remakeStale = false): int
     {
         $profile = self::find($profileId);
         $released = false;
@@ -533,10 +536,10 @@ class VoiceService
             $hash = self::storyContentHash($story, $sentences);
             $audio = db_one('SELECT * FROM story_audios WHERE story_id = ? AND voice_profile_id = ?', [$sid, $profileId]);
             // 지금 목소리가 만들어진 뒤 본문이 바뀌지 않았고 파일도 있으면 다시 만들지 않는다.
-            // 다만 목소리를 다시 만들었다면(엔진을 바꿔서 다시 만든 경우 포함) 기존 오디오는 예전 목소리 것이라
-            // 요청만 들어와도 새 목소리로 다시 만든다(사용자 요청). 기존 오디오는 새 오디오가 완성될 때까지 유지된다.
-            if (!$force && $audio && $audio['status'] === 'completed' && $audio['content_hash'] === $hash
-                && Storage::exists($audio['file_path']) && !self::audioStale($audio, $profile)) {
+            // 회원이 명시적으로 다시 요청했고($remakeStale) 목소리를 다시 만들었다면 기존 오디오는 예전 목소리 것이라
+            // 새 목소리로 다시 만든다(사용자 요청). 기존 오디오는 새 오디오가 완성될 때까지 유지된다.
+            $stale = $remakeStale && $audio !== null && self::audioStale($audio, $profile);
+            if (!$force && !$stale && $audio && $audio['status'] === 'completed' && $audio['content_hash'] === $hash && Storage::exists($audio['file_path'])) {
                 continue;
             }
             if ($audio) {

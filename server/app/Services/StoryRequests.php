@@ -355,7 +355,8 @@ class StoryRequests
                 'notified_at' => null,
             ], 'id = ?', [$id]);
             try {
-                $queued = VoiceService::queueStories((int) $r['voice_profile_id'], [(int) $r['story_id']], false);
+                // 회원이 명시적으로 요청한 생성: 목소리를 다시 만들었다면 기존 오디오도 새 목소리로 다시 만든다.
+                $queued = VoiceService::queueStories((int) $r['voice_profile_id'], [(int) $r['story_id']], false, true);
             } catch (\RuntimeException $e) {
                 db_update('story_requests', ['status' => $r['status'], 'processed_at' => $r['processed_at']], 'id = ?', [$id]);
                 $errors[] = $label . ': ' . $e->getMessage();
