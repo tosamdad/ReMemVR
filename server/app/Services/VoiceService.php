@@ -532,7 +532,11 @@ class VoiceService
             }
             $hash = self::storyContentHash($story, $sentences);
             $audio = db_one('SELECT * FROM story_audios WHERE story_id = ? AND voice_profile_id = ?', [$sid, $profileId]);
-            if (!$force && $audio && $audio['status'] === 'completed' && $audio['content_hash'] === $hash && Storage::exists($audio['file_path'])) {
+            // 지금 목소리가 만들어진 뒤 본문이 바뀌지 않았고 파일도 있으면 다시 만들지 않는다.
+            // 다만 목소리를 다시 만들었다면(엔진을 바꿔서 다시 만든 경우 포함) 기존 오디오는 예전 목소리 것이라
+            // 요청만 들어와도 새 목소리로 다시 만든다(사용자 요청). 기존 오디오는 새 오디오가 완성될 때까지 유지된다.
+            if (!$force && $audio && $audio['status'] === 'completed' && $audio['content_hash'] === $hash
+                && Storage::exists($audio['file_path']) && !self::audioStale($audio, $profile)) {
                 continue;
             }
             if ($audio) {
@@ -799,6 +803,20 @@ class VoiceService
                 ? (bool) (int) $profile['speaker_boost']
                 : (bool) setting('elevenlabs.speaker_boost', true),
         ];
+    }
+
+    /**
+     * 기존 오디오가 지금 목소리의 것이 아닌가(다시 만들면 새 목소리/새 엔진으로 바뀐다).
+     * 지금 목소리(provider_voice_id)가 만들어진 시각(cloned_at) 뒤에 만든 오디오가 아니면 예전 목소리 것이다.
+     * 목소리를 다시 만들 때마다(엔진을 바꿔 다시 만든 경우 포함) cloned_at 이 새로 기록되므로,
+     * 엔진을 바꾸고 목소리를 다시 만들면 그 목소리의 기존 동화 오디오는 모두 다시 만들 수 있다.
+     */
+    public static function audioStale(array $audio, array $profile): bool
+    {
+        $clonedAt = (string) (isset($profile['cloned_at']) ? $profile['cloned_at'] : '');
+        $generatedAt = (string) (isset($audio['generated_at']) ? $audio['generated_at'] : '');
+
+        return $clonedAt !== '' && $generatedAt !== '' && $generatedAt < $clonedAt;
     }
 
     /** 동화의 현재 내용 해시. stories.content_hash 가 비어 있으면 문장으로 계산해 저장한다. */

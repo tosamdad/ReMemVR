@@ -387,7 +387,13 @@ class Worker
         VoiceService::touch($pid);
 
         $ext = self::cleanExt(isset($res['ext']) ? (string) $res['ext'] : '', isset($res['mime']) ? (string) $res['mime'] : '');
-        $rel = 'story-audio/' . $pid . '/' . $sid . '-' . substr($hash, 0, 8) . '.' . $ext;
+        if ($audio && $audio['status'] === 'completed' && (string) $audio['file_path'] !== '' && Storage::exists($audio['file_path'])) {
+            // 다시 만드는 동안에도 기존 오디오를 그대로 들을 수 있게(듣다가 끊기지 않게), 다른 이름으로 저장하고
+            // 성공하면 아래에서 옛 파일을 지운다.
+            $rel = 'story-audio/' . $pid . '/' . Storage::randomName($ext);
+        } else {
+            $rel = 'story-audio/' . $pid . '/' . $sid . '-' . substr($hash, 0, 8) . '.' . $ext;
+        }
         Storage::put($rel, (string) $res['audio']);
         $size = strlen((string) $res['audio']);
 
@@ -502,8 +508,11 @@ class Worker
     }
 
     /**
-     * voice_delete {profile_id, provider_voice_id, provider_only}: TTS 엔진(ElevenLabs 또는 Typecast)의 목소리와 로컬 파일(동화 오디오, 짧은 음성, 샘플)을 지운다.
+     * voice_delete {profile_id, provider_voice_id, provider_only}: TTS 엔진(ElevenLabs 또는 Typecast)의 목소리와 로컬 파일(짧은 음성, 샘플)을 지운다.
      * provider_only 면 엔진의 목소리만 지운다(재녹음 후 다시 만들 때).
+     * 만든 동화 오디오(story_audios)는 목소리 삭제와 관계없이 남긴다(사용자 요청). 목소리를 지워도 이미 들려 주던
+     * 동화는 그대로 듣게 하고, 그 목소리(또는 다른 목소리)로 새로 만들면 그때 새 오디오로 교체된다.
+     * 짧은 음성(voice_clips)과 개인 녹음 샘플(voice_samples)은 그대로 지운다(녹음은 프라이버시상 반드시 삭제).
      */
     private static function handleVoiceDelete(array $job, array $payload): void
     {
@@ -519,14 +528,8 @@ class Worker
 
         if (!$providerOnly && $profile) {
             // 로컬 파일을 먼저 지운다(외부 API 가 실패해도 개인 음성 파일은 남기지 않는다).
+            // 만든 동화 오디오(story_audios)는 남긴다 — 목소리를 지워도 이미 완성된 동화는 계속 듣게 한다.
             $files = 0;
-            foreach (db_all('SELECT file_path FROM story_audios WHERE voice_profile_id = ?', [$pid]) as $r) {
-                if (Storage::exists($r['file_path'])) {
-                    Storage::delete($r['file_path']);
-                    $files++;
-                }
-            }
-            db_exec('DELETE FROM story_audios WHERE voice_profile_id = ?', [$pid]);
             foreach (db_all('SELECT file_path FROM voice_clips WHERE voice_profile_id = ?', [$pid]) as $r) {
                 if (Storage::exists($r['file_path'])) {
                     Storage::delete($r['file_path']);
@@ -541,13 +544,13 @@ class Worker
                 }
             }
             // 빈 폴더 정리(목소리 연구실은 voice-samples/{회원}/{목소리}/ 에 샘플을 둔다)
-            foreach (['story-audio/' . $pid, 'clips/' . $pid, 'voice-samples/' . (int) $profile['user_id'] . '/' . $pid, 'voice-samples/' . $pid] as $dir) {
+            foreach (['clips/' . $pid, 'voice-samples/' . (int) $profile['user_id'] . '/' . $pid, 'voice-samples/' . $pid] as $dir) {
                 $full = storage_path($dir);
                 if (is_dir($full)) {
                     @rmdir($full);
                 }
             }
-            self::plog($job, $pid, 'info', '로컬 음성 파일 ' . $files . '개 삭제');
+            self::plog($job, $pid, 'info', '로컬 음성 파일 ' . $files . '개 삭제(완성된 동화 오디오는 그대로 둡니다)');
         }
 
         if ($voiceId !== '') {

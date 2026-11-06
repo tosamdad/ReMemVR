@@ -22,7 +22,7 @@ class StoryRequests
     /** 요청 목록을 읽을 때 쓰는 공통 SELECT(오디오 상태 포함) */
     const SELECT = 'SELECT r.*, s.title AS story_title, s.category AS story_category, s.cover_image_path, s.updated_at AS story_updated_at,
             s.est_duration_sec, s.char_count AS story_chars, s.status AS story_status, s.deleted_at AS story_deleted_at, s.content_hash AS story_hash,
-            vp.label AS voice_label, vp.icon AS voice_icon, vp.status AS voice_status, vp.deleted_at AS voice_deleted_at,
+            vp.label AS voice_label, vp.icon AS voice_icon, vp.status AS voice_status, vp.deleted_at AS voice_deleted_at, vp.cloned_at AS voice_cloned_at,
             ((vp.provider_voice_id IS NOT NULL AND vp.provider_voice_id <> \'\') OR vp.provider_released_at IS NOT NULL) AS voice_usable,
             (vp.provider_released_at IS NOT NULL AND (vp.provider_voice_id IS NULL OR vp.provider_voice_id = \'\')) AS voice_released,
             sa.id AS audio_id, sa.status AS audio_status, sa.file_path AS audio_file, sa.duration_ms AS audio_duration_ms,
@@ -148,8 +148,12 @@ class StoryRequests
                     continue;
                 }
                 if ($state === 'done') {
-                    $skipped[] = ['voice' => (string) $v['label'], 'reason' => '이미 만들어져 있어요'];
-                    continue;
+                    // 기존 오디오가 지금 목소리의 것이 아니면(목소리를 다시 만든 경우, 엔진을 바꿔서 다시 만든 경우 포함)
+                    // 다시 요청해 새 목소리로 바꿔 들을 수 있다(사용자 요청).
+                    if (!VoiceService::audioStale(['generated_at' => $existing['audio_generated_at']], ['cloned_at' => $existing['voice_cloned_at']])) {
+                        $skipped[] = ['voice' => (string) $v['label'], 'reason' => '이미 만들어져 있어요'];
+                        continue;
+                    }
                 }
             }
             if ($open >= $max) {
@@ -281,12 +285,14 @@ class StoryRequests
 
     /**
      * 동화 한 편에 대한 회원 목소리별 상태(동화 상세 화면).
-     * 반환: [voice_id => ['voice' => 목소리 행, 'request' => 요청 행|null, 'state' => none|requested|making|done|failed|rejected|unready]]
+     * 기존 오디오가 지금 목소리의 것이 아니면(목소리를 다시 만든 경우) can_remake 를 참으로 남긴다:
+     * 완성된 오디오는 그대로 들 수 있고, 다시 요청하면 새 목소리로 다시 만든다.
+     * 반환: [voice_id => ['voice' => 목소리 행, 'request' => 요청 행|null, 'state' => none|requested|making|done|failed|rejected|unready, 'can_remake' => bool]]
      */
     public static function voiceStates(int $userId, int $storyId): array
     {
         $voices = db_all(
-            'SELECT id, label, icon, status, provider_voice_id, provider_released_at FROM voice_profiles WHERE user_id = ? AND deleted_at IS NULL ORDER BY id',
+            'SELECT id, label, icon, status, provider_voice_id, provider_released_at, cloned_at FROM voice_profiles WHERE user_id = ? AND deleted_at IS NULL ORDER BY id',
             [$userId]
         );
         $out = [];
@@ -294,10 +300,14 @@ class StoryRequests
             $ready = $v['status'] === 'completed' && ((string) $v['provider_voice_id'] !== '' || !empty($v['provider_released_at']));
             $req = self::latestFor($userId, $storyId, (int) $v['id']);
             $state = $req ? self::state($req) : 'none';
+            $canRemake = false;
+            if ($state === 'done' && (string) $v['provider_voice_id'] !== '') {
+                $canRemake = VoiceService::audioStale(['generated_at' => $req['audio_generated_at']], $v);
+            }
             if (!$ready && ($state === 'none' || $state === 'rejected')) {
                 $state = 'unready';
             }
-            $out[(int) $v['id']] = ['voice' => $v, 'request' => $req, 'state' => $state];
+            $out[(int) $v['id']] = ['voice' => $v, 'request' => $req, 'state' => $state, 'can_remake' => $canRemake];
         }
 
         return $out;
