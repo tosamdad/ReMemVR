@@ -560,7 +560,9 @@ test('엔진을 바꿔도 예전 엔진 목소리는 자리 계산에 섞이지 
         assert_same([$tcOldest], VoiceService::ensureSlot($new));
         $p = db_one('SELECT * FROM voice_profiles WHERE id = ?', [$tcOldest]);
         assert_same(null, $p['provider_voice_id'], 'Typecast 목소리의 자리를 비웠다');
-        assert_same(3, (int) db_value("SELECT COUNT(*) FROM voice_profiles WHERE provider_voice_id <> ''"), 'ElevenLabs 목소리까지 지우면 안 된다');
+        // 예전 엔진 목소리 세 개는 그대로 남아 있어야 한다(하나를 비우고 남은 Typecast 목소리 하나와 합쳐 네 개).
+        assert_same(4, (int) db_value("SELECT COUNT(*) FROM voice_profiles WHERE provider_voice_id <> ''"));
+        assert_same(3, (int) db_value("SELECT COUNT(*) FROM voice_profiles WHERE provider_voice_id LIKE 'EL%'"), 'ElevenLabs 목소리까지 지우면 안 된다');
     });
 });
 
