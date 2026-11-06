@@ -24,6 +24,19 @@ class SettingsController
         'mp3_22050_32' => 'MP3 22.05kHz 32kbps (가장 작은 파일)',
     ];
     const AEC_LEVELS = ['normal' => '보통', 'strong' => '강함 (권장)', 'max' => '최대'];
+    const TTS_ENGINES = [
+        'elevenlabs' => 'ElevenLabs (현재 기본)',
+        'typecast' => 'Typecast (타입캐스트)',
+    ];
+    const TYPECAST_MODELS = [
+        'ssfm-v31' => 'SSFM v3.1 (권장, 안정성 개선)',
+        'ssfm-v30' => 'SSFM v3.0 (자연스러운 억양, 감정 7종)',
+        'ssfm-v21' => 'SSFM v2.1 (낮은 지연)',
+    ];
+    const TYPECAST_FORMATS = [
+        'mp3' => 'MP3 320kbps 44.1kHz (기본, 작은 파일)',
+        'wav' => 'WAV 16bit 44.1kHz (무압축, 큰 파일)',
+    ];
 
     /**
      * 형식: int, float, bool, string, email, text(여러 줄), lines(한 줄에 하나 → 배열), words(쉼표나 줄바꿈 → 배열), select
@@ -31,6 +44,11 @@ class SettingsController
      */
     const SCHEMA = [
         // 모델과 단가
+        // TTS 엔진: 목소리 만들기와 음성 합성에 쓸 회사. Typecast 는 키가 없으면 ElevenLabs 로 되돌아간다.
+        'tts.engine' => ['type' => 'select', 'options' => self::TTS_ENGINES],
+        'typecast.model' => ['type' => 'select', 'options' => self::TYPECAST_MODELS],
+        'typecast.audio_format' => ['type' => 'select', 'options' => self::TYPECAST_FORMATS],
+        'typecast.voice_slot_limit' => ['type' => 'int', 'min' => 0, 'max' => 1000],
         'elevenlabs.model_story' => ['type' => 'select', 'options' => self::ELEVEN_MODELS],
         'elevenlabs.model_answer' => ['type' => 'select', 'options' => self::ELEVEN_MODELS],
         'elevenlabs.output_format' => ['type' => 'select', 'options' => self::OUTPUT_FORMATS],
@@ -117,6 +135,7 @@ class SettingsController
             'checked' => $checked,
             'providers' => [
                 'elevenlabs' => provider_ready('elevenlabs'),
+                'typecast' => provider_ready('typecast'),
                 'anthropic' => provider_ready('anthropic'),
                 'gemini' => provider_ready('gemini'),
                 'kakao' => provider_ready('kakao'),

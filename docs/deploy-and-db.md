@@ -32,6 +32,7 @@ cafe24 호스팅 MariaDB 는 서버 내부(localhost)에서만 접속된다. 그
 
 외부 API 키(서비스 기능용, 없으면 해당 기능만 꺼진 상태로 배포된다)
 
+    TYPECAST_API    Typecast(타입캐스트) API 키. TTS 엔진을 Typecast 로 골랐을 때 목소리 복제와 음성 합성에 쓴다. 없으면 ElevenLabs 로 동작한다
     ELEVENLABS_API_KEY      ElevenLabs API 키. 목소리 복제와 동화, 답변 음성 합성. 목소리 복제는 Starter 이상 요금제 필요
     GEMINI_API_KEY          Google AI Studio 의 Gemini API 키. 아이 질문 음성 이해와 답변 생성
     KAKAO_REST_API_KEY      (선택) 카카오 로그인 REST API 키. Redirect URI: 사이트주소/auth/kakao/callback

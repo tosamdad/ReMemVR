@@ -117,7 +117,7 @@ class StoryController
                 'fallback_lines' => array_values(array_filter((array) setting('qa.fallback_lines', []), 'is_string')),
                 'enabled' => qa_available(),
             ],
-            'ttsReady' => provider_ready('elevenlabs'),
+            'ttsReady' => \App\Services\TtsEngine::ready(),
         ]);
     }
 

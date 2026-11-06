@@ -190,9 +190,9 @@ class QuestionService
                 $notes[] = '질문 인식 안 됨(되묻기)';
             }
 
-            // 8) 같은 가족 목소리로 답 읽기(목소리가 없으면 화면이 기기 음성으로 읽는다)
+            // 8) 같은 가족 목소리로 답 읽기(목소리가 없거나 엔진이 다르면 화면이 기기 음성으로 읽는다)
             $audioUrl = null;
-            if ($profile && !empty($profile['provider_voice_id']) && ElevenLabs::ready()) {
+            if ($profile && !empty($profile['provider_voice_id']) && TtsEngine::ready() && TtsEngine::profileMismatch($profile) === null) {
                 $left = $deadlineMs - self::elapsed($started);
                 if ($left < 300) {
                     if (!$unclear) {
@@ -202,7 +202,7 @@ class QuestionService
                     return self::timeout($interactionId, $sessionId, $userId, $question, $profile, $count, $max, $extra, $notes, $answer, $started, !$unclear);
                 }
                 $modelId = (string) setting('elevenlabs.model_answer', 'eleven_flash_v2_5');
-                $tts = ElevenLabs::synthesize((string) $profile['provider_voice_id'], $answer, [
+                $tts = TtsEngine::synthesize((string) $profile['provider_voice_id'], $answer, [
                     'model_id' => $modelId,
                     'voice_settings' => [
                         'stability' => $profile['stability'],

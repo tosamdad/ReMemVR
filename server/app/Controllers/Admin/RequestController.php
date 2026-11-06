@@ -2,14 +2,14 @@
 namespace App\Controllers\Admin;
 
 use App\Core\Request;
-use App\Services\ElevenLabs;
 use App\Services\MemberStats;
 use App\Services\StoryRequests;
+use App\Services\TtsEngine;
 use App\Services\Worker;
 
 /**
  * 동화 생성 요청 관리. 회원이 동화와 가족 목소리를 골라 보낸 요청을 확인하고
- * 생성을 시작(ElevenLabs 음성 합성 작업 등록)하거나 반려한다.
+ * 생성을 시작(TTS 엔진 음성 합성 작업 등록)하거나 반려한다.
  * 완성된 동화는 회원의 내 동화 화면에 나타나고, 회원에게 완성 메일이 간다.
  */
 class RequestController
@@ -120,7 +120,7 @@ class RequestController
             'page' => $page,
             'pages' => $pages,
             'total' => $total,
-            'elReady' => ElevenLabs::ready(),
+            'elReady' => TtsEngine::ready(),
         ]);
     }
 

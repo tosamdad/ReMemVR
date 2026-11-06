@@ -5,6 +5,7 @@ use App\Core\Request;
 use App\Services\DashboardStats;
 use App\Services\Jobs;
 use App\Services\StoryRequests;
+use App\Services\TtsEngine;
 use App\Services\VoiceService;
 
 /**
@@ -78,7 +79,7 @@ class VoiceController
             'kpi' => DashboardStats::voiceListKpis(),
             'estimate' => DashboardStats::estimatedStoryCredits(),
             'detail' => $detail,
-            'elReady' => provider_ready('elevenlabs'),
+            'elReady' => \App\Services\TtsEngine::ready(),
         ]);
     }
 
@@ -151,7 +152,7 @@ class VoiceController
 
     // ───────────────────────── 동작 ─────────────────────────
 
-    /** POST /admin/voices/{id}/clone : 승인하고 ElevenLabs 목소리 생성 작업 등록 */
+    /** POST /admin/voices/{id}/clone : 승인하고 TTS 엔진(ElevenLabs/Typecast) 목소리 생성 작업 등록 */
     public function cloneVoice(string $id)
     {
         $admin = require_admin();
@@ -164,7 +165,7 @@ class VoiceController
         }
         admin_audit('voice.approve', 'voice_profile', (int) $voice['id'], array_merge(['label' => $voice['label']], $params ? ['params' => $params] : []));
 
-        return self::respond('success', DashboardStats::reqId($voice['id']) . ' 승인: ElevenLabs 목소리 생성 작업을 등록했습니다.', $voice);
+        return self::respond('success', DashboardStats::reqId($voice['id']) . ' 승인: ' . \App\Services\TtsEngine::label() . ' 목소리 생성 작업을 등록했습니다.', $voice);
     }
 
     /** POST /admin/voices/{id}/reject : 반려(재녹음 요청) */
@@ -272,8 +273,8 @@ class VoiceController
     public function approveAll(): ?array
     {
         $admin = require_admin();
-        if (!provider_ready('elevenlabs')) {
-            return self::finish('error', 'ElevenLabs API 키가 등록되지 않아 승인할 수 없습니다.', '/admin/dashboard');
+        if (!TtsEngine::ready()) {
+            return self::finish('error', TtsEngine::notReadyMessage() . ' 승인할 수 없습니다.', '/admin/dashboard');
         }
         $ids = array_map('intval', array_column(db_all(
             "SELECT id FROM voice_profiles WHERE status = 'pending' AND deleted_at IS NULL AND quality_grade IN ('good', 'fair')
