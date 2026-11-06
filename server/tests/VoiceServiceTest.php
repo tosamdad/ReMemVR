@@ -643,7 +643,7 @@ test('다시 만든 목소리의 기존 동화 오디오는 다시 요청하면 
         voice_test_hide_slots();
         $drain = function () {
             for ($i = 0; $i < 40; $i++) {
-                $due = (int) db_value("SELECT COUNT(*) FROM jobs WHERE status IN ('pending', 'running') AND available_at <= NOW() AND ref_type = 'voice_profile' AND ref_id IN (" . implode(', ', array_map('intval', $GLOBALS['__voice_test_profiles'])) . ')");
+                $due = (int) db_value("SELECT COUNT(*) FROM jobs WHERE status IN ('pending', 'running') AND available_at <= NOW() AND ref_type = 'voice_profile' AND ref_id IN (" . implode(', ', array_map('intval', $GLOBALS['__voice_test_profiles'])) . ')');
                 if ($due === 0) {
                     break;
                 }
