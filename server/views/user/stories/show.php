@@ -90,7 +90,9 @@ $summary = trim((string) $story['summary']);
           $voice = $v['voice'];
           $state = $v['state'];
           $req = $v['request'];
-          $pick = in_array($state, ['none', 'rejected'], true);
+          // 목소리를 다시 만들었다면(엔진을 바꿔 다시 만든 경우 포함) 기존 오디오를 들으면서 새 목소리로 다시 요청할 수도 있다.
+          $remake = !empty($v['can_remake']);
+          $pick = in_array($state, ['none', 'rejected'], true) || $remake;
           $look = isset($stateLook[$state]) ? $stateLook[$state] : null;
       ?>
       <li class="card flex items-center gap-3 p-4"<?= $req && in_array($state, ['requested', 'making', 'done', 'failed'], true) ? ' data-req-id="' . (int) $req['id'] . '" data-req-state="' . e($state) . '"' : '' ?>>
@@ -112,6 +114,8 @@ $summary = trim((string) $story['summary']);
             <?php endif; ?>
             <?php if ($state === 'rejected' && $req && (string) $req['reject_reason'] !== ''): ?>
             <span class="mt-1 block text-[12px] leading-4 text-error break-keep"><?= e($req['reject_reason']) ?> · 다시 요청할 수 있어요</span>
+            <?php elseif ($remake): ?>
+            <span class="mt-1 block text-[12px] leading-4 text-on-surface-variant">새 목소리로 다시 만들 수 있어요 · 기존 오디오는 새 오디오가 완성될 때까지 그대로 들려요</span>
             <?php elseif ($state === 'requested'): ?>
             <span class="mt-1 block text-[12px] leading-4 text-on-surface-variant">운영팀이 확인하고 있어요</span>
             <?php elseif ($state === 'making'): ?>

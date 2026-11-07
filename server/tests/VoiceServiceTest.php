@@ -456,11 +456,14 @@ test('가짜 API 로 목소리 승인, 동화 생성 요청, 생성 시작, 완�
 
         assert_true((int) db_value("SELECT COUNT(*) FROM api_usage_logs WHERE ref_type = 'story_audio' AND ref_id = ?", [(int) $audio['id']]) >= 1, '사용량 기록');
 
-        // 목소리 삭제 작업은 로컬 파일을 모두 지운다
+        // 목소리 삭제 작업은 짧은 음성과 개인 녹음 샘플은 지우고, 만든 동화 오디오는 남긴다(사용자 요청:
+        // 기존 동화는 그대로 듣고, 다른 목소리로 다시 만들어 교체될 때 바뀐다).
         VoiceService::delete($pid);
         Worker::run(20);
         assert_true(db_value('SELECT provider_deleted_at FROM voice_profiles WHERE id = ?', [$pid]) !== null, 'provider_deleted_at 이 없다');
-        assert_same(false, Storage::exists($audio['file_path']), '동화 오디오가 남았다');
+        $kept = db_one('SELECT * FROM story_audios WHERE id = ?', [(int) $audio['id']]);
+        assert_true($kept !== null && $kept['status'] === 'completed', '동화 오디오가 지워졌다');
+        assert_true(Storage::exists((string) $kept['file_path']), '동화 오디오 파일이 지워졌다');
         assert_same(0, (int) db_value('SELECT COUNT(*) FROM voice_clips WHERE voice_profile_id = ?', [$pid]));
         foreach (db_all('SELECT file_path FROM voice_samples WHERE voice_profile_id = ?', [$pid]) as $s) {
             assert_same(false, Storage::exists($s['file_path']), '샘플 파일이 남았다');
@@ -632,6 +635,63 @@ test('자리를 비운 목소리로 새 동화를 만들면 녹음으로 다시 
         assert_same([], $failed, '실패한 작업');
         $log = implode("\n", array_column(Jobs::latestLogs('voice_profile', $a['profile_id']), 'message'));
         assert_contains('ElevenLabs 목소리 다시 만들기 완료', $log);
+    });
+});
+
+test('다시 만든 목소리의 기존 동화 오디오는 다시 요청하면 새 목소리로 다시 만들고, 완성 전까지는 옛 오디오를 유지한다', function () {
+    if (!config('providers_fake') || !class_exists('App\\Services\\FakeAudio')) {
+        skip_test('providers_fake 설정이 꺼져 있다');
+    }
+    voice_test_tx(function () {
+        voice_test_hide_slots();
+        $drain = function () {
+            for ($i = 0; $i < 40; $i++) {
+                $due = (int) db_value("SELECT COUNT(*) FROM jobs WHERE status IN ('pending', 'running') AND available_at <= NOW() AND ref_type = 'voice_profile' AND ref_id IN (" . implode(', ', array_map('intval', $GLOBALS['__voice_test_profiles'])) . ')');
+                if ($due === 0) {
+                    break;
+                }
+                $r = Worker::run(60);
+                if (!empty($r['locked'])) {
+                    usleep(300000);
+                }
+            }
+        };
+        $a = voice_test_profile(['status' => 'pending', 'label' => '엄마']);
+        voice_test_sample($a['profile_id'], 70000);
+        $sid = voice_test_story();
+        VoiceService::approve($a['profile_id'], null);
+        $drain();
+        // 동화를 요청하고 생성을 시작해 오디오를 만든다.
+        $firstReq = StoryRequests::create((int) $a['user_id'], $sid, [$a['profile_id']]);
+        assert_same(1, count($firstReq['created']), json_encode($firstReq['skipped'], JSON_UNESCAPED_UNICODE));
+        assert_same(1, StoryRequests::approve($firstReq['created'], null)['approved']);
+        $drain();
+        $audio = db_one('SELECT * FROM story_audios WHERE story_id = ? AND voice_profile_id = ?', [$sid, $a['profile_id']]);
+        assert_same('completed', $audio['status']);
+        $freshFile = (string) $audio['file_path'];
+
+        // 새로 만든 목소리가 아니면(예: 엔진을 바꿔 다시 만든 뒤) 다시 요청해도 "이미 만들어져 있어요" 로 막힌다.
+        $skipped = StoryRequests::create((int) $a['user_id'], $sid, [$a['profile_id']]);
+        assert_same([], $skipped['created']);
+        assert_contains('이미 만들어져 있어요', (string) json_encode($skipped['skipped'], JSON_UNESCAPED_UNICODE));
+
+        // 목소리를 다시 만들었다(엔진을 바꿔 다시 만든 경우와 같다). 기존 오디오는 예전 목소리 것이 된다.
+        db_exec("UPDATE voice_profiles SET provider_voice_id = CONCAT('fake_', SUBSTRING(MD5(RAND()), 1, 12)), cloned_at = DATE_ADD(NOW(), INTERVAL 1 HOUR) WHERE id = ?", [$a['profile_id']]);
+        assert_true(VoiceService::audioStale($audio, db_one('SELECT * FROM voice_profiles WHERE id = ?', [$a['profile_id']])), '다시 만든 목소리 앞에서 기존 오디오는 오래된 것이다');
+
+        // 다시 요청하면 받아 주고(막히지 않는다), 승인하면 새 목소리로 다시 만든다.
+        $res = StoryRequests::create((int) $a['user_id'], $sid, [$a['profile_id']]);
+        assert_same(1, count($res['created']), json_encode($res['skipped'], JSON_UNESCAPED_UNICODE));
+        $ok = StoryRequests::approve($res['created'], null);
+        assert_same(1, $ok['approved'], json_encode($ok['errors'], JSON_UNESCAPED_UNICODE));
+        // 완성되기 전까지는 기존 오디오를 그대로 들을 수 있다.
+        assert_true(Storage::exists($freshFile), '다시 만드는 중에 기존 오디오가 사라졌다');
+        $drain();
+        $again = db_one('SELECT * FROM story_audios WHERE story_id = ? AND voice_profile_id = ?', [$sid, $a['profile_id']]);
+        assert_same('completed', $again['status'], '기존 오디오를 새 목소리로 다시 만들지 못했다');
+        assert_true($again['file_path'] !== $freshFile, '다시 만든 오디오가 기존 파일을 덮어썼다(듣다가 끊긴다)');
+        assert_true(Storage::exists((string) $again['file_path']), '새 오디오 파일이 없다');
+        assert_same(false, Storage::exists($freshFile), '완성 뒤 옛 오디오 파일이 남았다');
     });
 });
 
