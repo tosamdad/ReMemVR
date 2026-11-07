@@ -305,7 +305,7 @@ class SettingsController
         // 3) 가족 목소리: 소프트 삭제 + 녹음 파일, 생성 오디오, ElevenLabs 목소리 삭제 작업
         foreach (db_all('SELECT id FROM voice_profiles WHERE user_id = ? AND deleted_at IS NULL', [$uid]) as $vp) {
             try {
-                VoiceService::delete((int) $vp['id']);
+                VoiceService::delete((int) $vp['id'], true);
             } catch (\Throwable $e) {
                 app_log('error', '탈퇴 목소리 삭제 실패', ['voice_profile' => (int) $vp['id'], 'error' => $e->getMessage()]);
             }

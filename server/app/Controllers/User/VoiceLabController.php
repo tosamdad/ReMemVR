@@ -422,8 +422,13 @@ class VoiceLabController
     {
         require_user();
         $voice = $this->profile((int) $id);
-        VoiceService::delete((int) $voice['id']);
-        flash('success', $voice['label'] . ' 목소리를 삭제했어요.');
+        $deleteStories = input('delete_stories') === '1' || input('mode') === 'all';
+        VoiceService::delete((int) $voice['id'], $deleteStories);
+        if ($deleteStories) {
+            flash('success', $voice['label'] . ' 목소리와 만든 동화를 모두 삭제했어요.');
+        } else {
+            flash('success', $voice['label'] . ' 목소리를 삭제했어요. 이미 만든 동화는 그대로 들을 수 있어요.');
+        }
         redirect('/voice-lab');
     }
 

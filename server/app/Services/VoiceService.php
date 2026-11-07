@@ -684,8 +684,8 @@ class VoiceService
 
     // ───────────────────────── 삭제, 테스트 ─────────────────────────
 
-    /** 소프트 삭제 + 대기 작업 취소 + voice_delete 작업(ElevenLabs 목소리와 로컬 음성 파일 삭제) */
-    public static function delete(int $profileId): void
+    /** 소프트 삭제 + 대기 작업 취소 + voice_delete 작업(ElevenLabs 또는 Typecast 목소리와 로컬 음성 파일 삭제) */
+    public static function delete(int $profileId, bool $deleteStories = false): void
     {
         $profile = db_one('SELECT * FROM voice_profiles WHERE id = ?', [$profileId]);
         if (!$profile || $profile['deleted_at'] !== null) {
@@ -696,8 +696,13 @@ class VoiceService
         Jobs::enqueue('voice_delete', [
             'profile_id' => $profileId,
             'provider_voice_id' => (string) $profile['provider_voice_id'],
+            'delete_stories' => $deleteStories,
         ], ['priority' => 3, 'ref_type' => 'voice_profile', 'ref_id' => $profileId]);
-        Jobs::log(null, 'voice_profile', $profileId, 'warn', '목소리를 삭제했습니다. 음성 파일과 ' . TtsEngine::label() . ' 목소리 삭제 작업을 등록했습니다.');
+        $engine = TtsEngine::profileEngine($profile);
+        $msg = $deleteStories
+            ? '목소리와 동화 오디오를 삭제했습니다. 음성 파일, 동화 오디오 및 ' . TtsEngine::label($engine) . ' 목소리 삭제 작업을 등록했습니다.'
+            : '목소리를 삭제했습니다. 음성 파일과 ' . TtsEngine::label($engine) . ' 목소리 삭제 작업을 등록했습니다. (동화 오디오 유지)';
+        Jobs::log(null, 'voice_profile', $profileId, 'warn', $msg);
         Worker::kick();
     }
 
