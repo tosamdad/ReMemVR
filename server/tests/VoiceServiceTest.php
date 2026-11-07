@@ -355,7 +355,21 @@ test('삭제하면 대기 작업을 취소하고 voice_delete 작업을 등록�
         assert_true(db_value('SELECT deleted_at FROM voice_profiles WHERE id = ?', [$pid]) !== null, '소프트 삭제가 아니다');
         assert_same(0, (int) db_value("SELECT COUNT(*) FROM jobs WHERE type = 'story_tts' AND ref_id = ? AND status = 'pending'", [$pid]));
         $job = db_one("SELECT payload FROM jobs WHERE type = 'voice_delete' AND ref_id = ?", [$pid]);
-        assert_same('fake_del_voice', json_decode($job['payload'], true)['provider_voice_id']);
+        $payload = json_decode($job['payload'], true);
+        assert_same('fake_del_voice', $payload['provider_voice_id']);
+        assert_same(false, !empty($payload['delete_stories']));
+    });
+});
+
+test('deleteStories 옵션을 켜고 삭제하면 payload 에 delete_stories 가 전달된다', function () {
+    voice_test_tx(function () {
+        $t = voice_test_profile(['status' => 'completed', 'provider_voice_id' => 'fake_del_all_voice']);
+        $pid = $t['profile_id'];
+        VoiceService::delete($pid, true);
+        $job = db_one("SELECT payload FROM jobs WHERE type = 'voice_delete' AND ref_id = ?", [$pid]);
+        $payload = json_decode($job['payload'], true);
+        assert_same('fake_del_all_voice', $payload['provider_voice_id']);
+        assert_same(true, !empty($payload['delete_stories']));
     });
 });
 
@@ -458,12 +472,53 @@ test('가짜 API 로 목소리 승인, 동화 생성 요청, 생성 시작, 완�
 
         // 목소리 삭제 작업은 짧은 음성과 개인 녹음 샘플은 지우고, 만든 동화 오디오는 남긴다(사용자 요청:
         // 기존 동화는 그대로 듣고, 다른 목소리로 다시 만들어 교체될 때 바뀐다).
-        VoiceService::delete($pid);
+        VoiceService::delete($pid, false);
         Worker::run(20);
         assert_true(db_value('SELECT provider_deleted_at FROM voice_profiles WHERE id = ?', [$pid]) !== null, 'provider_deleted_at 이 없다');
         $kept = db_one('SELECT * FROM story_audios WHERE id = ?', [(int) $audio['id']]);
         assert_true($kept !== null && $kept['status'] === 'completed', '동화 오디오가 지워졌다');
         assert_true(Storage::exists((string) $kept['file_path']), '동화 오디오 파일이 지워졌다');
+        assert_same(0, (int) db_value('SELECT COUNT(*) FROM voice_clips WHERE voice_profile_id = ?', [$pid]));
+        foreach (db_all('SELECT file_path FROM voice_samples WHERE voice_profile_id = ?', [$pid]) as $s) {
+            assert_same(false, Storage::exists($s['file_path']), '샘플 파일이 남았다');
+        }
+    });
+});
+
+test('목소리 삭제 시 deleteStories=true 이면 동화 오디오와 파일까지 모두 삭제한다', function () {
+    if (!class_exists('App\\Services\\ElevenLabs') || !class_exists('App\\Services\\Alignment') || !class_exists('App\\Services\\FakeAudio')) {
+        skip_test('ElevenLabs, Alignment 클래스가 아직 없다');
+    }
+    if (!config('providers_fake')) {
+        skip_test('providers_fake 설정이 꺼져 있다');
+    }
+    voice_test_tx(function () {
+        $t = voice_test_profile(['status' => 'pending']);
+        $pid = $t['profile_id'];
+        $uid = $t['user_id'];
+        voice_test_sample($pid, 75000);
+        voice_test_sample($pid, 60000);
+        $sid = voice_test_story();
+        VoiceService::approve($pid, null);
+        while (Jobs::activeCount('voice_profile', $pid) > 0) {
+            Worker::run(60);
+        }
+        $res = StoryRequests::create($uid, $sid, [$pid]);
+        $rid = $res['created'][0];
+        StoryRequests::approve([$rid], null);
+        while (Jobs::activeCount('voice_profile', $pid) > 0) {
+            Worker::run(60);
+        }
+        $audio = db_one('SELECT * FROM story_audios WHERE story_id = ? AND voice_profile_id = ?', [$sid, $pid]);
+        assert_true($audio !== null && Storage::exists((string) $audio['file_path']), '동화 오디오가 생성되지 않았다');
+
+        // deleteStories = true 로 전체 삭제 실행
+        VoiceService::delete($pid, true);
+        Worker::run(20);
+
+        assert_true(db_value('SELECT provider_deleted_at FROM voice_profiles WHERE id = ?', [$pid]) !== null, 'provider_deleted_at 이 없다');
+        assert_same(null, db_one('SELECT * FROM story_audios WHERE id = ?', [(int) $audio['id']]), '동화 오디오 행이 남아 있다');
+        assert_same(false, Storage::exists((string) $audio['file_path']), '동화 오디오 파일이 남아 있다');
         assert_same(0, (int) db_value('SELECT COUNT(*) FROM voice_clips WHERE voice_profile_id = ?', [$pid]));
         foreach (db_all('SELECT file_path FROM voice_samples WHERE voice_profile_id = ?', [$pid]) as $s) {
             assert_same(false, Storage::exists($s['file_path']), '샘플 파일이 남았다');

@@ -253,13 +253,28 @@ $dot = [
         <p class="text-label-sm text-on-surface-variant">화면에는 "이름 + 목소리"로 보여요. 예) 외할머니 목소리</p>
       </form>
     </details>
-    <form method="post" action="<?= e(url('/voice-lab/' . $pid . '/delete')) ?>" data-confirm="<?= e($voice['label']) ?> 목소리를 삭제할까요? 녹음과 이 목소리로 만든 동화 오디오도 모두 지워지고 되돌릴 수 없어요.">
+    <?php $storyCount = count($stories); ?>
+    <!-- 목소리만 삭제 (동화 오디오 보존) -->
+    <form method="post" action="<?= e(url('/voice-lab/' . $pid . '/delete')) ?>" data-confirm="<?= e($voice['label']) ?> 목소리만 삭제할까요? 녹음 파일과 AI 목소리는 지워지지만, 이미 만든 동화<?= $storyCount > 0 ? ' (' . $storyCount . '편)' : '' ?>는 그대로 남아요." data-confirm-ok="목소리만 삭제" data-confirm-danger="0">
       <?= csrf_field() ?>
-      <button type="submit" class="flex w-full items-center gap-3 rounded-xl border border-error/30 bg-surface-container-lowest p-5 text-left text-error transition-all active:scale-[0.99]">
-        <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-error-container text-on-error-container"><span class="material-symbols-outlined">delete</span></span>
+      <button type="submit" class="flex w-full items-center gap-3 rounded-xl border border-surface-container bg-surface-container-lowest p-5 text-left text-on-surface transition-all active:scale-[0.99]">
+        <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-surface-container-high text-on-surface-variant"><span class="material-symbols-outlined">record_voice_over</span></span>
         <span class="flex-1">
-          <span class="block font-label-lg text-label-lg">목소리 삭제</span>
-          <span class="block text-label-sm text-on-surface-variant">녹음 파일과 AI 목소리를 모두 지워요.</span>
+          <span class="block font-label-lg text-label-lg">목소리만 삭제</span>
+          <span class="block text-label-sm text-on-surface-variant">녹음 파일과 AI 목소리만 지우고, 만든 동화<?= $storyCount > 0 ? ' (' . $storyCount . '편)' : '' ?>는 그대로 남겨요.</span>
+        </span>
+      </button>
+    </form>
+
+    <!-- 목소리와 동화 모두 삭제 -->
+    <form method="post" action="<?= e(url('/voice-lab/' . $pid . '/delete')) ?>" data-confirm="<?= e($voice['label']) ?> 목소리와 동화를 모두 삭제할까요? 녹음 파일, AI 목소리뿐 아니라 이 목소리로 만든 동화 오디오<?= $storyCount > 0 ? ' (' . $storyCount . '편)' : '' ?>까지 완전히 지워지며 되돌릴 수 없어요." data-confirm-ok="모두 삭제" data-confirm-danger="1">
+      <?= csrf_field() ?>
+      <input type="hidden" name="delete_stories" value="1">
+      <button type="submit" class="flex w-full items-center gap-3 rounded-xl border border-error/30 bg-surface-container-lowest p-5 text-left text-error transition-all active:scale-[0.99]">
+        <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-error-container text-on-error-container"><span class="material-symbols-outlined">delete_forever</span></span>
+        <span class="flex-1">
+          <span class="block font-label-lg text-label-lg">목소리와 동화 모두 삭제</span>
+          <span class="block text-label-sm text-on-surface-variant">녹음 파일, AI 목소리, 이 목소리로 만든 동화 오디오를 모두 지워요.</span>
         </span>
       </button>
     </form>
