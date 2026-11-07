@@ -495,14 +495,17 @@ test('목소리 삭제 시 deleteStories=true 이면 동화 오디오와 파일�
     voice_test_tx(function () {
         $t = voice_test_profile(['status' => 'pending']);
         $pid = $t['profile_id'];
+        $uid = $t['user_id'];
         voice_test_sample($pid, 75000);
         voice_test_sample($pid, 60000);
         $sid = voice_test_story();
+        VoiceService::approve($pid, null);
         while (Jobs::activeCount('voice_profile', $pid) > 0) {
             Worker::run(60);
         }
-        $rid = StoryRequests::create($sid, $pid);
-        StoryRequests::approve($rid);
+        $res = StoryRequests::create($uid, $sid, [$pid]);
+        $rid = $res['created'][0];
+        StoryRequests::approve([$rid], null);
         while (Jobs::activeCount('voice_profile', $pid) > 0) {
             Worker::run(60);
         }
